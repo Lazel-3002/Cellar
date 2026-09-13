@@ -1,0 +1,304 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/source-serif-4';
+@import 'katex/dist/katex.min.css';
+
+@source '../../../../node_modules/streamdown/dist/*.js';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Light palette (cream, like Claude's light theme). */
+:root {
+  --background: #faf9f5;
+  --sidebar: #f3f1ea;
+  --divider: #e6e3d9;
+  --hover: #ebe8df;
+  --selected: #e4e1d6;
+  --composer: #ffffff;
+  --composer-border: #dedbd0;
+  --track: #efede6;
+  --track-active: #ffffff;
+  --track-border: #d9d6cb;
+  --tile: #d8d5ca;
+  --seg: #e9e6dd;
+  --seg-border: #d3d0c5;
+  --bubble: #efece3;
+  --menu: #ffffff;
+  --menu-border: #e2dfd5;
+  --foreground: #141413;
+  --fg-2: #3d3d3a;
+  --muted-foreground: #73726c;
+  --faint: #b9b6ab;
+  --muted: #f0eee6;
+  --card: #ffffff;
+  --code: #f3f1ea;
+  --brand: #d97757;
+  --danger: #c8412b;
+  --success: #2f8a4d;
+  --warning: #b7791f;
+  --titlebar-reserve: 140px;
+  --chat-font: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+}
+
+/* Dark palette sampled from the Claude Desktop reference screenshot. */
+[data-theme='dark'] {
+  --background: #151515;
+  --sidebar: #111111;
+  --divider: #292929;
+  --hover: #222221;
+  --selected: #343434;
+  --composer: #20201f;
+  --composer-border: #373736;
+  --track: #2b2b2a;
+  --track-active: #414140;
+  --track-border: #545453;
+  --tile: #454442;
+  --seg: #1d1d1d;
+  --seg-border: #494949;
+  --bubble: #262624;
+  --menu: #232322;
+  --menu-border: #383836;
+  --foreground: #f0efec;
+  --fg-2: #c3c2b7;
+  --muted-foreground: #898781;
+  --faint: #4b4a47;
+  --muted: #1d1d1c;
+  --card: #1b1b1a;
+  --code: #1b1b1a;
+  --danger: #ef6b52;
+  --success: #5bb67a;
+  --warning: #e0a43a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-divider: var(--divider);
+  --color-border: var(--divider);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-composer: var(--composer);
+  --color-composer-border: var(--composer-border);
+  --color-track: var(--track);
+  --color-track-active: var(--track-active);
+  --color-track-border: var(--track-border);
+  --color-tile: var(--tile);
+  --color-seg: var(--seg);
+  --color-seg-border: var(--seg-border);
+  --color-bubble: var(--bubble);
+  --color-menu: var(--menu);
+  --color-menu-border: var(--menu-border);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-card: var(--card);
+  --color-code: var(--code);
+  --color-primary: var(--foreground);
+  --color-primary-foreground: var(--background);
+  --color-brand: var(--brand);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable='true'],
+.selectable {
+  user-select: text;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 35%, transparent);
+}
+
+@layer base {
+  /* Thin, unobtrusive scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--tile) transparent;
+  }
+
+  /* Layered so utilities like outline-none can override it. */
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--brand) 60%, transparent);
+    outline-offset: 1px;
+  }
+
+  textarea:focus-visible,
+  input:focus-visible {
+    outline: none;
+  }
+
+  button {
+    cursor: default;
+  }
+}
+
+.fade-right {
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+
+/* Assistant response typography. */
+.prose-chat {
+  font-family: var(--chat-font);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--foreground);
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.prose-chat p,
+.prose-chat ul,
+.prose-chat ol,
+.prose-chat blockquote,
+.prose-chat table {
+  margin: 0.7em 0;
+}
+
+.prose-chat > *:first-child {
+  margin-top: 0;
+}
+
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.2em 0 0.5em;
+}
+
+.prose-chat h1 {
+  font-size: 1.45em;
+}
+.prose-chat h2 {
+  font-size: 1.25em;
+}
+.prose-chat h3 {
+  font-size: 1.1em;
+}
+
+.prose-chat ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+
+.prose-chat ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+
+.prose-chat li {
+  margin: 0.25em 0;
+}
+
+.prose-chat a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-chat blockquote {
+  border-left: 3px solid var(--divider);
+  padding-left: 1em;
+  color: var(--fg-2);
+}
+
+.prose-chat :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--muted);
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+}
+
+.prose-chat pre,
+.prose-chat [data-streamdown='code-block'] {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid var(--divider);
+  margin: 1.5em 0;
+}
+
+.prose-chat table {
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--divider);
+  padding: 6px 10px;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 50%, var(--muted-foreground) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 180ms ease-out both;
+}

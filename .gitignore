@@ -1,0 +1,13 @@
+node_modules/
+out/
+dist/
+release/
+coverage/
+test-results/
+playwright-report/
+resources/artifact-runtime/
+*.log
+*.tsbuildinfo
+.DS_Store
+.vite/
+graphify-out/cache/

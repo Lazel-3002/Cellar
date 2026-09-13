@@ -1,0 +1,83 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
+export interface MockRequest {
+  model: string;
+  messages: Array<{ role: string; content: unknown }>;
+}
+
+export interface MockServer {
+  url: string;
+  requests: MockRequest[];
+  close: () => Promise<void>;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function lastUserText(req: MockRequest): string {
+  const last = [...req.messages].reverse().find((m) => m.role === 'user');
+  if (!last) return '';
+  if (typeof last.content === 'string') return last.content;
+  return (last.content as Array<{ type: string; text?: string }>).map((p) => p.text ?? '').join('');
+}
+
+/** Deterministic OpenAI-compatible server used by the end-to-end tests. */
+export async function startMockServer(): Promise<MockServer> {
+  const requests: MockRequest[] = [];
+  const server: Server = createServer((req, res) => {
+    if (req.url?.startsWith('/v1/models')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }] }));
+      return;
+    }
+    if (req.url?.startsWith('/v1/chat/completions')) {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        const parsed = JSON.parse(body) as MockRequest & { max_tokens?: number };
+        requests.push(parsed);
+        const prompt = lastUserText(parsed);
+        const isTitle = parsed.messages.some((m) => m.role === 'system' && String(m.content).includes('You name chat conversations'));
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const send = (delta: Record<string, unknown>, finish?: string) =>
+          res.write(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: finish ?? null }] })}\n\n`);
+
+        if (isTitle) {
+          send({ content: 'Mock conversation title' }, 'stop');
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-thinker-r1') {
+          send({ reasoning_content: 'Let me think about this carefully.' });
+          await sleep(50);
+        }
+        let reply = `Echo: ${prompt}`;
+        if (/artifact/i.test(prompt)) {
+          reply = 'Here is your page:\n\n```html artifact title="Mock page"\n<!doctype html><html><body><h1 id="hello">Hello from an artifact</h1></body></html>\n```\n\nEnjoy.';
+        }
+        const slow = /slow/i.test(prompt);
+        const chunks = slow ? Array.from({ length: 400 }, (_, i) => `word${i} `) : reply.match(/.{1,12}/gs) ?? [reply];
+        // Note: IncomingMessage emits 'close' once the body is read, so watch the response instead.
+        let closed = false;
+        res.on('close', () => (closed = true));
+        for (const chunk of chunks) {
+          if (closed || res.destroyed) return;
+          send({ content: chunk });
+          await sleep(slow ? 40 : 5);
+        }
+        send({}, 'stop');
+        res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 42, completion_tokens: chunks.length } })}\n\n`);
+        res.end('data: [DONE]\n\n');
+      });
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
