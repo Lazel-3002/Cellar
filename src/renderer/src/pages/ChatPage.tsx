@@ -120,9 +120,13 @@ export function ChatPage() {
 
   useEffect(() => {
     if (!data) return;
+    if (data.conversation.kind === 'task') {
+      void navigate({ to: '/task/$conversationId', params: { conversationId }, replace: true });
+      return;
+    }
     incognitoRef.current = data.conversation.incognito;
     setIncognito(data.conversation.incognito);
-  }, [data?.conversation.incognito, data, setIncognito]);
+  }, [data?.conversation.incognito, data, setIncognito, navigate, conversationId]);
 
   // Leaving an incognito chat throws it away.
   useEffect(
@@ -184,7 +188,7 @@ export function ChatPage() {
           const el = e.currentTarget;
           setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120);
         }}
-        className="min-h-0 flex-1 overflow-y-auto pt-9"
+        className="mt-9 min-h-0 flex-1 overflow-y-auto"
       >
         <div className="mx-auto flex w-full max-w-[768px] flex-col gap-7 px-6 pt-6 pb-10">
           {path.map((message, i) => {

@@ -22,7 +22,7 @@ function ActionButton({ label, onClick, children }: { label: string; onClick: ()
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <ActionButton
@@ -122,7 +122,7 @@ export function UserMessage({ message, conversation, siblings, disabled }: { mes
   );
 }
 
-function StatsLine({ message }: { message: Message }) {
+export function StatsLine({ message }: { message: Message }) {
   const s = message.stats;
   if (!s) return null;
   const parts = [

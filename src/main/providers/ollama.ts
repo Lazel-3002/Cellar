@@ -5,7 +5,7 @@ import type { StoredProviderConfig } from '../db/provider-configs';
 import { errorMessage, fetchWithTimeout } from '../lib/util';
 import { baseEntry } from './openai-compat';
 import { parseNDJSON } from './stream-parsers';
-import { ProviderHttpError, readErrorBody, trimBaseUrl, type ChatRequest, type Provider } from './types';
+import { ProviderHttpError, readErrorBody, trimBaseUrl, type ChatRequest, type Provider, type ProviderMessage } from './types';
 
 interface OllamaTag {
   name: string;
@@ -60,6 +60,29 @@ export function ollamaThink(style: ReasoningStyle, level: string): boolean | str
   if (style === 'none' || style === 'always') return style === 'always' ? true : undefined;
   if (style === 'effort') return level === 'off' ? 'low' : level === 'on' ? 'medium' : level;
   return level !== 'off';
+}
+
+function argumentsObject(json: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Ollama's native chat format: object arguments, `tool_name` on results, `thinking` on assistant turns. */
+export function toOllamaMessages(messages: ProviderMessage[]): unknown[] {
+  return messages.map((m) => {
+    if (m.role === 'tool') return { role: 'tool', content: m.content, tool_name: m.toolName, tool_call_id: m.toolCallId };
+    const out: Record<string, unknown> = { role: m.role, content: m.content };
+    if (m.images?.length) out.images = m.images.map((i) => i.base64);
+    if (m.role === 'assistant' && m.toolCalls?.length) {
+      out.tool_calls = m.toolCalls.map((c) => ({ id: c.id, function: { name: c.name, arguments: argumentsObject(c.arguments) } }));
+      if (m.reasoning) out.thinking = m.reasoning;
+    }
+    return out;
+  });
 }
 
 export class OllamaProvider implements Provider {
@@ -237,12 +260,13 @@ export class OllamaProvider implements Provider {
     const think = ollamaThink(req.entry.reasoningStyle, req.thinking);
     const body: Record<string, unknown> = {
       model: req.entry.ref.modelId,
-      messages: req.messages.map((m) => ({ role: m.role, content: m.content, ...(m.images?.length ? { images: m.images.map((i) => i.base64) } : {}) })),
+      messages: toOllamaMessages(req.messages),
       stream: true,
       keep_alive: `${req.load.keepAliveMinutes}m`,
       options: ollamaOptions(req.params, req.load),
     };
     if (think !== undefined) body.think = think;
+    if (req.tools?.length) body.tools = req.tools.map((t) => ({ type: 'function', function: t }));
     if (req.params.jsonSchema.trim()) {
       try {
         body.format = JSON.parse(req.params.jsonSchema);
@@ -266,35 +290,56 @@ export class OllamaProvider implements Provider {
     }
     if (!res.ok || !res.body) throw new ProviderHttpError(res.status, await readErrorBody(res));
 
-    type Line = {
-      error?: string;
-      message?: { content?: string; thinking?: string };
-      done?: boolean;
-      done_reason?: string;
-      prompt_eval_count?: number;
-      prompt_eval_duration?: number;
-      eval_count?: number;
-      eval_duration?: number;
-    };
-    for await (const line of parseNDJSON<Line>(res.body)) {
-      if (line.error) throw new Error(line.error);
-      if (line.message?.thinking) yield { type: 'reasoning', delta: line.message.thinking };
-      if (line.message?.content) yield { type: 'text', delta: line.message.content };
-      if (line.done) {
-        yield {
-          type: 'stats',
-          stats: {
-            promptTokens: line.prompt_eval_count,
-            completionTokens: line.eval_count,
-            tokensPerSecond: line.eval_count && line.eval_duration ? line.eval_count / (line.eval_duration / 1e9) : undefined,
-            // Prompt processing time, excluding model load: the closest equivalent of time-to-first-token.
-            ttftMs: line.prompt_eval_duration ? line.prompt_eval_duration / 1e6 : undefined,
-          },
-        };
-        yield { type: 'done', stopReason: line.done_reason };
-        return;
-      }
-    }
-    yield { type: 'done' };
+    for await (const event of parseOllamaChatStream(res.body)) yield event;
   }
+}
+
+type OllamaChatLine = {
+  error?: string;
+  message?: {
+    content?: string;
+    thinking?: string;
+    tool_calls?: Array<{ id?: string; function?: { index?: number; name?: string; arguments?: unknown } }>;
+  };
+  done?: boolean;
+  done_reason?: string;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+};
+
+/** Ollama streams each tool call whole, with object arguments. */
+export async function* parseOllamaChatStream(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamEvent> {
+  let callCount = 0;
+  for await (const line of parseNDJSON<OllamaChatLine>(body)) {
+    if (line.error) throw new Error(line.error);
+    if (line.message?.thinking) yield { type: 'reasoning', delta: line.message.thinking };
+    if (line.message?.content) yield { type: 'text', delta: line.message.content };
+    for (const call of line.message?.tool_calls ?? []) {
+      const args = call.function?.arguments;
+      yield {
+        type: 'tool_call',
+        id: call.id || `call_${callCount}`,
+        name: call.function?.name ?? '',
+        argumentsDelta: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+      };
+      callCount++;
+    }
+    if (line.done) {
+      yield {
+        type: 'stats',
+        stats: {
+          promptTokens: line.prompt_eval_count,
+          completionTokens: line.eval_count,
+          tokensPerSecond: line.eval_count && line.eval_duration ? line.eval_count / (line.eval_duration / 1e9) : undefined,
+          // Prompt processing time, excluding model load: the closest equivalent of time-to-first-token.
+          ttftMs: line.prompt_eval_duration ? line.prompt_eval_duration / 1e6 : undefined,
+        },
+      };
+      yield { type: 'done', stopReason: line.done_reason };
+      return;
+    }
+  }
+  yield { type: 'done' };
 }

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Command } from 'cmdk';
-import { Box, Cpu, FolderClosed, Ghost, MessageSquare, Plus, Search, Settings, Telescope } from 'lucide-react';
+import { Box, Cpu, FolderClosed, Ghost, ListChecks, MessageSquare, Plus, Search, Settings, Telescope } from 'lucide-react';
 import { Dialog as RadixDialog } from 'radix-ui';
 import type { SearchHit } from '@shared/types/chat';
 import { invoke } from '@/lib/ipc';
 import { useConversations, useModels, useProjects } from '@/lib/queries';
+import { conversationRoute } from '@/lib/tasks';
 import { relativeTime } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 
@@ -86,14 +87,14 @@ export function SearchPalette() {
 
               {(q ? hits.length > 0 : recent.length > 0) && (
                 <Command.Group heading={q ? 'Chats' : 'Recent chats'} className="px-1 pb-1 text-[11.5px] text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
-                  {(q ? hits : recent.map((r) => ({ conversationId: r.id, title: r.title, snippet: '', updatedAt: r.updatedAt }))).map((hit) => (
+                  {(q ? hits : recent.map((r) => ({ conversationId: r.id, kind: r.kind, title: r.title, snippet: '', updatedAt: r.updatedAt }))).map((hit) => (
                     <Command.Item
                       key={hit.conversationId}
                       value={`chat-${hit.conversationId}`}
                       className={itemClass}
-                      onSelect={() => go(() => void navigate({ to: '/chat/$conversationId', params: { conversationId: hit.conversationId } }))}
+                      onSelect={() => go(() => void navigate({ to: conversationRoute(hit.kind), params: { conversationId: hit.conversationId } }))}
                     >
-                      <MessageSquare className="size-4 shrink-0" />
+                      {hit.kind === 'task' ? <ListChecks className="size-4 shrink-0" /> : <MessageSquare className="size-4 shrink-0" />}
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-[14px]">{hit.title || 'Untitled'}</span>
                         {hit.snippet && <Snippet text={hit.snippet} />}

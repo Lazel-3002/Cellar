@@ -7,12 +7,14 @@ import { ArtifactsPage, ComingSoonPage, RecentsPage } from './pages/MiscPages';
 import { ModelsPage } from './pages/ModelsPage';
 import { ProjectDetailPage, ProjectsPage } from './pages/ProjectsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TaskPage } from './pages/TaskPage';
 
 const rootRoute = createRootRoute({ component: AppShell });
 
 const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/chat/$conversationId', component: ChatPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/task/$conversationId', component: TaskPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/projects', component: ProjectsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/projects/$projectId', component: ProjectDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/artifacts', component: ArtifactsPage }),

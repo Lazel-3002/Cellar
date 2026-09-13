@@ -5,6 +5,7 @@ import type { Conversation, Message } from '../../src/shared/types/chat';
 
 const conversation = (id: string, title: string, updatedAt: number): Conversation => ({
   id,
+  kind: 'chat',
   title,
   projectId: null,
   starred: false,

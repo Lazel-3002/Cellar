@@ -2,13 +2,19 @@
 
 A Claude Desktop-style app for **local models**. Chat with models running on your own GPU through Cellar's built-in llama.cpp engine, or through Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server. Find and download GGUFs from Hugging Face with LM Studio-style control over how they load.
 
-> Milestone 1 (this build): app shell, Chat, Projects, Artifacts, incognito chats, the Model Hub and all backends.
-> Coming next: Cowork (M2), Code (M3), Customize / Scheduled / voice (M4), Design (M5).
+> This build: Milestone 1 (app shell, Chat, Projects, Artifacts, incognito chats, the Model Hub and all backends) and Milestone 2 (Cowork agents).
+> Coming next: Code (M3), Customize / Scheduled / voice (M4), Design (M5) — see [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Features
 
 - **Claude-style shell**: sidebar (New, Projects, Artifacts, Scheduled, Customize, chats and tasks, Design), custom title bar with back/forward, search (Ctrl+K), Chat/Code switch and the incognito ghost.
 - **Chat**: streaming Markdown (code highlighting, math, Mermaid), collapsible thinking blocks, thinking-level control, retry/edit with switchable branches, stop, attachments (images for vision models, PDFs, text and code), generation stats (tok/s, tokens, time to first token), a context meter, and auto-generated titles.
+- **Cowork**: describe a task and a local model works through it inside a folder you choose.
+  - Tools: list, read (including PDF, Word, PowerPoint and Excel), write and edit files, glob and grep, PowerShell commands, web search (DuckDuckGo or SearXNG) and page reading, a live plan, and Word, Excel, PowerPoint and PDF creation.
+  - Permissions: ask before changes, auto-accept edits, or plan only. Approvals appear inline with the file content, a diff or the command.
+  - Tools cannot reach outside the folder (junctions and links included); commands and unknown web pages always ask first.
+  - A task view with steps, thinking, files created or changed, and sources. Tasks keep running in the background and notify you when they finish or need you.
+  - Works with native tool calling (llama.cpp, Ollama, LM Studio, OpenAI-compatible servers) and falls back to a text protocol for other models; long tasks are summarized to fit the context window.
 - **Incognito chats** live only in memory and disappear when you leave them.
 - **Projects**: per-project instructions and knowledge files. Files are included whole when they fit, otherwise the best-matching excerpts via SQLite FTS5.
 - **Artifacts**: HTML, SVG and React output opens in a sandboxed side panel served from an offline `cellar-artifact://` protocol (bundled React, lucide-react, Tailwind). Artifacts keep versions and are collected on the Artifacts page.
@@ -53,16 +59,18 @@ On first launch:
 | Chats, projects, settings (SQLite) | `%APPDATA%\Cellar` (override with `CELLAR_USER_DATA`) |
 | Downloaded models | `~/.cellar/models/<publisher>/<repo>/` (configurable) |
 | llama.cpp runtimes | `~/.cellar/runtimes/llama.cpp/` (override the home with `CELLAR_HOME`) |
+| Files from Cowork tasks without a chosen folder | `~/.cellar/tasks/<date>-<id>/` |
 
 ## Development
 
 | Script | Purpose |
 | --- | --- |
-| `npm test` | Unit tests (Vitest): stream parsers, llama.cpp args/log parsing, memory estimator, quant grouping, context fitting, branching, artifacts, downloader resume, SQLite/FTS5 |
-| `npm run test:e2e` | Playwright end-to-end tests against a deterministic mock OpenAI server (build first) |
+| `npm test` | Unit tests (Vitest): stream parsers, llama.cpp args/log parsing, memory estimator, quant grouping, context fitting, branching, artifacts, downloader resume, SQLite/FTS5, and the Cowork agent (path containment, tools, documents, text protocol, compaction, the agent loop) |
+| `npm run test:e2e` | Playwright end-to-end tests against a deterministic mock OpenAI server, including a scripted tool-calling agent (build first) |
 | `npm run typecheck` | TypeScript for main/preload and renderer |
 | `node scripts/screenshots.mjs "/,/models"` | Screenshot routes of the built app |
 | `node scripts/chat-smoke.mjs <provider> <model or name=…> "<prompt>"` | Real-model chat through the UI |
+| `node scripts/cowork-smoke.mjs <provider> <model or name=…> ["<task>"]` | Real-model Cowork task in a sample folder, approving each request (`SMOKE_MODE=plan` for plan mode) |
 | `node scripts/verify-downloads.mjs [repo]` | Hub download, pause/resume, checksum, rescan and Ollama pull |
 | `node scripts/ipc-run.mjs '[["runtimes:list", true]]'` | Call backend IPC handlers directly |
 | `node scripts/verify-packaged.mjs` | Smoke-test the packaged build |
@@ -71,6 +79,7 @@ On first launch:
 
 ```
 src/main        Electron main process
+  agent/        Cowork: agent loop, tools, folder containment, documents, text tool protocol, compaction
   providers/    llama.cpp engine, Ollama, LM Studio, OpenAI-compatible (Unsloth, custom), registry
   runtimes/     llama.cpp build detection and installation
   models/       local GGUF index, header summaries, memory estimator, presets

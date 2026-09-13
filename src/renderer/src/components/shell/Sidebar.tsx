@@ -1,10 +1,12 @@
 import { useState, type ComponentType, type SVGProps } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { BriefcaseBusiness, ChevronDown, Clock, Ellipsis, FolderClosed, ListFilter, Palette, Pencil, Plus, Shapes, Star, Trash } from 'lucide-react';
+import { BriefcaseBusiness, ChevronDown, Clock, Ellipsis, FolderClosed, ListFilter, LoaderCircle, Palette, Pencil, Plus, Shapes, Star, Trash } from 'lucide-react';
 import type { ConversationSummary } from '@shared/types/chat';
 import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
+import { Tip } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useConversations, useProjects, useSettings } from '@/lib/queries';
+import { conversationRoute } from '@/lib/tasks';
 import { cn } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import { DownloadsButton } from './DownloadsPopover';
@@ -36,7 +38,29 @@ function NavItem({ icon: IconCmp, label, to, active, onClick }: { icon: Icon; la
   );
 }
 
-type RecentFilter = { kind: 'all' } | { kind: 'starred' } | { kind: 'project'; projectId: string };
+type RecentFilter = { kind: 'all' } | { kind: 'starred' } | { kind: 'tasks' } | { kind: 'project'; projectId: string };
+
+function RowMarker({ chat }: { chat: ConversationSummary }) {
+  if (chat.kind !== 'task') return <span className="size-[5px] shrink-0 rounded-full bg-faint" />;
+  switch (chat.taskStatus) {
+    case 'running':
+      return (
+        <Tip label="Working" side="right">
+          <LoaderCircle data-testid="task-running" className="-mx-[3px] size-[11px] shrink-0 animate-spin text-brand" />
+        </Tip>
+      );
+    case 'waiting':
+      return (
+        <Tip label="Needs your approval" side="right">
+          <span data-testid="task-waiting" className="size-[7px] shrink-0 animate-pulse rounded-full bg-warning" />
+        </Tip>
+      );
+    case 'error':
+      return <span className="size-[6px] shrink-0 rounded-full bg-danger" />;
+    default:
+      return <span className="size-[5px] shrink-0 rounded-[1.5px] bg-faint" />;
+  }
+}
 
 function RecentRow({ chat, active }: { chat: ConversationSummary; active: boolean }) {
   const navigate = useNavigate();
@@ -67,8 +91,8 @@ function RecentRow({ chat, active }: { chat: ConversationSummary; active: boolea
 
   return (
     <div className={cn('group relative flex h-[27px] items-center rounded-md hover:bg-hover', active && 'bg-selected hover:bg-selected')}>
-      <Link to="/chat/$conversationId" params={{ conversationId: chat.id }} className="no-drag flex h-full min-w-0 flex-1 items-center gap-3 pr-7 pl-3">
-        <span className="size-[5px] shrink-0 rounded-full bg-faint" />
+      <Link to={conversationRoute(chat.kind)} params={{ conversationId: chat.id }} className="no-drag flex h-full min-w-0 flex-1 items-center gap-3 pr-7 pl-3">
+        <RowMarker chat={chat} />
         <span className={cn('fade-right truncate text-[14px] text-fg-2', active && 'text-foreground')}>{chat.title || 'Untitled'}</span>
         {chat.starred && <Star className="size-3 shrink-0 fill-current text-muted-foreground" />}
       </Link>
@@ -122,6 +146,7 @@ export function Sidebar() {
   const { data: chats = [] } = useConversations({
     starred: filter.kind === 'starred' ? true : undefined,
     projectId: filter.kind === 'project' ? filter.projectId : undefined,
+    kind: filter.kind === 'tasks' ? 'task' : undefined,
     limit: 40,
   });
   const name = settings?.userName || 'You';
@@ -137,7 +162,9 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-[22px] flex h-6 items-center justify-between pr-2 pl-3.5">
-        <span className="text-[12px] text-muted-foreground">{filter.kind === 'starred' ? 'Starred' : filter.kind === 'project' ? projects.find((p) => p.id === filter.projectId)?.name ?? 'Project' : 'Chats and tasks'}</span>
+        <span className="text-[12px] text-muted-foreground">
+          {filter.kind === 'starred' ? 'Starred' : filter.kind === 'tasks' ? 'Tasks' : filter.kind === 'project' ? projects.find((p) => p.id === filter.projectId)?.name ?? 'Project' : 'Chats and tasks'}
+        </span>
         <Menu>
           <MenuTrigger asChild>
             <button aria-label="Filter chats" className={cn('no-drag flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-hover hover:text-foreground', filter.kind !== 'all' && 'text-brand')}>
@@ -151,6 +178,9 @@ export function Sidebar() {
             <MenuCheckItem checked={filter.kind === 'starred'} onSelect={() => setFilter({ kind: 'starred' })}>
               Starred
             </MenuCheckItem>
+            <MenuCheckItem checked={filter.kind === 'tasks'} onSelect={() => setFilter({ kind: 'tasks' })}>
+              Cowork tasks
+            </MenuCheckItem>
             {projects.length > 0 && <MenuSeparator />}
             {projects.map((p) => (
               <MenuCheckItem key={p.id} checked={filter.kind === 'project' && filter.projectId === p.id} onSelect={() => setFilter({ kind: 'project', projectId: p.id })}>
@@ -163,7 +193,7 @@ export function Sidebar() {
 
       <div className="mt-1 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {chats.map((chat) => (
-          <RecentRow key={chat.id} chat={chat} active={pathname === `/chat/${chat.id}`} />
+          <RecentRow key={chat.id} chat={chat} active={pathname === `/chat/${chat.id}` || pathname === `/task/${chat.id}`} />
         ))}
         {chats.length === 0 && <div className="px-3 py-2 text-[13px] text-muted-foreground">{filter.kind === 'all' ? 'Your chats will show up here.' : 'Nothing here yet.'}</div>}
         <Link to="/recents" className="no-drag mt-1 block px-3 py-1.5 text-[13.5px] text-muted-foreground hover:text-foreground">

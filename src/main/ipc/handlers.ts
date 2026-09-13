@@ -1,7 +1,9 @@
-import { writeFile } from 'node:fs/promises';
+import { copyFile, stat, writeFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { app, BrowserWindow, dialog, shell } from 'electron';
 import { z } from 'zod';
 import type { AppInfo } from '@shared/ipc-contract';
+import { Workspace } from '../agent/workspace';
 import { attachmentFromBytes, attachmentsFromPaths } from '../chat/attachments';
 import { chat } from '../chat/orchestrator';
 import { deleteConversations, listConversations, searchMessages } from '../db/chat-store';
@@ -24,6 +26,8 @@ import { handle } from './register';
 const modelRef = z.object({ providerId: z.string().min(1), modelId: z.string().min(1) });
 const thinking = z.enum(['off', 'on', 'low', 'medium', 'high']);
 
+const permissionMode = z.enum(['ask', 'auto-edits', 'plan']);
+
 const sendSchema = z.object({
   conversationId: z.string().optional(),
   incognito: z.boolean().optional(),
@@ -32,10 +36,25 @@ const sendSchema = z.object({
   attachmentIds: z.array(z.string()).max(50),
   model: modelRef,
   thinking,
+  task: z.object({ folder: z.string().min(1).nullable(), permissionMode }).optional(),
 });
+
+const approvalSchema = z.object({ action: z.enum(['allow', 'allow-all', 'deny']), feedback: z.string().max(4000).optional() });
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+}
+
+/** Files that would run rather than open; the Files panel only reveals these. */
+const RUNNABLE = /\.(exe|com|bat|cmd|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|hta|msi|msp|scr|pif|cpl|lnk|url|reg|jar|appref-ms|application|sh)$/i;
+
+/** A file the task produced, resolved safely inside the task's folder. */
+async function taskFile(conversationId: string, path: string): Promise<string> {
+  const workspace = await Workspace.open(chat.taskWorkDir(conversationId));
+  const abs = await workspace.resolve(path);
+  const info = await stat(abs).catch(() => null);
+  if (!info) throw new Error(`${path} no longer exists.`);
+  return abs;
 }
 
 export function registerIpcHandlers(): void {
@@ -204,7 +223,10 @@ export function registerIpcHandlers(): void {
   handle('chat:rename', (id, title) => chat.rename(id, title));
   handle('chat:star', (id, starred) => chat.setStarred(id, starred));
   handle('chat:delete', (ids) => {
-    for (const id of ids) chat.discardIncognito(id);
+    for (const id of ids) {
+      chat.stopConversation(id);
+      chat.discardIncognito(id);
+    }
     deleteConversations(ids);
     bus.emit('chat:changed', {});
   });
@@ -213,6 +235,29 @@ export function registerIpcHandlers(): void {
   handle('chat:search', (query, limit) => searchMessages(query, limit));
   handle('chat:discardIncognito', (id) => chat.discardIncognito(id));
   handle('chat:activeStreams', () => chat.activeStreams());
+
+  handle('tasks:approve', (messageId, toolCallId, decision) => chat.approve(messageId, toolCallId, approvalSchema.parse(decision)));
+  handle('tasks:setPermissionMode', (conversationId, mode) => chat.setTaskPermissionMode(conversationId, permissionMode.parse(mode)));
+  handle('tasks:toolResult', (messageId, toolCallId) => chat.toolResult(messageId, toolCallId));
+  handle('tasks:openFile', async (conversationId, path) => {
+    const file = await taskFile(conversationId, path);
+    if (RUNNABLE.test(file)) {
+      shell.showItemInFolder(file);
+      return;
+    }
+    const error = await shell.openPath(file);
+    if (error) throw new Error(error);
+  });
+  handle('tasks:revealFile', async (conversationId, path) => shell.showItemInFolder(await taskFile(conversationId, path)));
+  handle('tasks:saveFileAs', async (conversationId, path) => {
+    const source = await taskFile(conversationId, path);
+    const win = focusedWindow();
+    const options = { defaultPath: basename(source) };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    await copyFile(source, result.filePath);
+    return result.filePath;
+  });
 
   handle('attachments:fromPaths', (filePaths) => attachmentsFromPaths(z.array(z.string()).max(50).parse(filePaths)));
   handle('attachments:fromBytes', (name, mime, bytes) => attachmentFromBytes(name, mime, bytes));

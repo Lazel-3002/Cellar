@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/form';
 import { Badge, EmptyState, Spinner } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useArtifacts, useConversations } from '@/lib/queries';
+import { conversationRoute } from '@/lib/tasks';
 import { cn, relativeTime } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 
@@ -138,10 +139,11 @@ export function RecentsPage() {
             {chats.map((c) => (
               <div key={c.id} className={cn('flex items-center gap-3 px-2 py-3 hover:bg-hover/40', selected.has(c.id) && 'bg-hover/60')}>
                 {selecting && <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} className="size-4 accent-[var(--brand)]" />}
-                <Link to="/chat/$conversationId" params={{ conversationId: c.id }} className="min-w-0 flex-1" onClick={(e) => { if (selecting) { e.preventDefault(); toggle(c.id); } }}>
+                <Link to={conversationRoute(c.kind)} params={{ conversationId: c.id }} className="min-w-0 flex-1" onClick={(e) => { if (selecting) { e.preventDefault(); toggle(c.id); } }}>
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[14.5px] text-foreground">{c.title || 'Untitled'}</span>
                     {c.starred && <Star className="size-3 shrink-0 fill-current text-muted-foreground" />}
+                    {c.kind === 'task' && <Badge tone="outline">Task</Badge>}
                     {c.projectName && <Badge>{c.projectName}</Badge>}
                   </div>
                   <div className="text-[12px] text-muted-foreground">Last message {relativeTime(c.updatedAt)}</div>

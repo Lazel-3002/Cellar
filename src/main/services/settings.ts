@@ -37,6 +37,13 @@ function defaults(): StoredSettings {
     activeRuntimeId: null,
     concurrentDownloads: 1,
     onboardingDone: false,
+    coworkPermissionMode: 'ask',
+    coworkMaxSteps: 40,
+    coworkWebAccess: true,
+    coworkNotifications: true,
+    webSearchProvider: 'duckduckgo',
+    searxngUrl: '',
+    recentFolders: [],
   };
 }
 
@@ -105,6 +112,13 @@ class SettingsService {
     if (patch.activeRuntimeId !== undefined) set('activeRuntimeId', patch.activeRuntimeId);
     if (patch.concurrentDownloads !== undefined) set('concurrentDownloads', clamp(patch.concurrentDownloads, 1, 4));
     if (patch.onboardingDone !== undefined) set('onboardingDone', !!patch.onboardingDone);
+    if (patch.coworkPermissionMode !== undefined && ['ask', 'auto-edits', 'plan'].includes(patch.coworkPermissionMode)) set('coworkPermissionMode', patch.coworkPermissionMode);
+    if (patch.coworkMaxSteps !== undefined) set('coworkMaxSteps', clamp(patch.coworkMaxSteps, 5, 500));
+    if (patch.coworkWebAccess !== undefined) set('coworkWebAccess', !!patch.coworkWebAccess);
+    if (patch.coworkNotifications !== undefined) set('coworkNotifications', !!patch.coworkNotifications);
+    if (patch.webSearchProvider !== undefined && ['duckduckgo', 'searxng'].includes(patch.webSearchProvider)) set('webSearchProvider', patch.webSearchProvider);
+    if (patch.searxngUrl !== undefined) set('searxngUrl', patch.searxngUrl.trim().replace(/\/+$/, ''));
+    if (patch.recentFolders !== undefined) set('recentFolders', [...new Set(patch.recentFolders.map((d) => d.trim()).filter(Boolean))].slice(0, 8));
 
     if (changes.length) {
       transaction(() => {

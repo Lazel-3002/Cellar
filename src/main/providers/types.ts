@@ -2,10 +2,31 @@ import type { StreamEvent, ThinkingLevel } from '@shared/types/chat';
 import type { InferenceParams, LoadConfig, LoadedModelInfo, LoadProgressEvent, ModelEntry } from '@shared/types/models';
 import type { ProviderKind, ProviderStatus } from '@shared/types/providers';
 
+export interface ProviderToolCall {
+  id: string;
+  name: string;
+  /** JSON text. */
+  arguments: string;
+}
+
 export interface ProviderMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   images?: Array<{ mime: string; base64: string }>;
+  /** Assistant turns that called tools. */
+  toolCalls?: ProviderToolCall[];
+  /** Reasoning from an assistant tool-call turn, for templates that keep interleaved thinking. */
+  reasoning?: string;
+  /** Tool results. */
+  toolCallId?: string;
+  toolName?: string;
+}
+
+/** A function the model may call (OpenAI function-calling shape). */
+export interface ToolSchema {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }
 
 export interface ChatRequest {
@@ -16,6 +37,8 @@ export interface ChatRequest {
   load: LoadConfig;
   signal: AbortSignal;
   onStatus: (message: string) => void;
+  /** Native tool calling; omitted for plain chat. */
+  tools?: ToolSchema[];
 }
 
 export interface Provider {

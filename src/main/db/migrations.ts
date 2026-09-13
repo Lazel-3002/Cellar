@@ -155,4 +155,10 @@ export const migrations: string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  /* 2: Cowork tasks */ `
+  ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat';
+  ALTER TABLE conversations ADD COLUMN task TEXT;
+  ALTER TABLE messages ADD COLUMN parts TEXT;
+  CREATE INDEX conversations_kind ON conversations(kind, updated_at DESC);
+  `,
 ];

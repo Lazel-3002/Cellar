@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import type { ThinkingLevel } from '@shared/types/chat';
 import type { ModelEntry, ReasoningStyle } from '@shared/types/models';
 import type { AppSettings } from '@shared/types/settings';
@@ -70,6 +71,29 @@ export function useAppCommands(): void {
         }
       }),
     [navigate, toggleSidebar, setSearchOpen, setIncognito],
+  );
+
+  useEffect(
+    () =>
+      onEvent('app:open', ({ conversationId, kind }) => {
+        void navigate({ to: kind === 'task' ? '/task/$conversationId' : '/chat/$conversationId', params: { conversationId } });
+      }),
+    [navigate],
+  );
+
+  // Main shows a desktop notification when the window is in the background; the app itself
+  // shows a toast unless that task is already on screen.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(
+    () =>
+      onEvent('tasks:notify', (notice) => {
+        if (pathname === `/task/${notice.conversationId}`) return;
+        const open = { label: 'Open', onClick: () => void navigate({ to: '/task/$conversationId', params: { conversationId: notice.conversationId } }) };
+        if (notice.kind === 'error') toast.error(notice.title, { description: notice.body, action: open });
+        else if (notice.kind === 'approval') toast.warning(notice.title, { description: notice.body, action: open, duration: 10_000 });
+        else toast.success(notice.title, { description: notice.body, action: open });
+      }),
+    [navigate, pathname],
   );
 }
 

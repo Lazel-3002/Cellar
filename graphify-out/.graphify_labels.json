@@ -92,5 +92,19 @@
   "90": "zustand",
   "91": "Logo.tsx",
   "92": "playwright.config.ts",
-  "93": "vitest.config.ts"
+  "93": "vitest.config.ts",
+  "94": "agent-core.test.ts",
+  "95": "Cellar roadmap",
+  "96": "services/models.ts",
+  "97": "cowork-smoke.mjs",
+  "98": "tools/types.ts",
+  "99": "agent.ts",
+  "100": "history.ts",
+  "101": "Workspace",
+  "102": "orchestrator.ts",
+  "103": "util.ts",
+  "104": "client.ts",
+  "105": "TaskPage.tsx",
+  "106": "ToolStep.tsx",
+  "107": "TaskSidePanel.tsx"
 }

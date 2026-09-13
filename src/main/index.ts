@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, safeStorage } from 'electron';
+import { installPdfRenderer, installTaskNotifications } from './agent/desktop';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
 import { closeDatabase, openDatabase } from './db/client';
@@ -54,6 +55,8 @@ if (!app.requestSingleInstanceLock()) {
     forwardBusToWindows();
     handleArtifactProtocol();
     installAppMenu();
+    installPdfRenderer();
+    installTaskNotifications(() => mainWindow);
 
     mainWindow = createMainWindow();
     mainWindow.on('closed', () => {

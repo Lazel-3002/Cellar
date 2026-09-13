@@ -2,7 +2,7 @@ import type { StreamEvent, ThinkingLevel } from '@shared/types/chat';
 import type { InferenceParams, ModelCapabilities, ModelEntry, ReasoningStyle } from '@shared/types/models';
 import { fetchWithTimeout } from '../lib/util';
 import { parseSSE, ThinkTagSplitter } from './stream-parsers';
-import { ProviderHttpError, readErrorBody, type ProviderMessage, trimBaseUrl } from './types';
+import { ProviderHttpError, readErrorBody, type ProviderMessage, type ToolSchema, trimBaseUrl } from './types';
 
 export type OpenAIFlavor = 'llamacpp' | 'lmstudio' | 'unsloth' | 'generic';
 
@@ -10,8 +10,18 @@ export function authHeaders(apiKey?: string): Record<string, string> {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-export function toOpenAIMessages(messages: ProviderMessage[]): unknown[] {
+export function toOpenAIMessages(messages: ProviderMessage[], flavor: OpenAIFlavor = 'generic'): unknown[] {
   return messages.map((m) => {
+    if (m.role === 'tool') return { role: 'tool', tool_call_id: m.toolCallId, content: m.content };
+    if (m.role === 'assistant' && m.toolCalls?.length) {
+      return {
+        role: 'assistant',
+        content: m.content,
+        tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } })),
+        // llama.cpp hands this to templates that keep thinking between tool calls (Qwen3, gpt-oss).
+        ...(flavor === 'llamacpp' && m.reasoning ? { reasoning_content: m.reasoning } : {}),
+      };
+    }
     if (m.role !== 'user' || !m.images?.length) return { role: m.role, content: m.content };
     return {
       role: m.role,
@@ -21,6 +31,16 @@ export function toOpenAIMessages(messages: ProviderMessage[]): unknown[] {
       ],
     };
   });
+}
+
+export function toolsBody(tools: ToolSchema[] | undefined, flavor: OpenAIFlavor): Record<string, unknown> {
+  if (!tools?.length) return {};
+  return {
+    tools: tools.map((t) => ({ type: 'function', function: t })),
+    tool_choice: 'auto',
+    // llama-server only parses one call per turn unless asked for more.
+    ...(flavor === 'llamacpp' ? { parallel_tool_calls: true } : {}),
+  };
 }
 
 export function samplingBody(p: InferenceParams, flavor: OpenAIFlavor): Record<string, unknown> {
@@ -108,6 +128,8 @@ export async function* streamChatCompletion(opts: StreamChatOptions): AsyncGener
   let serverSeparatesReasoning = false;
   let finishReason: string | undefined;
   const toolNames = new Map<string, string>();
+  // Streamed calls send their id once; later argument chunks only carry the index.
+  const idByIndex = new Map<number, string>();
 
   for await (const data of parseSSE(res.body)) {
     if (data === '[DONE]') break;
@@ -133,7 +155,9 @@ export async function* streamChatCompletion(opts: StreamChatOptions): AsyncGener
         else for (const part of splitter.push(delta.content)) yield part;
       }
       for (const call of delta.tool_calls ?? []) {
-        const id = call.id ?? `call_${call.index ?? 0}`;
+        const index = call.index ?? 0;
+        const id = call.id || idByIndex.get(index) || `call_${index}`;
+        if (!idByIndex.has(index)) idByIndex.set(index, id);
         if (call.function?.name) toolNames.set(id, call.function.name);
         yield { type: 'tool_call', id, name: toolNames.get(id) ?? '', argumentsDelta: call.function?.arguments ?? '' };
       }

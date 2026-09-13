@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input, Textarea } from '@/components/ui/form';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
-import { EmptyState, Spinner } from '@/components/ui/misc';
+import { Badge, EmptyState, Spinner } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { keys, useProject, useProjects } from '@/lib/queries';
+import { conversationRoute } from '@/lib/tasks';
 import { cn, formatBytes, relativeTime } from '@/lib/utils';
 
 function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -198,9 +199,12 @@ export function ProjectDetailPage() {
             ) : (
               <div className="divide-y divide-divider border-y border-divider">
                 {conversations.map((c) => (
-                  <Link key={c.id} to="/chat/$conversationId" params={{ conversationId: c.id }} className="flex items-center gap-3 px-2 py-3 hover:bg-hover/50">
+                  <Link key={c.id} to={conversationRoute(c.kind)} params={{ conversationId: c.id }} className="flex items-center gap-3 px-2 py-3 hover:bg-hover/50">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[14px]">{c.title || 'Untitled'}</div>
+                      <div className="flex items-center gap-2 truncate text-[14px]">
+                        {c.title || 'Untitled'}
+                        {c.kind === 'task' && <Badge tone="outline">Task</Badge>}
+                      </div>
                       <div className="text-[12px] text-muted-foreground">Last message {relativeTime(c.updatedAt)}</div>
                     </div>
                   </Link>

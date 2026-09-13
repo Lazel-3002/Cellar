@@ -10,15 +10,15 @@ import { useModels, useProviders } from '@/lib/queries';
 import { cn, formatBytes } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 
-function ModelRow({ model, selected, onSelect }: { model: ModelEntry; selected: boolean; onSelect: () => void }) {
-  const meta = [model.quant, model.paramsLabel, model.sizeBytes ? formatBytes(model.sizeBytes) : undefined].filter(Boolean).join(' · ');
+function ModelRow({ model, selected, onSelect, dim }: { model: ModelEntry; selected: boolean; onSelect: () => void; dim?: boolean }) {
+  const meta = [model.quant, model.paramsLabel, model.sizeBytes ? formatBytes(model.sizeBytes) : undefined, dim ? 'no native tool calling' : undefined].filter(Boolean).join(' · ');
   return (
     <button
       onClick={onSelect}
       data-testid="model-option"
       data-provider={model.ref.providerId}
       data-model-id={model.ref.modelId}
-      className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-hover', selected && 'bg-hover')}
+      className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-hover', selected && 'bg-hover', dim && 'opacity-60 hover:opacity-100')}
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -40,7 +40,8 @@ function ModelRow({ model, selected, onSelect }: { model: ModelEntry; selected: 
   );
 }
 
-export function ModelPicker({ model, compact }: { model: ModelEntry | null; compact?: boolean }) {
+/** `preferTools` (Cowork) lists models with native tool calling first. */
+export function ModelPicker({ model, compact, preferTools }: { model: ModelEntry | null; compact?: boolean; preferTools?: boolean }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -51,14 +52,14 @@ export function ModelPicker({ model, compact }: { model: ModelEntry | null; comp
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     return statuses
-      .map((status) => ({
-        status,
-        models: models.filter(
+      .map((status) => {
+        const list = models.filter(
           (m) => m.ref.providerId === status.id && isChatCapable(m) && (!q || m.displayName.toLowerCase().includes(q) || m.repo?.toLowerCase().includes(q) || m.publisher?.toLowerCase().includes(q)),
-        ),
-      }))
+        );
+        return { status, models: preferTools ? [...list].sort((a, b) => Number(b.capabilities.tools) - Number(a.capabilities.tools)) : list };
+      })
       .filter((g) => g.models.length > 0 || (!q && (g.status.state === 'online' || g.status.kind === 'llamacpp')));
-  }, [models, statuses, query]);
+  }, [models, statuses, query, preferTools]);
 
   const options = model ? thinkingOptions(model.reasoningStyle) : [];
   const label = model ? thinkingLabel(model.reasoningStyle, thinking) : '';
@@ -98,6 +99,7 @@ export function ModelPicker({ model, compact }: { model: ModelEntry | null; comp
                 <ModelRow
                   key={`${m.ref.providerId}:${m.ref.modelId}`}
                   model={m}
+                  dim={preferTools && !m.capabilities.tools}
                   selected={!!model && model.ref.providerId === m.ref.providerId && model.ref.modelId === m.ref.modelId}
                   onSelect={() => {
                     setModel(m.ref);

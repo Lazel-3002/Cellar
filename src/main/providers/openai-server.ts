@@ -13,6 +13,7 @@ import {
   streamChatCompletion,
   thinkingBody,
   toOpenAIMessages,
+  toolsBody,
   type OpenAIFlavor,
 } from './openai-compat';
 import { ProviderHttpError, type ChatRequest, type Provider } from './types';
@@ -95,9 +96,10 @@ export class OpenAIServerProvider implements Provider {
       apiKey: cfg.apiKey,
       body: {
         model: req.entry.ref.modelId,
-        messages: toOpenAIMessages(req.messages),
+        messages: toOpenAIMessages(req.messages, this.flavor),
         ...samplingBody(req.params, this.flavor),
         ...thinkingBody(req.entry.reasoningStyle, req.thinking, this.flavor),
+        ...toolsBody(req.tools, this.flavor),
       },
       signal: req.signal,
       reasoningStyle: req.entry.reasoningStyle,

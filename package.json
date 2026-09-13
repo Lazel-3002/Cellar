@@ -22,7 +22,12 @@
   },
   "dependencies": {
     "@huggingface/gguf": "^0.4.6",
+    "docx": "^9.7.1",
+    "exceljs": "^4.4.0",
     "extract-zip": "^2.0.1",
+    "jszip": "^3.10.2",
+    "marked": "^18.0.13",
+    "pptxgenjs": "^4.0.1",
     "systeminformation": "^5.33.10",
     "unpdf": "^1.8.1",
     "zod": "^4.6.4"

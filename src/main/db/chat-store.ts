@@ -1,3 +1,4 @@
+import type { AgentPart, ConversationKind, TaskState } from '@shared/types/agent';
 import type {
   AttachmentRef,
   Conversation,
@@ -14,8 +15,8 @@ import type { ModelRef } from '@shared/types/models';
 import { safeJsonParse } from '../lib/util';
 import { all, ftsQuery, get, run, transaction } from './client';
 
-export type ConversationPatch = Partial<Pick<Conversation, 'title' | 'currentLeafId' | 'model' | 'settings' | 'starred' | 'projectId'>>;
-export type MessagePatch = Partial<Pick<Message, 'content' | 'reasoning' | 'stats' | 'status' | 'error' | 'model'>>;
+export type ConversationPatch = Partial<Pick<Conversation, 'title' | 'currentLeafId' | 'model' | 'settings' | 'starred' | 'projectId' | 'task'>>;
+export type MessagePatch = Partial<Pick<Message, 'content' | 'reasoning' | 'stats' | 'status' | 'error' | 'model' | 'parts'>>;
 
 /** Persistence for a conversation tree. Incognito chats use the in-memory implementation. */
 export interface ChatStore {
@@ -32,6 +33,7 @@ export interface ChatStore {
 
 interface ConversationRow {
   id: string;
+  kind: ConversationKind;
   title: string;
   project_id: string | null;
   starred: number;
@@ -39,6 +41,7 @@ interface ConversationRow {
   model_provider: string | null;
   model_id: string | null;
   settings: string;
+  task: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -55,17 +58,20 @@ interface MessageRow {
   stats: string | null;
   status: MessageStatus;
   error: string | null;
+  parts: string | null;
   created_at: number;
 }
 
 const toConversation = (r: ConversationRow): Conversation => ({
   id: r.id,
+  kind: r.kind === 'task' ? 'task' : 'chat',
   title: r.title,
   projectId: r.project_id,
   starred: r.starred === 1,
   currentLeafId: r.current_leaf_id,
   model: r.model_provider && r.model_id ? { providerId: r.model_provider, modelId: r.model_id } : undefined,
   settings: safeJsonParse<ConversationSettings>(r.settings, {}),
+  task: safeJsonParse<TaskState | undefined>(r.task, undefined),
   incognito: false,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -83,6 +89,7 @@ const toMessage = (r: MessageRow): Message => ({
   stats: safeJsonParse<GenerationStats | undefined>(r.stats, undefined),
   status: r.status,
   error: r.error ?? undefined,
+  parts: safeJsonParse<AgentPart[] | undefined>(r.parts, undefined),
   createdAt: r.created_at,
 });
 
@@ -91,9 +98,10 @@ export class SqliteChatStore implements ChatStore {
 
   createConversation(c: Conversation): void {
     run(
-      `INSERT INTO conversations (id, title, project_id, starred, current_leaf_id, model_provider, model_id, settings, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO conversations (id, kind, title, project_id, starred, current_leaf_id, model_provider, model_id, settings, task, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       c.id,
+      c.kind,
       c.title,
       c.projectId,
       c.starred,
@@ -101,6 +109,7 @@ export class SqliteChatStore implements ChatStore {
       c.model?.providerId,
       c.model?.modelId,
       JSON.stringify(c.settings ?? {}),
+      c.task ? JSON.stringify(c.task) : null,
       c.createdAt,
       c.updatedAt,
     );
@@ -138,6 +147,10 @@ export class SqliteChatStore implements ChatStore {
       sets.push('project_id = ?');
       params.push(patch.projectId);
     }
+    if (patch.task !== undefined) {
+      sets.push('task = ?');
+      params.push(JSON.stringify(patch.task));
+    }
     sets.push('updated_at = ?');
     params.push(Date.now());
     run(`UPDATE conversations SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
@@ -145,8 +158,8 @@ export class SqliteChatStore implements ChatStore {
 
   insertMessage(m: Message): void {
     run(
-      `INSERT INTO messages (id, conversation_id, parent_id, role, content, reasoning, attachments, model, stats, status, error, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (id, conversation_id, parent_id, role, content, reasoning, attachments, model, stats, status, error, parts, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       m.id,
       m.conversationId,
       m.parentId,
@@ -158,6 +171,7 @@ export class SqliteChatStore implements ChatStore {
       m.stats ? JSON.stringify(m.stats) : null,
       m.status,
       m.error,
+      m.parts ? JSON.stringify(m.parts) : null,
       m.createdAt,
     );
   }
@@ -188,6 +202,10 @@ export class SqliteChatStore implements ChatStore {
     if (patch.model !== undefined) {
       sets.push('model = ?');
       params.push(JSON.stringify(patch.model));
+    }
+    if (patch.parts !== undefined) {
+      sets.push('parts = ?');
+      params.push(JSON.stringify(patch.parts));
     }
     if (sets.length === 0) return;
     run(`UPDATE messages SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
@@ -266,6 +284,10 @@ export function listConversations(filter: ConversationFilter = {}): Conversation
   const where: string[] = [];
   const params: unknown[] = [];
   if (filter.starred) where.push('c.starred = 1');
+  if (filter.kind) {
+    where.push('c.kind = ?');
+    params.push(filter.kind);
+  }
   if (filter.projectId !== undefined) {
     if (filter.projectId === null) where.push('c.project_id IS NULL');
     else {
@@ -279,19 +301,22 @@ export function listConversations(filter: ConversationFilter = {}): Conversation
     params.push(`%${filter.query}%`, match);
   }
   const sql = `
-    SELECT c.id, c.title, c.project_id, c.starred, c.updated_at, p.name AS project_name
+    SELECT c.id, c.kind, c.title, c.project_id, c.starred, c.updated_at, json_extract(c.task, '$.status') AS task_status, p.name AS project_name
     FROM conversations c LEFT JOIN projects p ON p.id = c.project_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY c.updated_at DESC
     LIMIT ?`;
   params.push(filter.limit ?? 500);
-  return all<{ id: string; title: string; project_id: string | null; starred: number; updated_at: number; project_name: string | null }>(sql, ...params).map((r) => ({
+  type Row = { id: string; kind: ConversationKind; title: string; project_id: string | null; starred: number; updated_at: number; task_status: string | null; project_name: string | null };
+  return all<Row>(sql, ...params).map((r) => ({
     id: r.id,
+    kind: r.kind === 'task' ? 'task' : 'chat',
     title: r.title,
     projectId: r.project_id,
     projectName: r.project_name ?? undefined,
     starred: r.starred === 1,
     updatedAt: r.updated_at,
+    taskStatus: (r.task_status ?? undefined) as ConversationSummary['taskStatus'],
   }));
 }
 
@@ -299,18 +324,19 @@ export function searchMessages(query: string, limit = 20): SearchHit[] {
   const match = ftsQuery(query);
   const hits: SearchHit[] = [];
   const seen = new Set<string>();
-  const titleRows = all<{ id: string; title: string; updated_at: number }>(
-    'SELECT id, title, updated_at FROM conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?',
+  const kindOf = (kind: string): ConversationKind => (kind === 'task' ? 'task' : 'chat');
+  const titleRows = all<{ id: string; kind: string; title: string; updated_at: number }>(
+    'SELECT id, kind, title, updated_at FROM conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?',
     `%${query}%`,
     limit,
   );
   for (const r of titleRows) {
     seen.add(r.id);
-    hits.push({ conversationId: r.id, title: r.title || 'Untitled', snippet: '', updatedAt: r.updated_at });
+    hits.push({ conversationId: r.id, kind: kindOf(r.kind), title: r.title || 'Untitled', snippet: '', updatedAt: r.updated_at });
   }
   if (match) {
-    const rows = all<{ conversation_id: string; message_id: string; snippet: string; title: string; updated_at: number }>(
-      `SELECT f.conversation_id, f.message_id, snippet(messages_fts, 0, '[[', ']]', '…', 12) AS snippet, c.title, c.updated_at
+    const rows = all<{ conversation_id: string; message_id: string; snippet: string; kind: string; title: string; updated_at: number }>(
+      `SELECT f.conversation_id, f.message_id, snippet(messages_fts, 0, '[[', ']]', '…', 12) AS snippet, c.kind, c.title, c.updated_at
        FROM messages_fts f JOIN conversations c ON c.id = f.conversation_id
        WHERE messages_fts MATCH ?
        ORDER BY bm25(messages_fts) LIMIT ?`,
@@ -320,7 +346,7 @@ export function searchMessages(query: string, limit = 20): SearchHit[] {
     for (const r of rows) {
       if (seen.has(r.conversation_id)) continue;
       seen.add(r.conversation_id);
-      hits.push({ conversationId: r.conversation_id, messageId: r.message_id, title: r.title || 'Untitled', snippet: r.snippet, updatedAt: r.updated_at });
+      hits.push({ conversationId: r.conversation_id, kind: kindOf(r.kind), messageId: r.message_id, title: r.title || 'Untitled', snippet: r.snippet, updatedAt: r.updated_at });
       if (hits.length >= limit) break;
     }
   }

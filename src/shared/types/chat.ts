@@ -1,3 +1,4 @@
+import type { AgentPart, ConversationKind, TaskStartOptions, TaskState, TaskStatus } from './agent';
 import type { InferenceParams, ModelRef } from './models';
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -44,6 +45,8 @@ export interface Message {
   stats?: GenerationStats;
   status: MessageStatus;
   error?: string;
+  /** Cowork turns: text, thinking and tool steps in order. `content` still holds the joined text. */
+  parts?: AgentPart[];
   createdAt: number;
 }
 
@@ -56,12 +59,15 @@ export interface ConversationSettings {
 
 export interface Conversation {
   id: string;
+  kind: ConversationKind;
   title: string;
   projectId: string | null;
   starred: boolean;
   currentLeafId: string | null;
   model?: ModelRef;
   settings: ConversationSettings;
+  /** Present for Cowork tasks. */
+  task?: TaskState;
   incognito: boolean;
   createdAt: number;
   updatedAt: number;
@@ -69,11 +75,13 @@ export interface Conversation {
 
 export interface ConversationSummary {
   id: string;
+  kind: ConversationKind;
   title: string;
   projectId: string | null;
   projectName?: string;
   starred: boolean;
   updatedAt: number;
+  taskStatus?: TaskStatus;
   preview?: string;
 }
 
@@ -87,6 +95,7 @@ export interface ConversationFilter {
   query?: string;
   starred?: boolean;
   projectId?: string | null;
+  kind?: ConversationKind;
   limit?: number;
 }
 
@@ -98,6 +107,8 @@ export interface SendMessageInput {
   attachmentIds: string[];
   model: ModelRef;
   thinking: ThinkingLevel;
+  /** Starts a Cowork task instead of a chat (only for new conversations). */
+  task?: TaskStartOptions;
 }
 
 export interface SendMessageResult {
@@ -126,10 +137,14 @@ export interface ChatStreamEvent {
   statusMessage?: string;
   stats?: GenerationStats;
   error?: string;
+  /** Cowork turns only: the steps so far (long tool results shortened) and the task state. */
+  parts?: AgentPart[];
+  task?: TaskState;
 }
 
 export interface SearchHit {
   conversationId: string;
+  kind: ConversationKind;
   messageId?: string;
   title: string;
   snippet: string;

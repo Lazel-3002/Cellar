@@ -11,7 +11,7 @@ import { isEmbeddingModel } from '../../models/gguf';
 import { localModels, type LocalModel } from '../../models/local-index';
 import { runtimes } from '../../runtimes/llamacpp-runtimes';
 import { settings } from '../../services/settings';
-import { samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages } from '../openai-compat';
+import { samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages, toolsBody } from '../openai-compat';
 import type { ChatRequest, Provider } from '../types';
 import { buildServerArgs, validateLoadConfig } from './args';
 import { describeStage, emptyLoadInfo, failureHint, parseLogLine, type LoadInfo } from './log-parser';
@@ -361,10 +361,11 @@ export class LlamaCppProvider implements Provider {
 
     const body = {
       model: inst.modelId,
-      messages: toOpenAIMessages(req.messages),
+      messages: toOpenAIMessages(req.messages, 'llamacpp'),
       cache_prompt: true,
       ...samplingBody(req.params, 'llamacpp'),
       ...thinkingBody(req.entry.reasoningStyle, req.thinking, 'llamacpp'),
+      ...toolsBody(req.tools, 'llamacpp'),
     };
     inst.activeRequests++;
     inst.lastUsed = Date.now();

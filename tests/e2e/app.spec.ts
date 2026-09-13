@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { startMockServer, type MockServer } from './mock-server';
 
@@ -179,4 +179,78 @@ test('search finds earlier chats', async () => {
   await win.getByPlaceholder('Search chats, projects and models…').fill('Hello Cellar');
   await win.locator('[cmdk-item]', { hasText: 'Mock conversation title' }).first().click();
   await expect(win.getByText('Echo: Hello Cellar')).toBeVisible({ timeout: 10_000 });
+});
+
+test('cowork works through a task in a chosen folder, asking before it writes', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'cellar-cowork-'));
+  try {
+    writeFileSync(join(folder, 'notes.md'), '# Notes\n- ship milestone two\n');
+    await ipc('settings:update', { recentFolders: [folder], coworkPermissionMode: 'ask' });
+    await goHome();
+    await win.getByRole('button', { name: 'Cowork', exact: true }).click();
+    await win.getByTestId('cowork-folder').click();
+    await win.getByRole('menuitem', { name: basename(folder) }).click();
+    await expect(win.getByTitle(folder)).toBeVisible();
+    await expect(win.getByTestId('permission-mode')).toContainText('Ask');
+    await selectModel('mock-agent');
+    await win.waitForTimeout(300);
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-cowork-home.png') });
+    await send('Turn my notes into a report');
+
+    const approval = win.getByTestId('approval-card');
+    await expect(approval).toBeVisible({ timeout: 20_000 });
+    await expect(approval).toContainText('Cellar wants to create report.md');
+    await expect(win.locator('aside').getByTestId('task-waiting')).toBeVisible();
+    await expect(win.getByTestId('tool-step').filter({ hasText: 'notes.md' })).toBeVisible();
+    await win.waitForTimeout(400);
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-cowork-approval.png') });
+    await win.getByTestId('approve').click();
+
+    await expect(win.getByTestId('task-turn').last()).toHaveAttribute('data-status', 'complete', { timeout: 20_000 });
+    await expect(win.getByTestId('task-turn').last()).toContainText('Done. I wrote report.md from your notes.');
+    expect(readFileSync(join(folder, 'report.md'), 'utf8')).toContain('ship milestone two');
+    await expect(win.getByTestId('task-file')).toContainText('report.md');
+    await expect(win.getByTestId('task-panel')).toContainText('Write report');
+    await expect(win.getByText('Done', { exact: true })).toBeVisible();
+
+    const agentRequest = mock.requests.find((r) => r.model === 'mock-agent' && r.tools?.length);
+    expect(agentRequest?.tools?.map((t) => t.function.name)).toContain('write_file');
+    expect(String(agentRequest?.messages[0].content)).toContain(`Working folder: ${folder}`);
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-cowork-done.png') });
+
+    const tasks = await ipc<Array<{ kind: string; taskStatus?: string }>>('chat:list', { kind: 'task' });
+    expect(tasks[0]).toMatchObject({ kind: 'task', taskStatus: 'done' });
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('a task keeps working in the background and says when it is done', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'cellar-cowork-bg-'));
+  try {
+    writeFileSync(join(folder, 'notes.md'), '# Notes\n- background run\n');
+    const started = await ipc<{ conversationId: string; assistantMessageId: string }>('chat:send', {
+      content: 'Turn my notes into a report',
+      attachmentIds: [],
+      model: { providerId: (await ipc<Array<{ id: string; kind: string }>>('providers:configs')).find((c) => c.kind === 'openai')!.id, modelId: 'mock-agent' },
+      thinking: 'off',
+      task: { folder, permissionMode: 'ask' },
+    });
+    await goHome();
+    const pendingApproval = async () => {
+      const data = await ipc<{ messages: Array<{ id: string; parts?: Array<{ id: string; status: string }> }> }>('chat:get', started.conversationId);
+      return data.messages.find((m) => m.id === started.assistantMessageId)?.parts?.find((p) => p.status === 'awaiting-approval')?.id;
+    };
+    await expect.poll(pendingApproval, { timeout: 20_000 }).toBeTruthy();
+    const pending = (await pendingApproval())!;
+    await expect(win.getByText(/needs your approval/).first()).toBeVisible({ timeout: 10_000 });
+    await ipc('tasks:approve', started.assistantMessageId, pending, { action: 'allow' });
+    const toast = win.locator('[data-sonner-toast]').filter({ hasText: 'is done' });
+    await expect(toast).toBeVisible({ timeout: 20_000 });
+    await toast.getByRole('button', { name: 'Open' }).click();
+    await expect(win.getByTestId('task-turn').last()).toHaveAttribute('data-status', 'complete');
+    expect(readFileSync(join(folder, 'report.md'), 'utf8')).toContain('background run');
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });

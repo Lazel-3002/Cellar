@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { ArrowUp, FileText, Image as ImageIcon, Mic, Paperclip, Plus, SlidersHorizontal, Square, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, FileText, Image as ImageIcon, Mic, Paperclip, Plus, SlidersHorizontal, Square, X } from 'lucide-react';
 import { toast } from 'sonner';
+import type { PermissionMode } from '@shared/types/agent';
 import type { AttachmentRef, SendMessageResult } from '@shared/types/chat';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { Segmented } from '@/components/ui/form';
@@ -8,20 +9,55 @@ import { Spinner, Tip } from '@/components/ui/misc';
 import { effectiveThinking, useSelectedModel } from '@/lib/hooks';
 import { invoke } from '@/lib/ipc';
 import { useSettings } from '@/lib/queries';
+import { PERMISSION_MODES } from '@/lib/tasks';
 import { cn, formatBytes } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import { ModelPicker } from './ModelPicker';
 
 export interface ComposerProps {
-  variant: 'home' | 'chat';
+  variant: 'home' | 'chat' | 'task';
   conversationId?: string;
   projectId?: string | null;
   incognito?: boolean;
   streamingMessageId?: string | null;
+  /** Task follow-ups: the task's current permission mode. */
+  permissionMode?: PermissionMode;
   placeholder?: string;
   autoFocus?: boolean;
   className?: string;
-  onSent?: (result: SendMessageResult) => void;
+  onSent?: (result: SendMessageResult, kind: 'chat' | 'task') => void;
+}
+
+export function PermissionMenu({ value, onChange }: { value: PermissionMode; onChange: (mode: PermissionMode) => void }) {
+  const current = PERMISSION_MODES[value];
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <button data-testid="permission-mode" className="no-drag flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[13px] text-fg-2 hover:bg-hover hover:text-foreground">
+          <current.icon className="size-3.5" strokeWidth={1.9} />
+          <span className="max-w-32 truncate">{current.short}</span>
+          <ChevronDown className="size-3 text-muted-foreground" />
+        </button>
+      </MenuTrigger>
+      <MenuContent side="top" align="start" className="w-72">
+        {(Object.keys(PERMISSION_MODES) as PermissionMode[]).map((mode) => {
+          const info = PERMISSION_MODES[mode];
+          return (
+            <MenuItem key={mode} className="h-auto items-start py-2" onSelect={() => onChange(mode)}>
+              <div className="flex items-start gap-2.5">
+                <info.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1 whitespace-normal">
+                  <div className="text-[13.5px] text-foreground">{info.label}</div>
+                  <div className="text-[12px] leading-snug text-muted-foreground">{info.description}</div>
+                </div>
+                <span className="flex size-4 shrink-0 items-center justify-center">{mode === value && <Check className="size-4" />}</span>
+              </div>
+            </MenuItem>
+          );
+        })}
+      </MenuContent>
+    </Menu>
+  );
 }
 
 function AttachmentChip({ attachment, onRemove }: { attachment: AttachmentRef; onRemove: () => void }) {
@@ -44,10 +80,11 @@ function AttachmentChip({ attachment, onRemove }: { attachment: AttachmentRef; o
   );
 }
 
-export function Composer({ variant, conversationId, projectId, incognito, streamingMessageId, placeholder, autoFocus, className, onSent }: ComposerProps) {
-  const draftKey = conversationId ?? (projectId ? `project:${projectId}` : incognito ? 'incognito' : 'home');
+export function Composer({ variant, conversationId, projectId, incognito, streamingMessageId, permissionMode, placeholder, autoFocus, className, onSent }: ComposerProps) {
+  const { setDraft, mode, setMode, thinking, openLoadSettings, coworkFolder, coworkSkipped, coworkProjectId } = useUi();
+  const coworkMode = variant === 'home' && mode === 'cowork' && !incognito;
+  const draftKey = conversationId ?? (projectId ? `project:${projectId}` : incognito ? 'incognito' : coworkMode ? 'cowork' : 'home');
   const storedDraft = useUi((s) => s.drafts[draftKey] ?? '');
-  const { setDraft, mode, setMode, thinking, openLoadSettings } = useUi();
   const [text, setText] = useState(storedDraft);
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
   const [uploading, setUploading] = useState(0);
@@ -90,8 +127,8 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
   }, [pendingPrompt, setPendingPrompt]);
 
   const isStreaming = !!streamingMessageId;
-  const coworkMode = variant === 'home' && mode === 'cowork';
-  const canSend = !!model && !sending && uploading === 0 && (text.trim().length > 0 || attachments.length > 0) && !isStreaming && !coworkMode;
+  const canSend = !!model && !sending && uploading === 0 && (text.trim().length > 0 || attachments.length > 0) && !isStreaming;
+  const homeMode = settings?.coworkPermissionMode ?? 'ask';
 
   const addPaths = async (paths: string[]) => {
     if (paths.length === 0) return;
@@ -128,10 +165,6 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
   };
 
   const send = async () => {
-    if (coworkMode) {
-      toast('Cowork is coming in Milestone 2', { description: 'Local agents that work inside your folders. Switch to Chat to talk to your model now.' });
-      return;
-    }
     if (!model) {
       toast.error('Pick a model first', { description: 'Download one from Discover or connect Ollama, LM Studio or Unsloth Studio.' });
       return;
@@ -141,17 +174,18 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
     try {
       const result = await invoke('chat:send', {
         conversationId,
-        incognito,
-        projectId: projectId ?? null,
+        incognito: coworkMode ? false : incognito,
+        projectId: coworkMode ? coworkProjectId ?? projectId ?? null : projectId ?? null,
         content: text,
         attachmentIds: attachments.map((a) => a.id),
         model: model.ref,
         thinking: effectiveThinking(model.reasoningStyle, thinking),
+        ...(coworkMode ? { task: { folder: coworkSkipped ? null : coworkFolder, permissionMode: homeMode } } : {}),
       });
       setText('');
       setDraft(draftKey, '');
       setAttachments([]);
-      onSent?.(result);
+      onSent?.(result, coworkMode || variant === 'task' ? 'task' : 'chat');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -217,7 +251,10 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder={placeholder ?? (incognito ? 'Chat privately — nothing is saved' : variant === 'home' ? 'How can I help you today?' : 'Reply…')}
+        placeholder={
+          placeholder ??
+          (incognito ? 'Chat privately — nothing is saved' : coworkMode ? 'Describe a task, and Cellar will work through it' : variant === 'home' ? 'How can I help you today?' : variant === 'task' ? 'Reply to steer the task…' : 'Reply…')
+        }
         className="block max-h-[40vh] min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[16px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
       />
       <div className="flex items-center gap-2 px-2.5 pt-1 pb-2.5">
@@ -246,8 +283,12 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
             ]}
           />
         )}
+        {coworkMode && <PermissionMenu value={homeMode} onChange={(next) => void invoke('settings:update', { coworkPermissionMode: next })} />}
+        {variant === 'task' && conversationId && permissionMode && (
+          <PermissionMenu value={permissionMode} onChange={(next) => void invoke('tasks:setPermissionMode', conversationId, next).catch((err) => toast.error(err instanceof Error ? err.message : String(err)))} />
+        )}
         <div className="flex-1" />
-        <ModelPicker model={model} />
+        <ModelPicker model={model} preferTools={coworkMode || variant === 'task'} />
         {isStreaming ? (
           <Tip label="Stop generating  Esc">
             <button aria-label="Stop" onClick={() => void invoke('chat:stop', streamingMessageId!)} className="no-drag flex size-8 items-center justify-center rounded-lg bg-foreground text-background hover:opacity-90">

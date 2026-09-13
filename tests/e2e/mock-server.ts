@@ -3,7 +3,8 @@ import type { AddressInfo } from 'node:net';
 
 export interface MockRequest {
   model: string;
-  messages: Array<{ role: string; content: unknown }>;
+  messages: Array<{ role: string; content: unknown; tool_call_id?: string }>;
+  tools?: Array<{ function: { name: string } }>;
 }
 
 export interface MockServer {
@@ -27,7 +28,7 @@ export async function startMockServer(): Promise<MockServer> {
   const server: Server = createServer((req, res) => {
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -44,6 +45,27 @@ export async function startMockServer(): Promise<MockServer> {
 
         if (isTitle) {
           send({ content: 'Mock conversation title' }, 'stop');
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-agent' && parsed.tools?.length) {
+          // Scripted Cowork agent: plan + read, then write a report from what it read, then summarize.
+          const results = parsed.messages.filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const toolCall = (index: number, id: string, name: string, args: string) => {
+            send({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] });
+            for (const piece of args.match(/.{1,16}/gs) ?? []) send({ tool_calls: [{ index, function: { arguments: piece } }] });
+          };
+          if (results.length === 0) {
+            send({ content: "I'll read your notes first." });
+            toolCall(0, 'plan1', 'todo_write', JSON.stringify({ todos: [{ content: 'Read notes', status: 'in_progress' }, { content: 'Write report', status: 'pending' }] }));
+            toolCall(1, 'read1', 'read_file', JSON.stringify({ path: 'notes.md' }));
+            send({}, 'tool_calls');
+          } else if (results.length === 2) {
+            toolCall(0, 'write1', 'write_file', JSON.stringify({ path: 'report.md', content: `# Report\n\n${results[1]}` }));
+            send({}, 'tool_calls');
+          } else {
+            send({ content: results.at(-1)?.startsWith('The user denied') ? 'Okay, I left your folder unchanged.' : 'Done. I wrote report.md from your notes.' }, 'stop');
+          }
           res.end('data: [DONE]\n\n');
           return;
         }

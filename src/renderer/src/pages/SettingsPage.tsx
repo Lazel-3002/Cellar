@@ -17,6 +17,7 @@ import { cn, formatBytes } from '@/lib/utils';
 const SECTIONS = [
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'cowork', label: 'Cowork' },
   { id: 'models', label: 'Models' },
   { id: 'engines', label: 'Engines & runtimes' },
   { id: 'connections', label: 'Connections' },
@@ -110,6 +111,72 @@ function Appearance() {
         <Segmented value={s.chatFont} onChange={(chatFont) => update.mutate({ chatFont })} options={[{ value: 'default', label: 'Default' }, { value: 'sans', label: 'Sans' }, { value: 'system', label: 'System' }]} />
       </Field>
     </Card>
+  );
+}
+
+function Cowork() {
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  const [searxng, setSearxng] = useState(s?.searxngUrl ?? '');
+  useEffect(() => setSearxng(s?.searxngUrl ?? ''), [s?.searxngUrl]);
+  if (!s) return null;
+  return (
+    <>
+      <Card title="Tasks" description="Cowork runs an agent that works through a task with tools, inside a folder you choose.">
+        <Field label="Permissions for new tasks" description="You can switch this at any time from the task's composer.">
+          <Segmented
+            value={s.coworkPermissionMode}
+            onChange={(coworkPermissionMode) => update.mutate({ coworkPermissionMode })}
+            options={[
+              { value: 'ask', label: 'Ask' },
+              { value: 'auto-edits', label: 'Auto-accept edits' },
+              { value: 'plan', label: 'Plan only' },
+            ]}
+          />
+        </Field>
+        <Field label="Step limit" description="Model calls per turn before a task pauses. Reply “continue” to let it keep going.">
+          <NumberInput value={s.coworkMaxSteps} min={5} max={500} onChange={(v) => v && update.mutate({ coworkMaxSteps: v })} />
+        </Field>
+        <Field label="Notifications" description="Let me know when a task finishes, fails or needs approval while Cellar is in the background.">
+          <Switch checked={s.coworkNotifications} onCheckedChange={(v) => update.mutate({ coworkNotifications: v })} />
+        </Field>
+        {s.recentFolders.length > 0 && (
+          <Field label="Recent folders" description={s.recentFolders.join(' · ')}>
+            <Button size="sm" variant="ghost" onClick={() => update.mutate({ recentFolders: [] })}>
+              Clear
+            </Button>
+          </Field>
+        )}
+      </Card>
+      <Card title="Web access" description="Search queries go to the provider below; pages are fetched directly from this computer.">
+        <Field label="Let tasks search the web and read pages">
+          <Switch checked={s.coworkWebAccess} onCheckedChange={(v) => update.mutate({ coworkWebAccess: v })} />
+        </Field>
+        <Field label="Search provider">
+          <Segmented
+            value={s.webSearchProvider}
+            onChange={(webSearchProvider) => update.mutate({ webSearchProvider })}
+            options={[
+              { value: 'duckduckgo', label: 'DuckDuckGo' },
+              { value: 'searxng', label: 'SearXNG' },
+            ]}
+          />
+        </Field>
+        {s.webSearchProvider === 'searxng' && (
+          <Field stacked label="SearXNG server" description='Your own instance, for example http://127.0.0.1:8080. Add "json" to search.formats in its settings.yml.'>
+            <Input value={searxng} onChange={(e) => setSearxng(e.target.value)} onBlur={() => searxng !== s.searxngUrl && update.mutate({ searxngUrl: searxng })} placeholder="http://127.0.0.1:8080" />
+          </Field>
+        )}
+      </Card>
+      <Card title="How Cellar keeps tasks contained">
+        <ul className="space-y-2 py-3 text-[13px] leading-relaxed text-fg-2">
+          <li>File tools only reach the folder you picked. Paths outside it, including through links and junctions, are refused.</li>
+          <li>Commands run in Windows PowerShell and always ask first, unless you choose “Always allow commands” for a task.</li>
+          <li>A page that did not come from a web search or your own message needs your OK before it opens. Local and private network addresses are blocked.</li>
+          <li>Plan only mode never changes files or runs commands.</li>
+        </ul>
+      </Card>
+    </>
   );
 }
 
@@ -559,12 +626,12 @@ function About() {
         <div>
           <div className="font-serif text-[24px]">Cellar</div>
           <div className="text-[13px] text-muted-foreground">
-            Version {info?.version} · Milestone 1 {info?.isDev ? '· development build' : ''}
+            Version {info?.version} · Milestone 2 {info?.isDev ? '· development build' : ''}
           </div>
         </div>
       </div>
       <p className="py-4 text-[13.5px] leading-relaxed text-muted-foreground">
-        A Claude Desktop-style home for local models. Chat runs on llama.cpp, Ollama, LM Studio, Unsloth Studio or any OpenAI-compatible server. Cowork, Code, Scheduled tasks and Customize are planned for upcoming milestones.
+        A Claude Desktop-style home for local models. Chat and Cowork run on llama.cpp, Ollama, LM Studio, Unsloth Studio or any OpenAI-compatible server. Code, Scheduled tasks and Customize are planned for upcoming milestones.
       </p>
     </Card>
   );
@@ -575,6 +642,7 @@ export function SettingsPage() {
   const content: Record<string, ReactNode> = {
     general: <General />,
     appearance: <Appearance />,
+    cowork: <Cowork />,
     models: <Models />,
     engines: <Engines />,
     connections: <Connections />,

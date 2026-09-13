@@ -1,3 +1,7 @@
+import { parseParamsBillions } from '@shared/model-guidance';
+
+export { parseParamsBillions };
+
 export interface SystemPromptInput {
   modelName: string;
   userName: string;
@@ -8,14 +12,6 @@ export interface SystemPromptInput {
   customSystemPrompt?: string;
   artifacts: boolean;
   now?: Date;
-}
-
-/** Parameter count in billions from labels like "7.6B", "751.63M" or "35B-A3B". */
-export function parseParamsBillions(label?: string): number | undefined {
-  const m = label?.match(/(\d+(?:\.\d+)?)\s*([BM])/i);
-  if (!m) return undefined;
-  const value = Number(m[1]);
-  return m[2].toUpperCase() === 'M' ? value / 1000 : value;
 }
 
 /**

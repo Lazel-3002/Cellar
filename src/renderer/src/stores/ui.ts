@@ -23,6 +23,15 @@ interface UiState {
   artifactWidth: number;
   drafts: Record<string, string>;
   pendingPrompt: string | null;
+  /** Cowork home: the chosen folder, or null with `coworkSkipped` when the user chose no folder. */
+  coworkFolder: string | null;
+  coworkSkipped: boolean;
+  coworkProjectId: string | null;
+  taskPanelOpen: boolean;
+  setCoworkFolder: (folder: string | null) => void;
+  setCoworkSkipped: (skipped: boolean) => void;
+  setCoworkProject: (projectId: string | null) => void;
+  setTaskPanelOpen: (open: boolean) => void;
   setPendingPrompt: (text: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -51,6 +60,14 @@ export const useUi = create<UiState>()(
       artifactWidth: 560,
       drafts: {},
       pendingPrompt: null,
+      coworkFolder: null,
+      coworkSkipped: false,
+      coworkProjectId: null,
+      taskPanelOpen: true,
+      setCoworkFolder: (coworkFolder) => set({ coworkFolder, coworkSkipped: false }),
+      setCoworkSkipped: (coworkSkipped) => set(coworkSkipped ? { coworkSkipped, coworkFolder: null } : { coworkSkipped }),
+      setCoworkProject: (coworkProjectId) => set({ coworkProjectId }),
+      setTaskPanelOpen: (taskPanelOpen) => set({ taskPanelOpen }),
       setPendingPrompt: (pendingPrompt) => set({ pendingPrompt }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -73,7 +90,17 @@ export const useUi = create<UiState>()(
     {
       name: 'cellar-ui',
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ sidebarOpen: s.sidebarOpen, model: s.model, thinking: s.thinking, mode: s.mode, artifactWidth: s.artifactWidth, drafts: s.drafts }),
+      partialize: (s) => ({
+        sidebarOpen: s.sidebarOpen,
+        model: s.model,
+        thinking: s.thinking,
+        mode: s.mode,
+        artifactWidth: s.artifactWidth,
+        drafts: s.drafts,
+        coworkFolder: s.coworkFolder,
+        coworkSkipped: s.coworkSkipped,
+        taskPanelOpen: s.taskPanelOpen,
+      }),
     },
   ),
 );

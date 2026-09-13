@@ -6,7 +6,7 @@ import type { LoadConfig, LoadedModelInfo, ModelEntry, ReasoningStyle } from '@s
 import type { ProviderStatus } from '@shared/types/providers';
 import type { StoredProviderConfig } from '../db/provider-configs';
 import { fetchWithTimeout } from '../lib/util';
-import { authHeaders, baseEntry, samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages } from './openai-compat';
+import { authHeaders, baseEntry, samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages, toolsBody } from './openai-compat';
 import { ProviderHttpError, readErrorBody, trimBaseUrl, type ChatRequest, type Provider } from './types';
 
 interface LmsModel {
@@ -172,9 +172,10 @@ export class LmStudioProvider implements Provider {
       apiKey: this.config().apiKey,
       body: {
         model: req.entry.ref.modelId,
-        messages: toOpenAIMessages(req.messages),
+        messages: toOpenAIMessages(req.messages, 'lmstudio'),
         ...samplingBody(req.params, 'lmstudio'),
         ...thinkingBody(req.entry.reasoningStyle, req.thinking, 'lmstudio'),
+        ...toolsBody(req.tools, 'lmstudio'),
       },
       signal: req.signal,
       reasoningStyle: req.entry.reasoningStyle,

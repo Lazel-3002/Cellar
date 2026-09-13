@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Code, Coffee, FileText, FolderOpen, Ghost, GraduationCap, Lightbulb, Newspaper, PenLine, Sparkles } from 'lucide-react';
-import { toast } from 'sonner';
+import { ChevronDown, Code, Coffee, FolderClosed, FolderOpen, FolderPlus, Ghost, GraduationCap, Lightbulb, PenLine, Sparkles, TriangleAlert, X } from 'lucide-react';
+import { coworkGuidance } from '@shared/model-guidance';
 import { CellarMark } from '@/components/brand/Logo';
 import { Composer } from '@/components/composer/Composer';
 import { Button } from '@/components/ui/button';
+import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
 import { isChatCapable, useSelectedModel } from '@/lib/hooks';
-import { useProviders, useSettings } from '@/lib/queries';
+import { invoke } from '@/lib/ipc';
+import { useProjects, useProviders, useSettings } from '@/lib/queries';
+import { conversationRoute, IDEAS } from '@/lib/tasks';
 import { cn, greetingFor } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 
@@ -59,31 +62,106 @@ function ChatSuggestions() {
   );
 }
 
+const folderName = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+
+function Chip({ icon, label, title, onClear }: { icon: React.ReactNode; label: string; title?: string; onClear: () => void }) {
+  return (
+    <span title={title} className="no-drag flex h-7 max-w-[260px] items-center gap-1.5 rounded-lg border border-composer-border bg-composer pr-1 pl-2 text-[13px] text-foreground">
+      <span className="text-muted-foreground [&_svg]:size-3.5">{icon}</span>
+      <span className="truncate">{label}</span>
+      <button aria-label={`Remove ${label}`} onClick={onClear} className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-hover hover:text-foreground">
+        <X className="size-3" />
+      </button>
+    </span>
+  );
+}
+
 function CoworkExtras() {
-  const soon = () => toast('Cowork arrives in Milestone 2', { description: 'Local agents that read and write files in a folder you choose.' });
-  const ideas = [
-    { icon: Newspaper, label: 'Summarize a folder of documents' },
-    { icon: FolderOpen, label: 'Organize my downloads folder' },
-    { icon: FileText, label: 'Draft a weekly report from my notes' },
-  ];
+  const { coworkFolder, coworkSkipped, coworkProjectId, setCoworkFolder, setCoworkSkipped, setCoworkProject, setPendingPrompt } = useUi();
+  const { data: settings } = useSettings();
+  const { data: projects = [] } = useProjects();
+  const { model } = useSelectedModel();
+  const project = projects.find((p) => p.id === coworkProjectId);
+  const guidance = model ? coworkGuidance(model) : null;
+
+  const chooseFolder = async (): Promise<string | null> => {
+    const dir = await invoke('system:pickDirectory', 'Choose a folder for Cellar to work in');
+    if (dir) setCoworkFolder(dir);
+    return dir;
+  };
+
   return (
     <div className="mt-3 px-4">
-      <div className="flex items-center gap-4 text-[14px]">
-        <button onClick={soon} className="text-fg-2 hover:text-foreground">
-          Project or folder
-        </button>
-        <button onClick={soon} className="text-fg-2 hover:text-foreground">
-          Skip
-        </button>
+      <div className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-2 text-[14px]">
+        {coworkFolder ? (
+          <Chip icon={<FolderOpen />} label={folderName(coworkFolder)} title={coworkFolder} onClear={() => setCoworkFolder(null)} />
+        ) : coworkSkipped ? (
+          <Chip icon={<FolderPlus />} label="New folder for this task" title="Cellar creates an empty folder for the files this task makes" onClear={() => setCoworkSkipped(false)} />
+        ) : (
+          <>
+            <Menu>
+              <MenuTrigger asChild>
+                <button data-testid="cowork-folder" className="no-drag flex items-center gap-1 text-fg-2 hover:text-foreground">
+                  Project or folder <ChevronDown className="size-3.5 text-muted-foreground" />
+                </button>
+              </MenuTrigger>
+              <MenuContent align="start" className="w-72">
+                <MenuItem icon={<FolderOpen />} onSelect={() => void chooseFolder()}>
+                  Choose a folder…
+                </MenuItem>
+                {(settings?.recentFolders.length ?? 0) > 0 && (
+                  <>
+                    <MenuSeparator />
+                    <MenuLabel>Recent folders</MenuLabel>
+                    {settings!.recentFolders.map((dir) => (
+                      <MenuItem key={dir} icon={<FolderClosed />} onSelect={() => setCoworkFolder(dir)} title={dir}>
+                        {folderName(dir)}
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
+                <MenuSeparator />
+                <MenuSub label="Use a project's instructions" icon={<Sparkles />}>
+                  {projects.length === 0 && <MenuLabel>No projects yet</MenuLabel>}
+                  {projects.map((p) => (
+                    <MenuCheckItem key={p.id} checked={p.id === coworkProjectId} onSelect={() => setCoworkProject(p.id === coworkProjectId ? null : p.id)}>
+                      {p.name}
+                    </MenuCheckItem>
+                  ))}
+                </MenuSub>
+              </MenuContent>
+            </Menu>
+            <button onClick={() => setCoworkSkipped(true)} className="no-drag text-fg-2 hover:text-foreground">
+              Skip
+            </button>
+          </>
+        )}
+        {project && <Chip icon={<Sparkles />} label={project.name} title="Project instructions and knowledge are shared with the task" onClear={() => setCoworkProject(null)} />}
       </div>
+
+      {guidance && guidance.level !== 'good' && (
+        <div className={cn('mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed', guidance.level === 'poor' ? 'text-warning' : 'text-muted-foreground')}>
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>{guidance.notes.join(' ')}</span>
+        </div>
+      )}
+
       <div className="mt-[38px] text-[12.5px] text-muted-foreground">Ideas for you</div>
       <div className="mt-2">
-        {ideas.map(({ icon: Icon, label }) => (
-          <button key={label} onClick={soon} className="flex h-12 w-full items-center gap-4 rounded-lg text-left">
-            <span className="flex size-[26px] items-center justify-center rounded-md border border-tile text-muted-foreground">
-              <Icon className="size-4" strokeWidth={1.5} />
+        {IDEAS.map((idea) => (
+          <button
+            key={idea.label}
+            onClick={async () => {
+              if (idea.needsFolder && !coworkFolder && !(await chooseFolder())) return;
+              if (!idea.needsFolder && !coworkFolder) setCoworkSkipped(true);
+              setPendingPrompt(idea.prompt);
+            }}
+            className="group flex h-12 w-full items-center gap-4 rounded-lg text-left"
+          >
+            <span className="flex size-[26px] items-center justify-center rounded-md border border-tile text-muted-foreground group-hover:text-foreground">
+              <idea.icon className="size-4" strokeWidth={1.5} />
             </span>
-            <span className="text-[15px] font-medium text-foreground">{label}</span>
+            <span className="text-[15px] font-medium text-foreground">{idea.label}</span>
           </button>
         ))}
       </div>
@@ -153,7 +231,7 @@ export function HomePage() {
             <span>{greeting}</span>
           </h1>
         )}
-        <Composer variant="home" incognito={incognito} autoFocus onSent={(r) => void navigate({ to: '/chat/$conversationId', params: { conversationId: r.conversationId } })} />
+        <Composer variant="home" incognito={incognito} autoFocus onSent={(r, kind) => void navigate({ to: conversationRoute(kind), params: { conversationId: r.conversationId } })} />
         {!incognito && (mode === 'cowork' ? <CoworkExtras /> : <ChatSuggestions />)}
         {noModels && <SetupCard />}
       </div>

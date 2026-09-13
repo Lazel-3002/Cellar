@@ -1,3 +1,4 @@
+import type { ApprovalDecision, ConversationKind, PermissionMode, TaskNotice } from './types/agent';
 import type {
   Artifact,
   ArtifactSummary,
@@ -114,6 +115,13 @@ export interface IpcInvokeMap {
   'chat:discardIncognito': Handler<[id: string], void>;
   'chat:activeStreams': Handler<[], ChatStreamEvent[]>;
 
+  'tasks:approve': Handler<[messageId: string, toolCallId: string, decision: ApprovalDecision], void>;
+  'tasks:setPermissionMode': Handler<[conversationId: string, mode: PermissionMode], void>;
+  'tasks:toolResult': Handler<[messageId: string, toolCallId: string], string>;
+  'tasks:openFile': Handler<[conversationId: string, path: string], void>;
+  'tasks:revealFile': Handler<[conversationId: string, path: string], void>;
+  'tasks:saveFileAs': Handler<[conversationId: string, path: string], string | null>;
+
   'attachments:fromPaths': Handler<[paths: string[]], AttachmentRef[]>;
   'attachments:fromBytes': Handler<[name: string, mime: string, bytes: Uint8Array], AttachmentRef>;
 
@@ -142,6 +150,9 @@ export interface IpcEventMap {
   'settings:changed': AppSettings;
   'projects:changed': { projectId?: string };
   'app:command': { command: AppCommand };
+  'tasks:notify': TaskNotice;
+  /** Open a conversation, e.g. after clicking a desktop notification. */
+  'app:open': { conversationId: string; kind: ConversationKind };
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;
@@ -205,6 +216,12 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'chat:search': true,
   'chat:discardIncognito': true,
   'chat:activeStreams': true,
+  'tasks:approve': true,
+  'tasks:setPermissionMode': true,
+  'tasks:toolResult': true,
+  'tasks:openFile': true,
+  'tasks:revealFile': true,
+  'tasks:saveFileAs': true,
   'attachments:fromPaths': true,
   'attachments:fromBytes': true,
   'projects:list': true,
@@ -231,6 +248,8 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'settings:changed': true,
   'projects:changed': true,
   'app:command': true,
+  'tasks:notify': true,
+  'app:open': true,
 };
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelFlags) as InvokeChannel[];
