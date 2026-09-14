@@ -13,7 +13,7 @@ import { DownloadsButton } from './DownloadsPopover';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { strokeWidth?: number }>;
 
-function NavItem({ icon: IconCmp, label, to, active, onClick }: { icon: Icon; label: string; to?: string; active?: boolean; onClick?: () => void }) {
+export function NavItem({ icon: IconCmp, label, to, active, onClick }: { icon: Icon; label: string; to?: string; active?: boolean; onClick?: () => void }) {
   const className = cn(
     'no-drag flex h-[26px] items-center gap-2.5 rounded-md px-2.5 text-[14px] text-fg-2 transition-colors hover:bg-hover hover:text-foreground',
     active && 'bg-selected text-foreground hover:bg-selected',
@@ -40,8 +40,8 @@ function NavItem({ icon: IconCmp, label, to, active, onClick }: { icon: Icon; la
 
 type RecentFilter = { kind: 'all' } | { kind: 'starred' } | { kind: 'tasks' } | { kind: 'project'; projectId: string };
 
-function RowMarker({ chat }: { chat: ConversationSummary }) {
-  if (chat.kind !== 'task') return <span className="size-[5px] shrink-0 rounded-full bg-faint" />;
+export function RowMarker({ chat }: { chat: ConversationSummary }) {
+  if (chat.kind === 'chat') return <span className="size-[5px] shrink-0 rounded-full bg-faint" />;
   switch (chat.taskStatus) {
     case 'running':
       return (
@@ -147,6 +147,7 @@ export function Sidebar() {
     starred: filter.kind === 'starred' ? true : undefined,
     projectId: filter.kind === 'project' ? filter.projectId : undefined,
     kind: filter.kind === 'tasks' ? 'task' : undefined,
+    kinds: ['chat', 'task'],
     limit: 40,
   });
   const name = settings?.userName || 'You';
@@ -222,7 +223,7 @@ export function Sidebar() {
   );
 }
 
-function ProfileMenuContent() {
+export function ProfileMenuContent() {
   const navigate = useNavigate();
   const { data: settings } = useSettings();
   const go = (section: string) => void navigate({ to: '/settings/$section', params: { section } });

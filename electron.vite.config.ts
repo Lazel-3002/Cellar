@@ -11,7 +11,8 @@ const baseCsp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  'frame-src cellar-artifact:',
+  // Code preview: session files and localhost dev servers (CSP cannot list IPv6 literals; [::1] is opened as localhost).
+  'frame-src cellar-artifact: cellar-preview: http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*',
   "worker-src 'self' blob:",
 ];
 

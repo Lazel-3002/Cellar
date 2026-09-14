@@ -1,4 +1,5 @@
 import type { AgentPart, ConversationKind, TaskStartOptions, TaskState, TaskStatus } from './agent';
+import type { CodeMode, CodeStartOptions } from './code';
 import type { InferenceParams, ModelRef } from './models';
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -83,6 +84,11 @@ export interface ConversationSummary {
   updatedAt: number;
   taskStatus?: TaskStatus;
   preview?: string;
+  /** Code sessions: repository, branch and mode. */
+  repoName?: string;
+  repoRoot?: string;
+  branch?: string;
+  codeMode?: CodeMode;
 }
 
 export interface ConversationWithMessages {
@@ -96,6 +102,8 @@ export interface ConversationFilter {
   starred?: boolean;
   projectId?: string | null;
   kind?: ConversationKind;
+  /** Only these kinds (ignored when `kind` is set). */
+  kinds?: ConversationKind[];
   limit?: number;
 }
 
@@ -109,6 +117,8 @@ export interface SendMessageInput {
   thinking: ThinkingLevel;
   /** Starts a Cowork task instead of a chat (only for new conversations). */
   task?: TaskStartOptions;
+  /** Starts a Code session (only for new conversations). */
+  code?: CodeStartOptions;
 }
 
 export interface SendMessageResult {

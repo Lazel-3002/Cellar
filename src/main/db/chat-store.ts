@@ -62,9 +62,11 @@ interface MessageRow {
   created_at: number;
 }
 
+const kindOf = (kind: string): ConversationKind => (kind === 'task' || kind === 'code' ? kind : 'chat');
+
 const toConversation = (r: ConversationRow): Conversation => ({
   id: r.id,
-  kind: r.kind === 'task' ? 'task' : 'chat',
+  kind: kindOf(r.kind),
   title: r.title,
   projectId: r.project_id,
   starred: r.starred === 1,
@@ -287,6 +289,9 @@ export function listConversations(filter: ConversationFilter = {}): Conversation
   if (filter.kind) {
     where.push('c.kind = ?');
     params.push(filter.kind);
+  } else if (filter.kinds?.length) {
+    where.push(`c.kind IN (${filter.kinds.map(() => '?').join(', ')})`);
+    params.push(...filter.kinds);
   }
   if (filter.projectId !== undefined) {
     if (filter.projectId === null) where.push('c.project_id IS NULL');
@@ -301,22 +306,41 @@ export function listConversations(filter: ConversationFilter = {}): Conversation
     params.push(`%${filter.query}%`, match);
   }
   const sql = `
-    SELECT c.id, c.kind, c.title, c.project_id, c.starred, c.updated_at, json_extract(c.task, '$.status') AS task_status, p.name AS project_name
+    SELECT c.id, c.kind, c.title, c.project_id, c.starred, c.updated_at, json_extract(c.task, '$.status') AS task_status, p.name AS project_name,
+      json_extract(c.task, '$.code.repoName') AS repo_name, json_extract(c.task, '$.code.repoRoot') AS repo_root,
+      json_extract(c.task, '$.code.branch') AS branch, json_extract(c.task, '$.code.mode') AS code_mode
     FROM conversations c LEFT JOIN projects p ON p.id = c.project_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY c.updated_at DESC
     LIMIT ?`;
   params.push(filter.limit ?? 500);
-  type Row = { id: string; kind: ConversationKind; title: string; project_id: string | null; starred: number; updated_at: number; task_status: string | null; project_name: string | null };
+  type Row = {
+    id: string;
+    kind: ConversationKind;
+    title: string;
+    project_id: string | null;
+    starred: number;
+    updated_at: number;
+    task_status: string | null;
+    project_name: string | null;
+    repo_name: string | null;
+    repo_root: string | null;
+    branch: string | null;
+    code_mode: string | null;
+  };
   return all<Row>(sql, ...params).map((r) => ({
     id: r.id,
-    kind: r.kind === 'task' ? 'task' : 'chat',
+    kind: kindOf(r.kind),
     title: r.title,
     projectId: r.project_id,
     projectName: r.project_name ?? undefined,
     starred: r.starred === 1,
     updatedAt: r.updated_at,
     taskStatus: (r.task_status ?? undefined) as ConversationSummary['taskStatus'],
+    repoName: r.repo_name ?? undefined,
+    repoRoot: r.repo_root ?? undefined,
+    branch: r.branch ?? undefined,
+    codeMode: (r.code_mode ?? undefined) as ConversationSummary['codeMode'],
   }));
 }
 
@@ -324,7 +348,6 @@ export function searchMessages(query: string, limit = 20): SearchHit[] {
   const match = ftsQuery(query);
   const hits: SearchHit[] = [];
   const seen = new Set<string>();
-  const kindOf = (kind: string): ConversationKind => (kind === 'task' ? 'task' : 'chat');
   const titleRows = all<{ id: string; kind: string; title: string; updated_at: number }>(
     'SELECT id, kind, title, updated_at FROM conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?',
     `%${query}%`,

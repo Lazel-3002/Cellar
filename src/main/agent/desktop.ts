@@ -30,7 +30,7 @@ export function installPdfRenderer(): void {
 }
 
 /**
- * Desktop notifications when a task finishes or waits for approval while Cellar is in the
+ * Desktop notifications when a task or Code session finishes or waits for approval while Cellar is in the
  * background. With the window focused, the renderer shows a toast instead (unless the task is open).
  */
 export function installTaskNotifications(getWindow: () => BrowserWindow | null): void {
@@ -48,7 +48,7 @@ export function installTaskNotifications(getWindow: () => BrowserWindow | null):
           target.show();
           target.focus();
         }
-        bus.emit('app:open', { conversationId: notice.conversationId, kind: 'task' });
+        bus.emit('app:open', { conversationId: notice.conversationId, kind: notice.conversationKind });
       });
       notification.show();
     } catch (err) {

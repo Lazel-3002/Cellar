@@ -1,5 +1,21 @@
 import type { ApprovalDecision, ConversationKind, PermissionMode, TaskNotice } from './types/agent';
 import type {
+  ChangeSet,
+  CodeMode,
+  CommitResult,
+  FileContent,
+  FileDiff,
+  FileEntry,
+  MemoryFile,
+  MergeResult,
+  RepoInfo,
+  SideChatEvent,
+  SideChatRequest,
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalInfo,
+} from './types/code';
+import type {
   Artifact,
   ArtifactSummary,
   AttachmentRef,
@@ -122,6 +138,35 @@ export interface IpcInvokeMap {
   'tasks:revealFile': Handler<[conversationId: string, path: string], void>;
   'tasks:saveFileAs': Handler<[conversationId: string, path: string], string | null>;
 
+  /** Repository details for the new-session screen. */
+  'code:repoInfo': Handler<[folder: string], RepoInfo>;
+  'code:setMode': Handler<[conversationId: string, mode: CodeMode, autoAcceptEdits: boolean], void>;
+  'code:changes': Handler<[conversationId: string], ChangeSet>;
+  'code:fileDiff': Handler<[conversationId: string, path: string], FileDiff>;
+  /** Restore one file to how it was when the session started. */
+  'code:discardFile': Handler<[conversationId: string, path: string], void>;
+  'code:commit': Handler<[conversationId: string, message: string], CommitResult>;
+  /** Merge a worktree session's branch into the branch it started from. */
+  'code:merge': Handler<[conversationId: string], MergeResult>;
+  'code:listDir': Handler<[conversationId: string, path: string], FileEntry[]>;
+  'code:readFile': Handler<[conversationId: string, path: string], FileContent>;
+  'code:writeFile': Handler<[conversationId: string, path: string, content: string], void>;
+  'code:memory': Handler<[conversationId: string], MemoryFile>;
+  /** Delete a session; optionally remove its worktree and branch too. */
+  'code:deleteSession': Handler<[conversationId: string, removeWorktree: boolean], void>;
+  /** A cellar-preview:// URL for an HTML, PDF or image file in the session's folder. */
+  'code:previewUrl': Handler<[conversationId: string, path: string], string>;
+  'code:sideChat': Handler<[request: SideChatRequest], void>;
+  'code:sideChatStop': Handler<[requestId: string], void>;
+
+  'terminal:create': Handler<[conversationId: string], TerminalInfo>;
+  'terminal:list': Handler<[conversationId: string], TerminalInfo[]>;
+  /** Output so far, for re-attaching a view to a running terminal. */
+  'terminal:buffer': Handler<[id: string], string>;
+  'terminal:write': Handler<[id: string, data: string], void>;
+  'terminal:resize': Handler<[id: string, cols: number, rows: number], void>;
+  'terminal:kill': Handler<[id: string], void>;
+
   'attachments:fromPaths': Handler<[paths: string[]], AttachmentRef[]>;
   'attachments:fromBytes': Handler<[name: string, mime: string, bytes: Uint8Array], AttachmentRef>;
 
@@ -153,6 +198,10 @@ export interface IpcEventMap {
   'tasks:notify': TaskNotice;
   /** Open a conversation, e.g. after clicking a desktop notification. */
   'app:open': { conversationId: string; kind: ConversationKind };
+  'terminal:data': TerminalDataEvent;
+  'terminal:exit': TerminalExitEvent;
+  'terminal:changed': { conversationId: string };
+  'code:side': SideChatEvent;
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;
@@ -222,6 +271,27 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'tasks:openFile': true,
   'tasks:revealFile': true,
   'tasks:saveFileAs': true,
+  'code:repoInfo': true,
+  'code:setMode': true,
+  'code:changes': true,
+  'code:fileDiff': true,
+  'code:discardFile': true,
+  'code:commit': true,
+  'code:merge': true,
+  'code:listDir': true,
+  'code:readFile': true,
+  'code:writeFile': true,
+  'code:memory': true,
+  'code:deleteSession': true,
+  'code:previewUrl': true,
+  'code:sideChat': true,
+  'code:sideChatStop': true,
+  'terminal:create': true,
+  'terminal:list': true,
+  'terminal:buffer': true,
+  'terminal:write': true,
+  'terminal:resize': true,
+  'terminal:kill': true,
   'attachments:fromPaths': true,
   'attachments:fromBytes': true,
   'projects:list': true,
@@ -250,6 +320,10 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'app:command': true,
   'tasks:notify': true,
   'app:open': true,
+  'terminal:data': true,
+  'terminal:exit': true,
+  'terminal:changed': true,
+  'code:side': true,
 };
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelFlags) as InvokeChannel[];

@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export function ThinkingBlock({ reasoning, active, durationMs }: { reasoning: string; active: boolean; durationMs?: number }) {
-  const [open, setOpen] = useState(active);
+export function ThinkingBlock({ reasoning, active, durationMs, defaultOpen = false }: { reasoning: string; active: boolean; durationMs?: number; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(active || defaultOpen);
   const wasActive = useRef(active);
   const body = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (active && !wasActive.current) setOpen(true);
-    if (!active && wasActive.current) setOpen(false);
+    if (!active && wasActive.current && !defaultOpen) setOpen(false);
     wasActive.current = active;
   }, [active]);
 

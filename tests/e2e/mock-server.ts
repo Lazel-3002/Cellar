@@ -28,7 +28,7 @@ export async function startMockServer(): Promise<MockServer> {
   const server: Server = createServer((req, res) => {
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -45,6 +45,26 @@ export async function startMockServer(): Promise<MockServer> {
 
         if (isTitle) {
           send({ content: 'Mock conversation title' }, 'stop');
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-coder' && parsed.tools?.length) {
+          // Scripted Code agent: read app.js, fix the bug with an edit, then report.
+          const results = parsed.messages.filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const toolCall = (index: number, id: string, name: string, args: string) => {
+            send({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] });
+            for (const piece of args.match(/.{1,16}/gs) ?? []) send({ tool_calls: [{ index, function: { arguments: piece } }] });
+          };
+          if (results.length === 0) {
+            send({ content: 'Let me look at app.js.' });
+            toolCall(0, 'read1', 'read_file', JSON.stringify({ path: 'app.js' }));
+            send({}, 'tool_calls');
+          } else if (results.length === 1) {
+            toolCall(0, 'edit1', 'edit_file', JSON.stringify({ path: 'app.js', old_string: 'return a - b;', new_string: 'return a + b;' }));
+            send({}, 'tool_calls');
+          } else {
+            send({ content: 'Fixed `add` in app.js: it subtracted instead of adding.' }, 'stop');
+          }
           res.end('data: [DONE]\n\n');
           return;
         }

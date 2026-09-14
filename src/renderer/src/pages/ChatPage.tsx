@@ -10,6 +10,7 @@ import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, M
 import { Badge, EmptyState, Spinner } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useConversation, useModels, useProjects } from '@/lib/queries';
+import { conversationRoute } from '@/lib/tasks';
 import { formatContext } from '@/lib/utils';
 import { isLive, useStreams } from '@/stores/streams';
 import { useUi } from '@/stores/ui';
@@ -120,8 +121,8 @@ export function ChatPage() {
 
   useEffect(() => {
     if (!data) return;
-    if (data.conversation.kind === 'task') {
-      void navigate({ to: '/task/$conversationId', params: { conversationId }, replace: true });
+    if (data.conversation.kind !== 'chat') {
+      void navigate({ to: conversationRoute(data.conversation.kind), params: { conversationId }, replace: true });
       return;
     }
     incognitoRef.current = data.conversation.incognito;

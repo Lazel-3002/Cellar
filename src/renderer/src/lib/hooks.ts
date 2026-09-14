@@ -7,6 +7,7 @@ import type { AppSettings } from '@shared/types/settings';
 import { useUi } from '../stores/ui';
 import { invoke, onEvent } from './ipc';
 import { useModels, useSettings } from './queries';
+import { conversationRoute } from './tasks';
 
 /** Apply theme, accent and chat font from settings to the document and native title bar. */
 export function useThemeSync(settings: AppSettings | undefined): void {
@@ -76,19 +77,19 @@ export function useAppCommands(): void {
   useEffect(
     () =>
       onEvent('app:open', ({ conversationId, kind }) => {
-        void navigate({ to: kind === 'task' ? '/task/$conversationId' : '/chat/$conversationId', params: { conversationId } });
+        void navigate({ to: conversationRoute(kind), params: { conversationId } });
       }),
     [navigate],
   );
 
   // Main shows a desktop notification when the window is in the background; the app itself
-  // shows a toast unless that task is already on screen.
+  // shows a toast unless that task or session is already on screen.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(
     () =>
       onEvent('tasks:notify', (notice) => {
-        if (pathname === `/task/${notice.conversationId}`) return;
-        const open = { label: 'Open', onClick: () => void navigate({ to: '/task/$conversationId', params: { conversationId: notice.conversationId } }) };
+        if (pathname === `/task/${notice.conversationId}` || pathname === `/code/${notice.conversationId}`) return;
+        const open = { label: 'Open', onClick: () => void navigate({ to: conversationRoute(notice.conversationKind), params: { conversationId: notice.conversationId } }) };
         if (notice.kind === 'error') toast.error(notice.title, { description: notice.body, action: open });
         else if (notice.kind === 'approval') toast.warning(notice.title, { description: notice.body, action: open, duration: 10_000 });
         else toast.success(notice.title, { description: notice.body, action: open });

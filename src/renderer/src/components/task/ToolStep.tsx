@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Ban, ChevronRight, CircleAlert, Globe, ShieldAlert, SquareTerminal } from 'lucide-react';
+import { createContext, useContext, useState } from 'react';
+import { Ban, ChevronRight, CircleAlert, FileCode, Globe, ShieldAlert, SquareTerminal } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ApprovalAction, ToolPart } from '@shared/types/agent';
 import { Button } from '@/components/ui/button';
@@ -108,8 +108,14 @@ function durationLabel(part: ToolPart): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
-export function ToolStep({ part, messageId }: { part: ToolPart; messageId: string }) {
-  const [open, setOpen] = useState(false);
+/** Code sessions let file steps open in the editor pane. */
+export const OpenFileContext = createContext<((path: string) => void) | null>(null);
+
+const FILE_TOOLS = new Set(['read_file', 'write_file', 'edit_file']);
+
+export function ToolStep({ part, messageId, defaultOpen = false }: { part: ToolPart; messageId: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const onOpenFile = useContext(OpenFileContext);
   const info = describeTool(part);
   const running = part.status === 'running' || part.status === 'streaming';
   const failed = part.status === 'error';
@@ -140,6 +146,11 @@ export function ToolStep({ part, messageId }: { part: ToolPart; messageId: strin
       </button>
       {open && (
         <div className="mt-1 mb-2 ml-[30px] space-y-2 animate-fade-in">
+          {onOpenFile && FILE_TOOLS.has(part.name) && str(part.args?.path) && part.status !== 'denied' && (
+            <button className="flex items-center gap-1.5 text-[12.5px] text-brand hover:underline" onClick={() => onOpenFile(str(part.args?.path))}>
+              <FileCode className="size-3.5" /> Open {str(part.args?.path)} in the editor
+            </button>
+          )}
           {part.name === 'web_fetch' && str(part.args?.url) && (
             <button className="flex items-center gap-1.5 text-[12.5px] text-brand hover:underline" onClick={() => void invoke('system:openExternal', str(part.args?.url))}>
               <Globe className="size-3.5" /> {str(part.args?.url)}

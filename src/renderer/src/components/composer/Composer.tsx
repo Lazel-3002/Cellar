@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { ArrowUp, Check, ChevronDown, FileText, Image as ImageIcon, Mic, Paperclip, Plus, SlidersHorizontal, Square, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { PermissionMode } from '@shared/types/agent';
+import { CODE_SLASH_COMMANDS } from '@shared/code-commands';
+import type { ConversationKind, PermissionMode } from '@shared/types/agent';
 import type { AttachmentRef, SendMessageResult } from '@shared/types/chat';
+import type { CodeStartOptions } from '@shared/types/code';
+import { CodeModeMenu, nextCodeMode, type CodeModeValue } from '@/components/code/CodeModeMenu';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { Segmented } from '@/components/ui/form';
 import { Spinner, Tip } from '@/components/ui/misc';
@@ -15,7 +18,7 @@ import { useUi } from '@/stores/ui';
 import { ModelPicker } from './ModelPicker';
 
 export interface ComposerProps {
-  variant: 'home' | 'chat' | 'task';
+  variant: 'home' | 'chat' | 'task' | 'code-home' | 'code';
   conversationId?: string;
   projectId?: string | null;
   incognito?: boolean;
@@ -25,7 +28,16 @@ export interface ComposerProps {
   placeholder?: string;
   autoFocus?: boolean;
   className?: string;
-  onSent?: (result: SendMessageResult, kind: 'chat' | 'task') => void;
+  onSent?: (result: SendMessageResult, kind: ConversationKind) => void;
+  /** New Code session: where it runs (null until a folder is chosen). */
+  codeStart?: Omit<CodeStartOptions, 'mode' | 'autoAcceptEdits'> | null;
+  /** Code session follow-ups: the session's current mode. */
+  codeMode?: CodeModeValue;
+  /**
+   * Slash commands (Code): return text to send instead, null when the command was handled and
+   * nothing should be sent, or undefined to send the text unchanged.
+   */
+  onCommand?: (name: string, rest: string) => Promise<string | null | undefined> | string | null | undefined;
 }
 
 export function PermissionMenu({ value, onChange }: { value: PermissionMode; onChange: (mode: PermissionMode) => void }) {
@@ -80,10 +92,11 @@ function AttachmentChip({ attachment, onRemove }: { attachment: AttachmentRef; o
   );
 }
 
-export function Composer({ variant, conversationId, projectId, incognito, streamingMessageId, permissionMode, placeholder, autoFocus, className, onSent }: ComposerProps) {
+export function Composer({ variant, conversationId, projectId, incognito, streamingMessageId, permissionMode, placeholder, autoFocus, className, onSent, codeStart, codeMode, onCommand }: ComposerProps) {
   const { setDraft, mode, setMode, thinking, openLoadSettings, coworkFolder, coworkSkipped, coworkProjectId } = useUi();
   const coworkMode = variant === 'home' && mode === 'cowork' && !incognito;
-  const draftKey = conversationId ?? (projectId ? `project:${projectId}` : incognito ? 'incognito' : coworkMode ? 'cowork' : 'home');
+  const isCode = variant === 'code-home' || variant === 'code';
+  const draftKey = conversationId ?? (variant === 'code-home' ? 'code-home' : projectId ? `project:${projectId}` : incognito ? 'incognito' : coworkMode ? 'cowork' : 'home');
   const storedDraft = useUi((s) => s.drafts[draftKey] ?? '');
   const [text, setText] = useState(storedDraft);
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
@@ -129,6 +142,13 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
   const isStreaming = !!streamingMessageId;
   const canSend = !!model && !sending && uploading === 0 && (text.trim().length > 0 || attachments.length > 0) && !isStreaming;
   const homeMode = settings?.coworkPermissionMode ?? 'ask';
+  const newSessionMode: CodeModeValue = { mode: settings?.codeMode ?? 'code', autoAcceptEdits: settings?.codeAutoAcceptEdits ?? false };
+  const setCodeModeValue = (value: CodeModeValue) => {
+    if (variant === 'code-home') void invoke('settings:update', { codeMode: value.mode, codeAutoAcceptEdits: value.autoAcceptEdits });
+    else if (conversationId) void invoke('code:setMode', conversationId, value.mode, value.autoAcceptEdits).catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+  };
+  const slashQuery = isCode && /^\/[\w-]*$/.test(text) ? text.toLowerCase() : null;
+  const slashMatches = slashQuery ? CODE_SLASH_COMMANDS.filter((c) => c.name.startsWith(slashQuery)) : [];
 
   const addPaths = async (paths: string[]) => {
     if (paths.length === 0) return;
@@ -170,22 +190,39 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
       return;
     }
     if (!canSend) return;
+    if (variant === 'code-home' && !codeStart) {
+      toast.error('Choose a repository or folder first');
+      return;
+    }
     setSending(true);
     try {
+      let content = text;
+      const command = isCode ? /^(\/[\w-]+)(?:\s+([\s\S]*))?$/.exec(text.trim()) : null;
+      if (command && onCommand) {
+        const replacement = await onCommand(command[1].toLowerCase(), command[2] ?? '');
+        if (replacement === null) {
+          setText('');
+          setDraft(draftKey, '');
+          return;
+        }
+        if (replacement !== undefined) content = replacement;
+      }
       const result = await invoke('chat:send', {
         conversationId,
-        incognito: coworkMode ? false : incognito,
+        incognito: coworkMode || isCode ? false : incognito,
         projectId: coworkMode ? coworkProjectId ?? projectId ?? null : projectId ?? null,
-        content: text,
+        content,
         attachmentIds: attachments.map((a) => a.id),
         model: model.ref,
         thinking: effectiveThinking(model.reasoningStyle, thinking),
         ...(coworkMode ? { task: { folder: coworkSkipped ? null : coworkFolder, permissionMode: homeMode } } : {}),
+        // /init writes CELLAR.md, so it always starts in Code mode.
+        ...(variant === 'code-home' && codeStart ? { code: { ...codeStart, ...newSessionMode, ...(command?.[1].toLowerCase() === '/init' ? { mode: 'code' as const } : {}) } } : {}),
       });
       setText('');
       setDraft(draftKey, '');
       setAttachments([]);
-      onSent?.(result, coworkMode || variant === 'task' ? 'task' : 'chat');
+      onSent?.(result, isCode ? 'code' : coworkMode || variant === 'task' ? 'task' : 'chat');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -194,6 +231,16 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isCode && e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault();
+      setCodeModeValue(nextCodeMode(variant === 'code' && codeMode ? codeMode : newSessionMode));
+      return;
+    }
+    if (slashMatches.length > 0 && e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      setText(`${slashMatches[0].name} `);
+      return;
+    }
     const sendWithEnter = settings?.sendWithEnter ?? true;
     if (e.key === 'Enter' && !e.nativeEvent.isComposing && (sendWithEnter ? !e.shiftKey : e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -243,6 +290,24 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
           )}
         </div>
       )}
+      {slashMatches.length > 0 && (
+        <div className="absolute right-3 bottom-full left-3 mb-2 overflow-hidden rounded-xl border border-menu-border bg-menu py-1 shadow-xl animate-fade-in" data-testid="slash-commands">
+          {slashMatches.map((command) => (
+            <button
+              key={command.name}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setText(`${command.name} `);
+                textarea.current?.focus();
+              }}
+              className="flex w-full items-center gap-3 px-3 py-1.5 text-left hover:bg-hover"
+            >
+              <span className="font-mono text-[13px] text-foreground">{command.name}</span>
+              <span className="truncate text-[12.5px] text-muted-foreground">{command.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <textarea
         ref={textarea}
         data-testid="composer-input"
@@ -253,7 +318,19 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         onPaste={onPaste}
         placeholder={
           placeholder ??
-          (incognito ? 'Chat privately — nothing is saved' : coworkMode ? 'Describe a task, and Cellar will work through it' : variant === 'home' ? 'How can I help you today?' : variant === 'task' ? 'Reply to steer the task…' : 'Reply…')
+          (incognito
+            ? 'Chat privately — nothing is saved'
+            : coworkMode
+              ? 'Describe a task, and Cellar will work through it'
+              : variant === 'home'
+                ? 'How can I help you today?'
+                : variant === 'task'
+                  ? 'Reply to steer the task…'
+                  : variant === 'code-home'
+                    ? 'Describe a coding task, or ask about the code'
+                    : variant === 'code'
+                      ? 'Reply, or type / for commands'
+                      : 'Reply…')
         }
         className="block max-h-[40vh] min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[16px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
       />
@@ -287,8 +364,10 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         {variant === 'task' && conversationId && permissionMode && (
           <PermissionMenu value={permissionMode} onChange={(next) => void invoke('tasks:setPermissionMode', conversationId, next).catch((err) => toast.error(err instanceof Error ? err.message : String(err)))} />
         )}
+        {variant === 'code-home' && <CodeModeMenu value={newSessionMode} onChange={setCodeModeValue} />}
+        {variant === 'code' && codeMode && <CodeModeMenu value={codeMode} onChange={setCodeModeValue} />}
         <div className="flex-1" />
-        <ModelPicker model={model} preferTools={coworkMode || variant === 'task'} />
+        <ModelPicker model={model} preferTools={coworkMode || variant === 'task' || isCode} />
         {isStreaming ? (
           <Tip label="Stop generating  Esc">
             <button aria-label="Stop" onClick={() => void invoke('chat:stop', streamingMessageId!)} className="no-drag flex size-8 items-center justify-center rounded-lg bg-foreground text-background hover:opacity-90">

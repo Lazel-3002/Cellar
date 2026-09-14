@@ -165,6 +165,7 @@ export const writeFileTool = defineTool({
     if (DOCUMENT_EXTENSIONS.has(extOf(w.abs))) {
       throw new ToolError(`write_file writes plain text, which would corrupt ${w.rel}. Use create_${extOf(w.abs)} instead.`);
     }
+    await ctx.beforeChange?.(w.abs);
     await mkdir(dirname(w.abs), { recursive: true });
     await writeFile(w.abs, args.content, 'utf8');
     const bytes = Buffer.byteLength(args.content);
@@ -213,6 +214,7 @@ export const editFileTool = defineTool({
   },
   async run(args, ctx) {
     const plan = await planEdit(args, ctx);
+    await ctx.beforeChange?.(plan.abs);
     await writeFile(plan.abs, plan.next, 'utf8');
     ctx.recordFile({ absolutePath: plan.abs, action: 'modified', tool: 'edit_file', bytes: Buffer.byteLength(plan.next) });
     return `Edited ${plan.rel} (${plan.matches} replacement${plan.matches === 1 ? '' : 's'}).`;

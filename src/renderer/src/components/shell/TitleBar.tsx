@@ -23,6 +23,7 @@ function AppMenu() {
         <MenuSub label="File">
           <MenuItem shortcut="Ctrl+N" onSelect={() => { setIncognito(false); void navigate({ to: '/' }); }}>New chat</MenuItem>
           <MenuItem shortcut="Ctrl+Shift+N" onSelect={() => { setIncognito(true); void navigate({ to: '/' }); }}>New incognito chat</MenuItem>
+          <MenuItem onSelect={() => void navigate({ to: '/code' })}>New Code session</MenuItem>
           <MenuSeparator />
           <MenuItem shortcut="Ctrl+," onSelect={() => void navigate({ to: '/settings/$section', params: { section: 'general' } })}>Settings</MenuItem>
           <MenuSeparator />

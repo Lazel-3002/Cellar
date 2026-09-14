@@ -4,6 +4,11 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import { z } from 'zod';
 import type { AppInfo } from '@shared/ipc-contract';
 import { Workspace } from '../agent/workspace';
+import { registerChangesHandlers } from '../code/changes';
+import { registerCodeHandlers } from '../code/ipc';
+import { registerPreviewHandlers } from '../code/preview';
+import { registerSideChatHandlers } from '../code/side-chat';
+import { registerTerminalHandlers, terminals } from '../code/terminal';
 import { attachmentFromBytes, attachmentsFromPaths } from '../chat/attachments';
 import { chat } from '../chat/orchestrator';
 import { deleteConversations, listConversations, searchMessages } from '../db/chat-store';
@@ -28,6 +33,14 @@ const thinking = z.enum(['off', 'on', 'low', 'medium', 'high']);
 
 const permissionMode = z.enum(['ask', 'auto-edits', 'plan']);
 
+const codeStartSchema = z.object({
+  folder: z.string().min(1).max(4096),
+  mode: z.enum(['ask', 'plan', 'code']),
+  autoAcceptEdits: z.boolean(),
+  worktree: z.boolean(),
+  baseBranch: z.string().max(255).optional(),
+});
+
 const sendSchema = z.object({
   conversationId: z.string().optional(),
   incognito: z.boolean().optional(),
@@ -37,6 +50,7 @@ const sendSchema = z.object({
   model: modelRef,
   thinking,
   task: z.object({ folder: z.string().min(1).nullable(), permissionMode }).optional(),
+  code: codeStartSchema.optional(),
 });
 
 const approvalSchema = z.object({ action: z.enum(['allow', 'allow-all', 'deny']), feedback: z.string().max(4000).optional() });
@@ -226,6 +240,7 @@ export function registerIpcHandlers(): void {
     for (const id of ids) {
       chat.stopConversation(id);
       chat.discardIncognito(id);
+      terminals.killForConversation(id);
     }
     deleteConversations(ids);
     bus.emit('chat:changed', {});
@@ -283,4 +298,10 @@ export function registerIpcHandlers(): void {
     await writeFile(result.filePath, artifact.content, 'utf8');
     return result.filePath;
   });
+
+  registerCodeHandlers();
+  registerChangesHandlers();
+  registerTerminalHandlers();
+  registerPreviewHandlers();
+  registerSideChatHandlers();
 }

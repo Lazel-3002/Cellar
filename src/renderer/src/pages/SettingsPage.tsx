@@ -18,6 +18,7 @@ const SECTIONS = [
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'cowork', label: 'Cowork' },
+  { id: 'code', label: 'Code' },
   { id: 'models', label: 'Models' },
   { id: 'engines', label: 'Engines & runtimes' },
   { id: 'connections', label: 'Connections' },
@@ -174,6 +175,62 @@ function Cowork() {
           <li>Commands run in Windows PowerShell and always ask first, unless you choose “Always allow commands” for a task.</li>
           <li>A page that did not come from a web search or your own message needs your OK before it opens. Local and private network addresses are blocked.</li>
           <li>Plan only mode never changes files or runs commands.</li>
+        </ul>
+      </Card>
+    </>
+  );
+}
+
+function Code() {
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  if (!s) return null;
+  return (
+    <>
+      <Card title="Sessions" description="Code runs a coding agent in a repository, usually on its own branch in a git worktree.">
+        <Field label="Mode for new sessions" description="Switch any time from the composer, or press Shift+Tab.">
+          <Segmented
+            value={s.codeMode === 'code' && s.codeAutoAcceptEdits ? 'code-auto' : s.codeMode}
+            onChange={(value) => update.mutate(value === 'code-auto' ? { codeMode: 'code', codeAutoAcceptEdits: true } : { codeMode: value, codeAutoAcceptEdits: false })}
+            options={[
+              { value: 'ask', label: 'Ask' },
+              { value: 'plan', label: 'Plan' },
+              { value: 'code', label: 'Code' },
+              { value: 'code-auto', label: 'Auto-accept edits' },
+            ]}
+          />
+        </Field>
+        <Field label="Use a worktree for new sessions" description="Each session gets a cellar/… branch in ~/.cellar/worktrees, so your checkout stays untouched. List ignored files a worktree needs (like .env) in a .worktreeinclude file.">
+          <Switch checked={s.codeUseWorktrees} onCheckedChange={(v) => update.mutate({ codeUseWorktrees: v })} />
+        </Field>
+        <Field label="Step limit" description="Model calls per turn before a session pauses. Reply “continue” to let it keep going.">
+          <NumberInput value={s.codeMaxSteps} min={5} max={500} onChange={(v) => v && update.mutate({ codeMaxSteps: v })} />
+        </Field>
+        <Field label="Shell" description="Used by the Terminal tab and the agent's commands (the agent always uses PowerShell; Automatic picks PowerShell 7 when it is installed).">
+          <Segmented
+            value={s.terminalShell}
+            onChange={(terminalShell) => update.mutate({ terminalShell })}
+            options={[
+              { value: 'auto', label: 'Automatic' },
+              { value: 'pwsh', label: 'PowerShell 7' },
+              { value: 'powershell', label: 'Windows PowerShell' },
+              { value: 'cmd', label: 'Command Prompt' },
+            ]}
+          />
+        </Field>
+        {s.recentRepos.length > 0 && (
+          <Field label="Recent repositories" description={s.recentRepos.join(' · ')}>
+            <Button size="sm" variant="ghost" onClick={() => update.mutate({ recentRepos: [] })}>
+              Clear
+            </Button>
+          </Field>
+        )}
+      </Card>
+      <Card title="Project memory">
+        <ul className="space-y-2 py-3 text-[13px] leading-relaxed text-fg-2">
+          <li>CELLAR.md at the top of a repository is included in every session there (AGENTS.md or CLAUDE.md are used when there is no CELLAR.md). Type /init to have the agent write one, or /memory to edit it.</li>
+          <li>~/.cellar/CELLAR.md holds notes for all your repositories.</li>
+          <li>Web access and notifications follow the Cowork settings.</li>
         </ul>
       </Card>
     </>
@@ -643,6 +700,7 @@ export function SettingsPage() {
     general: <General />,
     appearance: <Appearance />,
     cowork: <Cowork />,
+    code: <Code />,
     models: <Models />,
     engines: <Engines />,
     connections: <Connections />,

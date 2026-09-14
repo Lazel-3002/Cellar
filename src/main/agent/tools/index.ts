@@ -1,4 +1,5 @@
 import type { PermissionMode } from '@shared/types/agent';
+import type { CodeMode } from '@shared/types/code';
 import type { AppSettings } from '@shared/types/settings';
 import { runCommand } from './command';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
@@ -37,6 +38,37 @@ export function toolsFor(mode: PermissionMode, settings: Pick<AppSettings, 'cowo
   });
 }
 
+const CODE_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'todo_write', 'write_file', 'edit_file', 'run_command', 'web_search', 'web_fetch']);
+
+/** Code sessions: file, search, command and web tools (no office documents). Ask mode also drops the plan tool. */
+export function codeToolsFor(mode: CodeMode, permissionMode: PermissionMode, settings: Pick<AppSettings, 'coworkWebAccess'>): AgentTool[] {
+  return toolsFor(permissionMode, settings, { pdf: false }).filter((tool) => CODE_TOOLS.has(tool.name) && !(mode === 'ask' && tool.name === 'todo_write'));
+}
+
+/** Names models trained on other agents use for the same tools. */
+const ALIASES: Record<string, string> = {
+  read: 'read_file',
+  view: 'read_file',
+  cat: 'read_file',
+  write: 'write_file',
+  create_file: 'write_file',
+  edit: 'edit_file',
+  str_replace: 'edit_file',
+  replace_in_file: 'edit_file',
+  bash: 'run_command',
+  shell: 'run_command',
+  powershell: 'run_command',
+  execute_command: 'run_command',
+  run_terminal_cmd: 'run_command',
+  ls: 'list_dir',
+  list_files: 'list_dir',
+  list_directory: 'list_dir',
+  search_files: 'grep',
+  find_files: 'glob',
+  todo: 'todo_write',
+  update_todos: 'todo_write',
+};
+
 const snake = (name: string) =>
   name
     .trim()
@@ -47,7 +79,8 @@ const snake = (name: string) =>
 
 /** Find a tool by the name a model used ("ReadFile", "functions.read_file", "read-file" all work). */
 export function findTool(tools: AgentTool[], name: string): AgentTool | undefined {
-  return tools.find((t) => t.name === name) ?? tools.find((t) => t.name === snake(name));
+  const normalized = snake(name);
+  return tools.find((t) => t.name === name) ?? tools.find((t) => t.name === normalized) ?? tools.find((t) => t.name === ALIASES[normalized]);
 }
 
 /** Small fixes for argument shapes models commonly get slightly wrong. */

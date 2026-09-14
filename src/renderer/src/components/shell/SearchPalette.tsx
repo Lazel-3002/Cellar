@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Command } from 'cmdk';
-import { Box, Cpu, FolderClosed, Ghost, ListChecks, MessageSquare, Plus, Search, Settings, Telescope } from 'lucide-react';
+import { Box, CodeXml, Cpu, FolderClosed, Ghost, ListChecks, MessageSquare, Plus, Search, Settings, Telescope } from 'lucide-react';
 import { Dialog as RadixDialog } from 'radix-ui';
 import type { SearchHit } from '@shared/types/chat';
 import { invoke } from '@/lib/ipc';
@@ -73,6 +73,9 @@ export function SearchPalette() {
                   <Command.Item value="new-incognito" className={itemClass} onSelect={() => go(() => { setIncognito(true); void navigate({ to: '/' }); })}>
                     <Ghost className="size-4" /> New incognito chat
                   </Command.Item>
+                  <Command.Item value="new-code" className={itemClass} onSelect={() => go(() => void navigate({ to: '/code' }))}>
+                    <CodeXml className="size-4" /> New Code session
+                  </Command.Item>
                   <Command.Item value="discover" className={itemClass} onSelect={() => go(() => void navigate({ to: '/discover', search: {} }))}>
                     <Telescope className="size-4" /> Discover models
                   </Command.Item>
@@ -94,7 +97,7 @@ export function SearchPalette() {
                       className={itemClass}
                       onSelect={() => go(() => void navigate({ to: conversationRoute(hit.kind), params: { conversationId: hit.conversationId } }))}
                     >
-                      {hit.kind === 'task' ? <ListChecks className="size-4 shrink-0" /> : <MessageSquare className="size-4 shrink-0" />}
+                      {hit.kind === 'code' ? <CodeXml className="size-4 shrink-0" /> : hit.kind === 'task' ? <ListChecks className="size-4 shrink-0" /> : <MessageSquare className="size-4 shrink-0" />}
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-[14px]">{hit.title || 'Untitled'}</span>
                         {hit.snippet && <Snippet text={hit.snippet} />}

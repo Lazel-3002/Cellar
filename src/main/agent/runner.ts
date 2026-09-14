@@ -2,11 +2,16 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { codePermissionMode } from '@shared/code-commands';
 import { branchPath } from '@shared/message-tree';
-import type { AgentPart, ApprovalDecision, PermissionMode, ReasoningPart, TaskStartOptions, TaskState, TextPart, ToolPart } from '@shared/types/agent';
+import type { AgentPart, ApprovalDecision, ConversationKind, PermissionMode, ReasoningPart, TaskStartOptions, TaskState, TextPart, ToolPart } from '@shared/types/agent';
+import type { CodeMode } from '@shared/types/code';
 import type { ChatStreamEvent, GenerationStats, Message, ThinkingLevel } from '@shared/types/chat';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams, type LoadConfig, type ModelEntry } from '@shared/types/models';
 import { estimateTokens } from '../chat/context-window';
+import { buildCodePrompt } from '../code/prompt';
+import { loadProjectMemory, loadUserMemory } from '../code/session';
+import { snapshotBeforeChange } from '../code/snapshots';
 import type { ChatStore } from '../db/chat-store';
 import { bus } from '../lib/events';
 import { logger } from '../lib/log';
@@ -21,8 +26,9 @@ import { paths } from '../system/paths';
 import { pdfAvailable } from './documents';
 import { buildTaskHistory, historyTokens, transcriptForSummary, type ToolProtocol } from './history';
 import { buildAgentPrompt, COMPACTION_SYSTEM, compactionRequest, CONTINUE_NUDGE } from './prompt';
+import { agentPowerShell } from './shell';
 import { parseLooseJson, parseTextToolCall, TEXT_PROTOCOL_STOPS, textProtocolInstructions, ToolCallTagSplitter } from './text-protocol';
-import { ALL_TOOLS, findTool, normalizeArgs, toolsFor, toolSchema, type AgentTool, type ToolContext } from './tools';
+import { ALL_TOOLS, codeToolsFor, findTool, normalizeArgs, toolsFor, toolSchema, type AgentTool, type ToolContext } from './tools';
 import { ToolError } from './tools/types';
 import { extractUrls } from './tools/web';
 import { PathAccessError, Workspace } from './workspace';
@@ -31,6 +37,8 @@ const log = logger('cowork');
 
 /** Tool results in live stream events are shortened; the full text stays in main. */
 const LIVE_RESULT_CHARS = 1500;
+/** Output kept while a command runs (its tail is shown live). */
+const LIVE_OUTPUT_CHARS = 8000;
 const MAX_IDENTICAL_CALLS = 3;
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
@@ -64,6 +72,11 @@ function stableJson(value: unknown): string {
       .join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+/** How notifications and messages name a conversation's agent work. */
+function agentNoun(kind: ConversationKind | undefined): { fallback: string; settings: string } {
+  return kind === 'code' ? { fallback: 'A Code session', settings: 'Settings → Code' } : { fallback: 'A Cowork task', settings: 'Settings → Cowork' };
 }
 
 export interface TaskRunInput {
@@ -175,19 +188,37 @@ export class TaskRunner {
     resolve(decision);
   }
 
-  setPermissionMode(store: ChatStore, conversationId: string, mode: PermissionMode): void {
+  /** Change a task's state, live when it is running (the next model step sees it) or in storage. */
+  private updateTask(store: ChatStore, conversationId: string, change: (task: TaskState) => void): void {
     const run = [...this.runs.values()].find((r) => r.conversationId === conversationId);
     if (run) {
-      run.task.permissionMode = mode;
+      change(run.task);
       run.store.updateConversation(conversationId, { task: run.task });
       run.emit();
     } else {
       const conversation = store.getConversation(conversationId);
       if (!conversation?.task) throw new Error('Task not found');
-      store.updateConversation(conversationId, { task: { ...conversation.task, permissionMode: mode } });
+      const task = structuredClone(conversation.task);
+      change(task);
+      store.updateConversation(conversationId, { task });
     }
-    // Deliberately not the default for new tasks: loosening one task should not loosen the next.
     bus.emit('chat:changed', { conversationId });
+  }
+
+  setPermissionMode(store: ChatStore, conversationId: string, mode: PermissionMode): void {
+    // Deliberately not the default for new tasks: loosening one task should not loosen the next.
+    this.updateTask(store, conversationId, (task) => {
+      if (task.code) throw new Error('Use the Code mode menu for Code sessions.');
+      task.permissionMode = mode;
+    });
+  }
+
+  setCodeMode(store: ChatStore, conversationId: string, mode: CodeMode, autoAcceptEdits: boolean): void {
+    this.updateTask(store, conversationId, (task) => {
+      if (!task.code) throw new Error('This is not a Code session.');
+      task.code = { ...task.code, mode };
+      task.permissionMode = codePermissionMode(mode, autoAcceptEdits);
+    });
   }
 
   toolResult(store: ChatStore, messageId: string, toolCallId: string): string {
@@ -202,9 +233,12 @@ export class TaskRunner {
       ...run.state,
       content: joinText(run.parts),
       reasoning: '',
-      parts: run.parts.map((p) =>
-        p.type === 'tool' && p.result && p.result.length > LIVE_RESULT_CHARS ? { ...p, result: p.result.slice(0, LIVE_RESULT_CHARS), resultTruncated: true } : { ...p },
-      ),
+      parts: run.parts.map((p) => {
+        if (p.type !== 'tool' || !p.result || p.result.length <= LIVE_RESULT_CHARS) return { ...p };
+        // A running command shows its latest output; finished steps show the start.
+        const result = p.status === 'running' ? p.result.slice(-LIVE_RESULT_CHARS) : p.result.slice(0, LIVE_RESULT_CHARS);
+        return { ...p, result, resultTruncated: true };
+      }),
       task: { ...run.task },
     };
   }
@@ -218,7 +252,8 @@ export class TaskRunner {
     const { store, conversationId, assistant } = input;
     const conversation = store.getConversation(conversationId);
     if (!conversation?.task) throw new Error('Task not found');
-    const task: TaskState = { ...conversation.task, status: 'running', steps: 0, maxSteps: settings.get().coworkMaxSteps };
+    const app = settings.get();
+    const task: TaskState = { ...conversation.task, status: 'running', steps: 0, maxSteps: conversation.task.code ? app.codeMaxSteps : app.coworkMaxSteps };
     const run: LiveRun = {
       controller: new AbortController(),
       store,
@@ -289,6 +324,9 @@ export class TaskRunner {
 
     const knownUrls = new Set(task.sources.map((s) => s.url));
     for (const m of branch) if (m.role === 'user') for (const url of extractUrls(m.content)) knownUrls.add(url);
+    const code = task.code;
+    const powershell = agentPowerShell(app.terminalShell);
+    const [memory, userMemory] = code ? await Promise.all([loadProjectMemory(workspace.root), loadUserMemory()]) : [undefined, undefined];
     const ctx: ToolContext = {
       workspace,
       task,
@@ -296,6 +334,8 @@ export class TaskRunner {
       signal,
       maxResultChars: Math.round(Math.min(60_000, Math.max(3_000, contextLength * 0.3 * 3.2))),
       knownUrls,
+      shell: code ? powershell.exe : undefined,
+      beforeChange: code && !code.isGit ? (abs) => snapshotBeforeChange(conversationId, workspace.root, abs) : undefined,
       recordFile: (file) => {
         const path = workspace.relative(file.absolutePath);
         const previous = task.files.find((f) => f.path === path);
@@ -317,26 +357,45 @@ export class TaskRunner {
     for (;;) {
       if (signal.aborted) throw signal.reason;
       if (task.steps >= task.maxSteps) {
-        parts.push({ type: 'text', round, text: `*Paused after ${task.maxSteps} steps. Reply "continue" to keep going, or raise the step limit in Settings → Cowork.*` });
+        parts.push({ type: 'text', round, text: `*Paused after ${task.maxSteps} steps. Reply "continue" to keep going, or raise the step limit in ${agentNoun(conversation.kind).settings}.*` });
         stats.stopReason = 'step-limit';
         return;
       }
-      const tools = toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
+      // Mode changes during a run apply from the next step.
+      const tools = task.code ? codeToolsFor(task.code.mode, task.permissionMode, app) : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
       const schemas = tools.map(toolSchema);
-      const system = buildAgentPrompt({
-        modelName: entry.displayName,
-        userName: app.userName,
-        preferences: app.personalPreferences,
-        workDir: workspace.root,
-        folderChosen: task.folder !== null,
-        mode: task.permissionMode,
-        toolNames: tools.map((t) => t.name),
-        projectName,
-        projectInstructions,
-        projectKnowledge: knowledge,
-        customSystemPrompt: conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt,
-        textProtocol: protocol === 'text' ? textProtocolInstructions(schemas) : undefined,
-      });
+      const customSystemPrompt = conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt;
+      const textProtocol = protocol === 'text' ? textProtocolInstructions(schemas) : undefined;
+      const system = task.code
+        ? buildCodePrompt({
+            modelName: entry.displayName,
+            userName: app.userName,
+            preferences: app.personalPreferences,
+            workDir: workspace.root,
+            code: task.code,
+            permissionMode: task.permissionMode,
+            allowCommands: task.allowCommands,
+            toolNames: tools.map((t) => t.name),
+            shell: powershell.edition,
+            memory,
+            userMemory,
+            customSystemPrompt,
+            textProtocol,
+          })
+        : buildAgentPrompt({
+            modelName: entry.displayName,
+            userName: app.userName,
+            preferences: app.personalPreferences,
+            workDir: workspace.root,
+            folderChosen: task.folder !== null,
+            mode: task.permissionMode,
+            toolNames: tools.map((t) => t.name),
+            projectName,
+            projectInstructions,
+            projectKnowledge: knowledge,
+            customSystemPrompt,
+            textProtocol,
+          });
       const toolTokens = protocol === 'native' ? estimateTokens(JSON.stringify(schemas)) : 0;
       const history = await this.fitHistory(run, input, { system, protocol, budget: budget - toolTokens, contextLength, provider, load: preset.load, round });
       if (nudged) history.push({ role: 'user', content: CONTINUE_NUDGE });
@@ -600,6 +659,7 @@ export class TaskRunner {
     if (!tool) {
       const known = findTool(ALL_TOOLS, call.name);
       if (known && task.permissionMode === 'plan' && (known.category === 'edit' || known.category === 'command')) {
+        if (task.code?.mode === 'ask') return fail(`${known.name} is not available in Ask mode. Answer from what the read-only tools show; the user can switch to Code mode for changes.`);
         return fail(`${known.name} is not available in plan mode. Investigate with the read-only tools and finish with a plan.`);
       }
       if (known?.category === 'web') return fail('Web access is turned off in Settings → Cowork.');
@@ -648,7 +708,14 @@ export class TaskRunner {
       // Time the work itself, not the wait for approval.
       call.startedAt = Date.now();
       run.emit();
-      const output = await tool.run(args, ctx);
+      const output = await tool.run(args, {
+        ...ctx,
+        onOutput: (text) => {
+          if (call.status !== 'running') return;
+          call.result = text.length > LIVE_OUTPUT_CHARS ? text.slice(-LIVE_OUTPUT_CHARS) : text;
+          run.emit();
+        },
+      });
       call.result = repeats > 0 ? `${output}\n\n[You already made this exact call earlier in this task. Use the result you have and move on to the next step.]` : output;
       call.status = 'done';
       call.finishedAt = Date.now();
@@ -673,8 +740,9 @@ export class TaskRunner {
     bus.emit('chat:changed', { conversationId });
     run.emit();
     run.emit.flush();
-    const title = store.getConversation(conversationId)?.title || 'A Cowork task';
-    bus.emit('tasks:notify', { conversationId, kind: 'approval', title: `${title} needs your approval`, body: call.approval?.title ?? call.name });
+    const conversation = store.getConversation(conversationId);
+    const title = conversation?.title || agentNoun(conversation?.kind).fallback;
+    bus.emit('tasks:notify', { conversationId, conversationKind: conversation?.kind ?? 'task', kind: 'approval', title: `${title} needs your approval`, body: call.approval?.title ?? call.name });
     return new Promise((resolve, reject) => {
       const onAbort = () => {
         run.approvals.delete(call.id);
@@ -732,9 +800,14 @@ export class TaskRunner {
     bus.emit('chat:stream', this.snapshot(run));
     bus.emit('chat:changed', { conversationId });
 
-    const title = store.getConversation(conversationId)?.title || 'Your task';
-    if (status === 'complete') bus.emit('tasks:notify', { conversationId, kind: 'done', title: `${title} is done`, body: text.split('\n').find((l) => l.trim())?.slice(0, 180) ?? 'The task finished.' });
-    else if (status === 'error') bus.emit('tasks:notify', { conversationId, kind: 'error', title: `${title} failed`, body: run.state.error ?? 'Something went wrong.' });
+    const conversation = store.getConversation(conversationId);
+    const conversationKind = conversation?.kind ?? 'task';
+    const title = conversation?.title || (conversationKind === 'code' ? 'Your session' : 'Your task');
+    if (status === 'complete') {
+      bus.emit('tasks:notify', { conversationId, conversationKind, kind: 'done', title: `${title} is done`, body: text.split('\n').find((l) => l.trim())?.slice(0, 180) ?? 'The work is finished.' });
+    } else if (status === 'error') {
+      bus.emit('tasks:notify', { conversationId, conversationKind, kind: 'error', title: `${title} failed`, body: run.state.error ?? 'Something went wrong.' });
+    }
     this.hooks.onFinished?.(input, { status, text });
   }
 }

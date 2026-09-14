@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { protocol } from 'electron';
 import type { Artifact } from '@shared/types/chat';
+import { PREVIEW_SCHEME_PRIVILEGES } from '../code/preview';
 import { getArtifact } from '../services/artifacts';
 import { paths } from '../system/paths';
 
@@ -26,9 +27,11 @@ const RUNTIME_FILES: Record<string, string> = {
   'tailwind.js': 'text/javascript',
 };
 
+/** Registers every privileged scheme: Electron keeps only the last `registerSchemesAsPrivileged` call. */
 export function registerArtifactScheme(): void {
   protocol.registerSchemesAsPrivileged([
     { scheme: ARTIFACT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    PREVIEW_SCHEME_PRIVILEGES,
   ]);
 }
 

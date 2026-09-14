@@ -8,6 +8,18 @@ files:
   - package.json
   - resources/icon.png
   - '!**/*.map'
+  # node-pty at runtime (win32-x64) needs only lib/, package.json and prebuilds/win32-x64:
+  # conpty.node + conpty_console_list.node (ConPTY), pty.node + winpty.dll + winpty-agent.exe
+  # (fallback before Windows build 18309) and conpty/{conpty.dll,OpenConsole.exe} (useConptyDll).
+  - '!**/node_modules/node-pty/{deps,src,scripts,third_party,build,typings}/**'
+  - '!**/node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**'
+  - '!**/node_modules/node-pty/lib/*.test.js'
+  - '!**/node_modules/node-pty/**/*.pdb'
+  # Headers for building node-pty from source; never loaded at runtime.
+  - '!**/node_modules/node-addon-api/**'
+asarUnpack:
+  # Native modules, helper executables and the conout worker script must be real files.
+  - '**/node_modules/node-pty/**'
 extraResources:
   - from: resources/artifact-runtime
     to: artifact-runtime

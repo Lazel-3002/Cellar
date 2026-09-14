@@ -44,6 +44,12 @@ function defaults(): StoredSettings {
     webSearchProvider: 'duckduckgo',
     searxngUrl: '',
     recentFolders: [],
+    codeMode: 'code',
+    codeAutoAcceptEdits: false,
+    codeUseWorktrees: true,
+    codeMaxSteps: 80,
+    terminalShell: 'auto',
+    recentRepos: [],
   };
 }
 
@@ -119,6 +125,12 @@ class SettingsService {
     if (patch.webSearchProvider !== undefined && ['duckduckgo', 'searxng'].includes(patch.webSearchProvider)) set('webSearchProvider', patch.webSearchProvider);
     if (patch.searxngUrl !== undefined) set('searxngUrl', patch.searxngUrl.trim().replace(/\/+$/, ''));
     if (patch.recentFolders !== undefined) set('recentFolders', [...new Set(patch.recentFolders.map((d) => d.trim()).filter(Boolean))].slice(0, 8));
+    if (patch.codeMode !== undefined && ['ask', 'plan', 'code'].includes(patch.codeMode)) set('codeMode', patch.codeMode);
+    if (patch.codeAutoAcceptEdits !== undefined) set('codeAutoAcceptEdits', !!patch.codeAutoAcceptEdits);
+    if (patch.codeUseWorktrees !== undefined) set('codeUseWorktrees', !!patch.codeUseWorktrees);
+    if (patch.codeMaxSteps !== undefined) set('codeMaxSteps', clamp(patch.codeMaxSteps, 5, 500));
+    if (patch.terminalShell !== undefined && ['auto', 'pwsh', 'powershell', 'cmd'].includes(patch.terminalShell)) set('terminalShell', patch.terminalShell);
+    if (patch.recentRepos !== undefined) set('recentRepos', [...new Set(patch.recentRepos.map((d) => d.trim()).filter(Boolean))].slice(0, 10));
 
     if (changes.length) {
       transaction(() => {

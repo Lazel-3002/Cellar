@@ -16,6 +16,12 @@ export interface ToolContext {
   recordFile(file: Omit<TaskFile, 'updatedAt' | 'path'> & { path?: string }): void;
   recordSource(source: Omit<TaskSource, 'at'>): void;
   setTodos(todos: TodoItem[]): void;
+  /** Called before a file tool changes a file (Code sessions outside git keep the original). */
+  beforeChange?(absolutePath: string): Promise<void>;
+  /** PowerShell executable for run_command (default Windows PowerShell). */
+  shell?: string;
+  /** Output so far of the running command, for live display. */
+  onOutput?(text: string): void;
 }
 
 export interface AgentTool<S extends z.ZodType = z.ZodType> {

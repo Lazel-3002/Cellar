@@ -1,4 +1,4 @@
-import { Outlet } from '@tanstack/react-router';
+import { Outlet, useRouterState } from '@tanstack/react-router';
 import { Tooltip } from 'radix-ui';
 import { Toaster } from 'sonner';
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel';
@@ -6,6 +6,7 @@ import { LoadSettingsDialog } from '@/components/models/LoadSettingsDialog';
 import { useAppCommands, useThemeSync } from '@/lib/hooks';
 import { useIpcSync, useSettings } from '@/lib/queries';
 import { useUi } from '@/stores/ui';
+import { CodeSidebar } from './CodeSidebar';
 import { SearchPalette } from './SearchPalette';
 import { Sidebar } from './Sidebar';
 import { TitleBar } from './TitleBar';
@@ -17,16 +18,17 @@ export function AppShell() {
   useThemeSync(settings);
   const sidebarOpen = useUi((s) => s.sidebarOpen);
   const artifactOpen = useUi((s) => !!s.artifact);
+  const isCode = useRouterState({ select: (s) => s.location.pathname.startsWith('/code') });
 
   return (
     <Tooltip.Provider delayDuration={450}>
       <div className="relative flex h-full w-full overflow-hidden bg-background text-foreground">
         <TitleBar />
-        {sidebarOpen && <Sidebar />}
+        {sidebarOpen && (isCode ? <CodeSidebar /> : <Sidebar />)}
         <main className="relative h-full min-w-0 flex-1">
           <Outlet />
         </main>
-        {artifactOpen && <ArtifactPanel />}
+        {artifactOpen && !isCode && <ArtifactPanel />}
       </div>
       <SearchPalette />
       <LoadSettingsDialog />

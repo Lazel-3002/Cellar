@@ -204,6 +204,7 @@ export function ProjectDetailPage() {
                       <div className="flex items-center gap-2 truncate text-[14px]">
                         {c.title || 'Untitled'}
                         {c.kind === 'task' && <Badge tone="outline">Task</Badge>}
+                        {c.kind === 'code' && <Badge tone="outline">Code</Badge>}
                       </div>
                       <div className="text-[12px] text-muted-foreground">Last message {relativeTime(c.updatedAt)}</div>
                     </div>

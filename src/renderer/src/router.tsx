@@ -1,6 +1,7 @@
 import { createHashHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import { AppShell } from './components/shell/AppShell';
 import { ChatPage } from './pages/ChatPage';
+import { CodeHomePage, CodeSessionPage } from './pages/CodePage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
 import { ArtifactsPage, ComingSoonPage, RecentsPage } from './pages/MiscPages';
@@ -33,7 +34,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/$section', component: SettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/scheduled', component: () => <ComingSoonPage feature="scheduled" /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/customize', component: () => <ComingSoonPage feature="customize" /> }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/code', component: () => <ComingSoonPage feature="code" /> }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/code', component: CodeHomePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/code/$conversationId', component: CodeSessionPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/design', component: () => <ComingSoonPage feature="design" /> }),
 ] as const;
 

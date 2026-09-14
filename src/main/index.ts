@@ -3,6 +3,9 @@ import { app, BrowserWindow, safeStorage } from 'electron';
 import { installPdfRenderer, installTaskNotifications } from './agent/desktop';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
+import { installPreview, registerPreviewScheme } from './code/preview';
+import { stopAllSideChats } from './code/side-chat';
+import { terminals } from './code/terminal';
 import { closeDatabase, openDatabase } from './db/client';
 import { downloads } from './hub/downloads';
 import { handlers } from './ipc';
@@ -21,6 +24,7 @@ import { createMainWindow, isAppUrl } from './window';
 const log = logger('main');
 
 registerArtifactScheme();
+registerPreviewScheme();
 app.setAppUserModelId('ai.cellar.desktop');
 // Lets tests and portable setups keep chats and settings in a separate folder.
 if (process.env.CELLAR_USER_DATA) app.setPath('userData', process.env.CELLAR_USER_DATA);
@@ -54,6 +58,7 @@ if (!app.requestSingleInstanceLock()) {
     handlers.register();
     forwardBusToWindows();
     handleArtifactProtocol();
+    installPreview();
     installAppMenu();
     installPdfRenderer();
     installTaskNotifications(() => mainWindow);
@@ -80,6 +85,8 @@ if (!app.requestSingleInstanceLock()) {
     disposing = true;
     event.preventDefault();
     chat.stopAll();
+    stopAllSideChats();
+    terminals.disposeAll();
     void providers
       .dispose()
       .catch((err) => log.error('dispose failed', err))

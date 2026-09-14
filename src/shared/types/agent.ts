@@ -1,6 +1,7 @@
-/** Cowork: an agent that works through a task with tools inside a folder. */
+/** Cowork: an agent that works through a task with tools inside a folder. Code sessions share this machinery. */
+import type { CodeSessionInfo } from './code';
 
-export type ConversationKind = 'chat' | 'task';
+export type ConversationKind = 'chat' | 'task' | 'code';
 
 /**
  * - ask: file changes and commands wait for approval
@@ -53,6 +54,8 @@ export interface TaskState {
   /** Model calls used in the latest turn. */
   steps: number;
   maxSteps: number;
+  /** Present for Code sessions. */
+  code?: CodeSessionInfo;
 }
 
 export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan';
@@ -129,6 +132,7 @@ export interface TaskStartOptions {
 
 export interface TaskNotice {
   conversationId: string;
+  conversationKind: ConversationKind;
   title: string;
   body: string;
   kind: 'done' | 'approval' | 'error';

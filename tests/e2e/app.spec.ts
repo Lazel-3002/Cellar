@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
@@ -222,6 +223,100 @@ test('cowork works through a task in a chosen folder, asking before it writes', 
     expect(tasks[0]).toMatchObject({ kind: 'task', taskStatus: 'done' });
   } finally {
     rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('code fixes a bug in its own worktree, with changes, terminal, side chat and cleanup', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'cellar-e2e-repo-'));
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=E2E', '-c', 'user.email=e2e@cellar.local', ...args], { cwd: repo, encoding: 'utf8', windowsHide: true });
+  let workDir = '';
+  try {
+    writeFileSync(join(repo, 'app.js'), 'export function add(a, b) {\n  return a - b;\n}\n');
+    writeFileSync(join(repo, 'index.html'), '<!doctype html><h1 id="hi">Preview works</h1>\n');
+    writeFileSync(join(repo, 'CELLAR.md'), '# Memory\nTests: node test.js\n');
+    git('init', '-q', '-b', 'main');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'initial');
+    await ipc('settings:update', { recentRepos: [repo], codeMode: 'code', codeAutoAcceptEdits: false, codeUseWorktrees: true });
+
+    await win.locator('button[aria-label="Code"]').click();
+    await expect(win.getByTestId('code-sidebar')).toBeVisible();
+    await win.getByTestId('code-repo').click();
+    await win.getByRole('menuitem', { name: basename(repo) }).click();
+    await expect(win.getByTestId('code-worktree')).toBeVisible();
+    await expect(win.getByText('Project memory: CELLAR.md.')).toBeVisible();
+    await expect(win.getByTestId('code-mode')).toHaveAttribute('data-mode', 'code');
+    await selectModel('mock-coder');
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-code-home.png') });
+    await send('Fix the add function');
+
+    const approval = win.getByTestId('approval-card');
+    await expect(approval).toBeVisible({ timeout: 30_000 });
+    await expect(approval).toContainText('Cellar wants to edit app.js');
+    await win.getByTestId('approve').click();
+    await expect(win.getByTestId('task-turn').last()).toHaveAttribute('data-status', 'complete', { timeout: 20_000 });
+    await expect(win.getByTestId('task-turn').last()).toContainText('Fixed add in app.js');
+
+    const conversationId = await win.evaluate(() => location.hash.split('/').pop()!);
+    const session = await ipc<{ conversation: { kind: string; task: { workDir: string; code: { worktree: boolean; branch: string } } } }>('chat:get', conversationId);
+    expect(session.conversation.kind).toBe('code');
+    expect(session.conversation.task.code.worktree).toBe(true);
+    workDir = session.conversation.task.workDir;
+    expect(readFileSync(join(workDir, 'app.js'), 'utf8')).toContain('return a + b;');
+    expect(readFileSync(join(repo, 'app.js'), 'utf8')).toContain('return a - b;');
+    const coderRequest = mock.requests.find((r) => r.model === 'mock-coder' && r.tools?.length);
+    expect(String(coderRequest?.messages[0].content)).toContain('Tests: node test.js');
+    await expect(win.getByTestId('code-session-row').first()).toContainText(session.conversation.task.code.branch);
+
+    // Changes tab lists the edit.
+    await win.getByTestId('pane-tab-changes').click();
+    await expect(win.getByTestId('changes-pane')).toContainText('app.js', { timeout: 10_000 });
+    await expect(win.getByTestId('pane-tab-changes')).toContainText('1');
+    await win.waitForTimeout(1500);
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-code-changes.png') });
+
+    // Terminal runs in the worktree.
+    await win.getByTestId('pane-tab-terminal').click();
+    await expect.poll(async () => (await ipc<unknown[]>('terminal:list', conversationId)).length, { timeout: 20_000 }).toBe(1);
+    const [terminal] = await ipc<Array<{ id: string; cwd: string }>>('terminal:list', conversationId);
+    expect(terminal.cwd).toBe(workDir);
+    await ipc('terminal:write', terminal.id, 'echo cellar-e2e-terminal\r');
+    await expect.poll(async () => ipc<string>('terminal:buffer', terminal.id), { timeout: 20_000 }).toContain('cellar-e2e-terminal');
+    await win.waitForTimeout(500);
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-code-terminal.png') });
+
+    // Transcript views.
+    await win.getByTestId('transcript-view').click();
+    await win.getByRole('menuitem', { name: /Summary/ }).click();
+    await expect(win.getByTestId('turn-summary')).toBeVisible();
+    await expect(win.getByTestId('tool-step')).toHaveCount(0);
+    await win.getByTestId('transcript-view').click();
+    await win.getByRole('menuitem', { name: /Normal/ }).click();
+
+    // A side question stays out of the session.
+    const before = (await ipc<{ messages: unknown[] }>('chat:get', conversationId)).messages.length;
+    await win.getByTestId('side-chat-toggle').click();
+    await win.getByTestId('side-chat-input').fill('what changed?');
+    await win.getByTestId('side-chat-input').press('Enter');
+    await expect(win.getByTestId('side-chat')).toContainText('Echo: what changed?', { timeout: 20_000 });
+    expect((await ipc<{ messages: unknown[] }>('chat:get', conversationId)).messages.length).toBe(before);
+    await win.getByTestId('side-chat-toggle').click();
+
+    // Delete the session together with its worktree and branch.
+    await win.getByTestId('code-session-row').first().hover();
+    await win.getByRole('button', { name: 'Session options' }).first().click();
+    await win.getByRole('menuitem', { name: 'Delete' }).click();
+    // The edit is uncommitted, so removing the worktree is opt-in and warned about.
+    await expect(win.getByText(/uncommitted change/)).toBeVisible();
+    await win.getByLabel(/Also remove the worktree/).check();
+    await win.getByTestId('confirm-delete-session').click();
+    await expect(win.getByTestId('code-session-row')).toHaveCount(0, { timeout: 20_000 });
+    await expect.poll(() => existsSync(workDir), { timeout: 20_000 }).toBe(false);
+    expect(git('branch', '--list', 'cellar/*').trim()).toBe('');
+  } finally {
+    await win.getByRole('button', { name: 'Chat and Cowork' }).click().catch(() => undefined);
+    rmSync(repo, { recursive: true, force: true });
+    if (workDir) rmSync(workDir, { recursive: true, force: true });
   }
 });
 

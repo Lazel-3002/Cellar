@@ -30,7 +30,8 @@ export const PERMISSION_MODES: Record<PermissionMode, { label: string; short: st
   plan: { label: 'Plan only', short: 'Plan only', description: 'Look around and propose a plan without changing anything.', icon: MapIcon },
 };
 
-export const conversationRoute = (kind: ConversationKind) => (kind === 'task' ? ('/task/$conversationId' as const) : ('/chat/$conversationId' as const));
+export const conversationRoute = (kind: ConversationKind) =>
+  kind === 'code' ? ('/code/$conversationId' as const) : kind === 'task' ? ('/task/$conversationId' as const) : ('/chat/$conversationId' as const);
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 

@@ -1,5 +1,6 @@
 import { branchPath, latestLeaf } from '@shared/message-tree';
-import type { ApprovalDecision, PermissionMode } from '@shared/types/agent';
+import type { ApprovalDecision, ConversationKind, PermissionMode } from '@shared/types/agent';
+import type { CodeMode } from '@shared/types/code';
 import type {
   ChatStreamEvent,
   Conversation,
@@ -12,6 +13,7 @@ import type {
 } from '@shared/types/chat';
 import { DEFAULT_INFERENCE_PARAMS, type ModelEntry, type ModelRef } from '@shared/types/models';
 import { TaskRunner } from '../agent/runner';
+import { prepareCodeSession } from '../code/session';
 import { MemoryChatStore, SqliteChatStore, type ChatStore } from '../db/chat-store';
 import { run } from '../db/client';
 import { bus } from '../lib/events';
@@ -50,7 +52,7 @@ class ChatOrchestrator {
 
   init(): void {
     run("UPDATE messages SET status = 'stopped' WHERE status = 'streaming'");
-    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind = 'task' AND json_extract(task, '$.status') IN ('running', 'waiting')");
+    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code') AND json_extract(task, '$.status') IN ('running', 'waiting')");
   }
 
   private store(conversationId: string): ChatStore {
@@ -97,28 +99,31 @@ class ChatOrchestrator {
       store = this.store(input.conversationId);
       conversation = store.getConversation(input.conversationId);
     }
-    const isTask = conversation ? conversation.kind === 'task' : !!input.task;
-    if (isTask && store.incognito) throw new Error('Cowork tasks cannot run in an incognito chat.');
-    if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) throw new Error('This task is still working. Stop it or wait for it to finish first.');
-    const now = Date.now();
+    const kind: ConversationKind = conversation ? conversation.kind : input.code ? 'code' : input.task ? 'task' : 'chat';
+    const isTask = kind !== 'chat';
+    if (isTask && store.incognito) throw new Error(kind === 'code' ? 'Code sessions cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.');
+    if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) throw new Error(`This ${kind === 'code' ? 'session' : 'task'} is still working. Stop it or wait for it to finish first.`);
     if (!conversation) {
       const id = newId();
+      const task = input.code ? await prepareCodeSession(id, input.code, content) : input.task ? await this.tasks.prepare(id, input.task) : undefined;
+      const created = Date.now();
       conversation = {
         id,
-        kind: isTask ? 'task' : 'chat',
+        kind,
         title: '',
         projectId: input.projectId ?? null,
         starred: false,
         currentLeafId: null,
         model: input.model,
         settings: { thinking: input.thinking },
-        task: input.task ? await this.tasks.prepare(id, input.task) : undefined,
+        task,
         incognito: store.incognito,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: created,
+        updatedAt: created,
       };
       store.createConversation(conversation);
     }
+    const now = Date.now();
 
     const user: Message = {
       id: newId(),
@@ -139,7 +144,7 @@ class ChatOrchestrator {
       currentLeafId: assistant.id,
       model: input.model,
       settings: { ...conversation.settings, thinking: input.thinking },
-      ...(conversation.title ? {} : { title: fallbackTitle(content || user.attachments[0]?.name || (isTask ? 'New task' : 'New chat')) }),
+      ...(conversation.title ? {} : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : isTask ? 'New task' : 'New chat')) }),
     });
     this.notify(conversation.id);
     if (isTask) {
@@ -169,6 +174,14 @@ class ChatOrchestrator {
     this.tasks.setPermissionMode(this.store(conversationId), conversationId, mode);
   }
 
+  setCodeMode(conversationId: string, mode: CodeMode, autoAcceptEdits: boolean): void {
+    this.tasks.setCodeMode(this.store(conversationId), conversationId, mode, autoAcceptEdits);
+  }
+
+  isRunning(conversationId: string): boolean {
+    return this.tasks.isRunningIn(conversationId) || [...this.active.values()].some((a) => a.state.conversationId === conversationId);
+  }
+
   /** Full output of a tool step (stream events carry a shortened copy). Tasks are never incognito. */
   toolResult(messageId: string, toolCallId: string): string {
     return this.tasks.toolResult(this.sqlite, messageId, toolCallId);
@@ -193,7 +206,7 @@ class ChatOrchestrator {
     if (!conversation || !previous || previous.role !== 'assistant' || !previous.parentId) throw new Error('Message not found');
     const ref = model ?? previous.model ?? conversation.model;
     if (!ref) throw new Error('Pick a model first.');
-    const isTask = conversation.kind === 'task';
+    const isTask = conversation.kind !== 'chat';
     if (isTask && this.tasks.isRunningIn(conversationId)) throw new Error('This task is still working. Stop it first.');
     const entry = await this.resolveModel({ providerId: ref.providerId, modelId: ref.modelId });
     const assistant = this.newAssistant(conversationId, previous.parentId, entry, isTask);
@@ -211,7 +224,7 @@ class ChatOrchestrator {
     const conversation = store.getConversation(conversationId);
     const previous = store.getMessage(userMessageId);
     if (!conversation || !previous || previous.role !== 'user') throw new Error('Message not found');
-    const isTask = conversation.kind === 'task';
+    const isTask = conversation.kind !== 'chat';
     if (isTask && this.tasks.isRunningIn(conversationId)) throw new Error('This task is still working. Stop it first.');
     const entry = await this.resolveModel(model);
     const now = Date.now();

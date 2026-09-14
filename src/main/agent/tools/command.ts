@@ -27,7 +27,14 @@ export interface ShellResult {
  * Run a PowerShell script (sh elsewhere). Output is forced to UTF-8 because Windows PowerShell
  * otherwise uses the OEM code page, and formatted wide so tables are not cut at 80 columns.
  */
-export function runShell(command: string, cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<ShellResult> {
+export interface ShellOptions {
+  /** PowerShell executable (default powershell.exe). */
+  shell?: string;
+  /** Receives the output so far while the command runs (ANSI codes removed). */
+  onOutput?: (text: string) => void;
+}
+
+export function runShell(command: string, cwd: string, timeoutMs: number, signal?: AbortSignal, options: ShellOptions = {}): Promise<ShellResult> {
   const started = Date.now();
   const windows = process.platform === 'win32';
   const script = [
@@ -40,7 +47,7 @@ export function runShell(command: string, cwd: string, timeoutMs: number, signal
     'if ($LASTEXITCODE) { exit $LASTEXITCODE }',
   ].join('\n');
   const child = windows
-    ? spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
+    ? spawn(options.shell ?? 'powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
         cwd,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -53,6 +60,15 @@ export function runShell(command: string, cwd: string, timeoutMs: number, signal
     let captured = 0;
     let timedOut = false;
     let cancelled = false;
+    let reported = 0;
+    const report = options.onOutput
+      ? () => {
+          if (captured === reported) return;
+          reported = captured;
+          options.onOutput!(Buffer.concat(chunks).toString('utf8').replace(ANSI, '').replace(/\r\n/g, '\n'));
+        }
+      : null;
+    const ticker = report ? setInterval(report, 400) : null;
     const collect = (chunk: Buffer) => {
       if (captured > MAX_CAPTURE) return;
       captured += chunk.length;
@@ -71,6 +87,7 @@ export function runShell(command: string, cwd: string, timeoutMs: number, signal
     signal?.addEventListener('abort', onAbort, { once: true });
     const finish = (exitCode: number | null, extra = '') => {
       clearTimeout(timer);
+      if (ticker) clearInterval(ticker);
       signal?.removeEventListener('abort', onAbort);
       const output = (Buffer.concat(chunks).toString('utf8') + extra).replace(ANSI, '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
       resolve({ exitCode, output, timedOut, cancelled, durationMs: Date.now() - started });
@@ -95,7 +112,7 @@ export const runCommand = defineTool({
   },
   async run(args, ctx) {
     const timeout = (args.timeout_seconds ?? 120) * 1000;
-    const result = await runShell(args.command, ctx.workspace.root, timeout, ctx.signal);
+    const result = await runShell(args.command, ctx.workspace.root, timeout, ctx.signal, { shell: ctx.shell, onOutput: ctx.onOutput });
     const seconds = (result.durationMs / 1000).toFixed(1);
     const status = result.cancelled
       ? 'The command was cancelled.'

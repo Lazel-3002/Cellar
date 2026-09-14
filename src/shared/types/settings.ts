@@ -1,4 +1,5 @@
 import type { PermissionMode } from './agent';
+import type { CodeMode } from './code';
 import type { ModelRef } from './models';
 
 export type ThemePreference = 'dark' | 'light' | 'system';
@@ -40,7 +41,19 @@ export interface AppSettings {
   webSearchProvider: WebSearchProvider;
   searxngUrl: string;
   recentFolders: string[];
+  /** Mode for new Code sessions (the last one picked). */
+  codeMode: CodeMode;
+  codeAutoAcceptEdits: boolean;
+  /** New sessions in git repositories get their own worktree. */
+  codeUseWorktrees: boolean;
+  /** Model calls per Code turn before Cellar pauses the agent. */
+  codeMaxSteps: number;
+  /** Shell for the integrated terminal and run_command. */
+  terminalShell: TerminalShell;
+  recentRepos: string[];
 }
+
+export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';
 
 export type AppSettingsPatch = Partial<Omit<AppSettings, 'hasHfToken'>> & {
   /** undefined = keep, '' = clear. */

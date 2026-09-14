@@ -106,5 +106,21 @@
   "104": "client.ts",
   "105": "TaskPage.tsx",
   "106": "ToolStep.tsx",
-  "107": "TaskSidePanel.tsx"
+  "107": "TaskSidePanel.tsx",
+  "108": "monaco.ts",
+  "109": "SideChat.tsx",
+  "110": "downloadFile",
+  "111": "ToolContext",
+  "112": "🎨 AI Design Engine: Concept & Specification Document",
+  "113": "CodeModeMenu.tsx",
+  "114": "code-changes.test.ts",
+  "115": "stores/code.ts",
+  "116": "monaco-editor",
+  "117": "sonner",
+  "118": "@tailwindcss/vite",
+  "119": "@types/react-dom",
+  "120": "@xterm/addon-fit",
+  "121": "@xterm/addon-web-links",
+  "122": "@xterm/xterm",
+  "123": "DeleteSessionDialog.tsx"
 }

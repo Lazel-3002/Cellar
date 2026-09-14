@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { BriefcaseBusiness, Clock, CodeXml, MessageSquare, Palette, Search, Shapes, Star, Trash } from 'lucide-react';
+import { BriefcaseBusiness, Clock, MessageSquare, Palette, Search, Shapes, Star, Trash } from 'lucide-react';
 import { ARTIFACT_ICONS, ARTIFACT_LABELS } from '@/components/chat/ArtifactCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/form';
@@ -144,6 +144,7 @@ export function RecentsPage() {
                     <span className="truncate text-[14.5px] text-foreground">{c.title || 'Untitled'}</span>
                     {c.starred && <Star className="size-3 shrink-0 fill-current text-muted-foreground" />}
                     {c.kind === 'task' && <Badge tone="outline">Task</Badge>}
+                    {c.kind === 'code' && <Badge tone="outline">Code</Badge>}
                     {c.projectName && <Badge>{c.projectName}</Badge>}
                   </div>
                   <div className="text-[12px] text-muted-foreground">Last message {relativeTime(c.updatedAt)}</div>
@@ -171,13 +172,6 @@ const COMING: Record<string, { icon: ReactNode; title: string; milestone: string
     milestone: 'Milestone 4',
     description: 'Teach your models how you work with skills, and connect tools through MCP servers.',
     bullets: ['Skills: folders with a SKILL.md and helper files', 'Connectors: local and remote MCP servers', 'Plugins that bundle skills, connectors and commands'],
-  },
-  code: {
-    icon: <CodeXml className="size-5" />,
-    title: 'Code',
-    milestone: 'Milestone 3',
-    description: 'A local coding agent for your repositories, powered by the models you already run.',
-    bullets: ['Sessions per repo with git worktrees', 'Ask, Code and Plan modes with a diff viewer', 'Integrated terminal, editor and preview pane'],
   },
   design: {
     icon: <Palette className="size-5" />,

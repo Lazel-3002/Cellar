@@ -7,8 +7,8 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | --- | --- | --- |
 | **M1 Foundation** | App shell, Chat, Projects, Artifacts, incognito, Model Hub, all backends | ✅ Done 2026-09-13 |
 | **M2 Cowork** | Local agent that works inside a folder you choose | ✅ Done 2026-09-13 |
-| **M3 Code** | Coding agent for repositories | Next |
-| **M4 Customize, Scheduled, Voice** | Skills, MCP connectors, plugins, scheduled tasks, dictation, embeddings RAG | Planned |
+| **M3 Code** | Coding agent for repositories | ✅ Done 2026-09-14 |
+| **M4 Customize, Scheduled, Voice** | Skills, MCP connectors, plugins, scheduled tasks, dictation, embeddings RAG | Next |
 | **M5 Design** (optional) | Canvas for mockups and slides | Planned |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
@@ -70,6 +70,47 @@ Tests: 92 unit tests (42 new: path containment incl. a real junction escape, glo
 
 ---
 
+## M3 Code — delivered
+
+The Code switch in the title bar opens a coding agent for repositories. It shares the M2 agent loop: conversations of kind `code` with `task.code` (repository, branch, worktree, base commit, mode).
+
+- **Sessions** (`src/main/code/session.ts`, `git.ts`)
+  - Pick a repository (recent list or folder picker) and a base branch.
+  - By default each session gets its own git worktree in `~/.cellar/worktrees/<repo>-<id>` on a `cellar/<slug>-<id>` branch, so the checkout stays untouched. Ignored files listed in `.worktreeinclude` (such as `.env`) are copied in.
+  - Without a worktree, the agent works in the checkout. Outside git, the original of every file the agent changes is saved (`snapshots.ts`) for diffs and undo.
+  - The Code sidebar groups sessions by repository, with filters for active or starred sessions and for one repository. Deleting a session can also remove its worktree and branch, with a warning when there are uncommitted changes or commits.
+- **Modes:** Ask (read-only answers), Plan (read-only plan with a "Start coding" banner), Code with approvals, and Code with auto-accepted edits. Change modes from the composer menu or with Shift+Tab; the change applies from the next model step.
+- **Tools:** list/read/write/edit files, glob, grep, todo, PowerShell commands (PowerShell 7 when installed) with live output while they run, and web search/fetch when web access is on.
+  - Names other agents use (`Read`, `Bash`, `str_replace`, `LS`…) are mapped to Cellar's tools.
+  - A Code-specific prompt (`src/main/code/prompt.ts`) covers conventions, verifying with tests, no commits or destructive commands unless asked, and dev servers in the terminal.
+- **Panes** (resizable right side panel):
+  - Changes: git diff against the session's base commit (renames, untracked files, +/− counts), Monaco diff editor (split or unified), discard per file, commit, and merge into the base branch (`changes*.ts`, `ChangesPane.tsx`).
+  - Files: lazy tree plus a Monaco editor with tabs, Ctrl+S save and reload on disk changes (`FilesPane.tsx`, `lib/monaco.ts`).
+  - Preview: localhost dev servers and HTML/SVG/image files through the `cellar-preview://<session>/<path>` scheme, with back/forward, reload, device widths, and `X-Frame-Options`/`frame-ancestors` removed only for localhost frames (`preview.ts`).
+  - Terminal: node-pty shells in the working folder with xterm.js tabs, restart, clickable links (localhost links open in Preview) and scrollback replay (`terminal.ts`, `TerminalPane.tsx`).
+- **View modes:** normal, verbose (every step and thought expanded) and summary (requests, one-line step summaries and final answers).
+- **Side chat:** questions about the session with its transcript as context. There are no tools and nothing is added to the session (`side-chat.ts`, `SideChat.tsx`; `/btw <question>`).
+- **Project memory:** `CELLAR.md` at the top of the repository (or `AGENTS.md` / `CLAUDE.md`) plus `~/.cellar/CELLAR.md`, included in every turn. `/init` has the agent write it; `/memory` opens it in the editor.
+- **Settings → Code:** default mode, worktrees on/off, step limit (default 80), shell, recent repositories.
+
+Tests: 168 unit tests and 12 Playwright tests. New unit tests cover:
+- git helpers, worktrees and `.worktreeinclude`
+- the Code prompt, tools per mode and tool-name aliases
+- a full session in a worktree, Ask mode refusals and mode switching, snapshots, live command output
+- the changes backend (git and snapshots: diffs, discard, commit, merge), preview URL and header helpers, the terminal manager, and the side-chat prompt and streaming
+
+The new Playwright test covers a scripted bug fix in a worktree with approval, the Changes diff, a terminal in the worktree, summary view, a side chat that leaves the session untouched, and deletion with worktree and branch removal.
+
+Real model through the UI (`scripts/code-smoke.mjs`), Ollama qwen3.5:9b: given "tests fail, fix src/math.js", it read `test.js` and `math.js`, found the off-by-one loop, edited it, ran `node test.js` (all tests passed) and summarized, at 32 tok/s. The checkout stayed untouched, and Preview rendered `index.html`.
+
+### Known gaps and follow-ups from M3
+- **Real models:** only qwen3.5:9b through Ollama was run in this milestone; llama.cpp models and larger refactors are untested with Code.
+- **Commands:** `run_command` has no background mode: long-running servers belong in the Terminal tab. The agent cannot read terminal output.
+- **Git:** no pull requests, pushes or conflict resolution UI. Merge refuses and explains when the base checkout is dirty or conflicts appear.
+- **Snapshots** track only edits made through the file tools and the editor, not files changed by commands (git sessions see everything).
+- **Preview:** PDFs do not render in the sandboxed preview frame (use "Open"). Non-localhost web pages open in the browser.
+- **Editor:** Monaco has syntax highlighting only (no language servers or IntelliSense).
+- **Packaging:** node-pty's prebuilt N-API binaries are unpacked from the asar; the installer is not code signed.
 ## M2 Cowork — original goals
 
 Give Cellar an agent mode like Claude Cowork: describe an outcome, the model plans, works through steps using tools in a chosen folder, and you watch progress and steer.
@@ -182,3 +223,13 @@ Things that are easy to get wrong when continuing:
   - zod 4's `z.toJSONSchema(schema, { io: 'input' })` produces tool parameter schemas (strip `$schema` and the ±2^53 integer bounds).
   - Writing `\uXXXX` escapes for invisible characters through the editing tools can insert the literal character; build them with `String.fromCharCode` instead.
 - **Budget:** the 14 native tool schemas cost ~2,100 tokens and the agent prompt ~450 (text protocol ~960), so 16K context leaves ~9K tokens for work after the reply reserve.
+
+## Technical notes learned in M3
+
+- **node-pty 1.1** ships N-API prebuilds (win32-x64 conpty), so it needs no rebuild for Electron 44. Keep `npmRebuild: false`, unpack `node_modules/node-pty/**` from the asar and exclude its `.pdb` files and other-platform prebuilds.
+- **App execution aliases:** `pwsh.exe` installed from the Store lives in `%LOCALAPPDATA%\Microsoft\WindowsApps` as an alias. `fs.statSync`/`existsSync` fail on it (EACCES), but `lstatSync` works and `spawn` runs it.
+- **Privileged schemes:** Electron keeps only the last `protocol.registerSchemesAsPrivileged` call, so `cellar-artifact` and `cellar-preview` are registered together.
+- **Git on this machine** has `core.autocrlf=true`: worktree checkouts get CRLF files (`edit_file` handles that). Run git with `LC_ALL=C`, `GIT_TERMINAL_PROMPT=0` and `core.quotepath=false` so its output is parseable.
+- **Worktree removal on Windows:** a terminal whose working folder is the worktree keeps it locked for a moment after the pty is killed. `fs.rm` with `maxRetries` covers it.
+- **Monaco 0.56** loads from its ESM entry points with only `editor.worker`; it works under the renderer CSP (`worker-src 'self' blob:`, no eval). Load it lazily so the main bundle stays small.
+- **Radix dropdown check items** have the ARIA role `menuitem`, not `menuitemcheckbox`.
