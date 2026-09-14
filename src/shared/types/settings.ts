@@ -4,7 +4,8 @@ import type { ModelRef } from './models';
 
 export type ThemePreference = 'dark' | 'light' | 'system';
 export type ChatFont = 'default' | 'sans' | 'system';
-export type WebSearchProvider = 'duckduckgo' | 'searxng';
+/** duckduckgo falls back to Brave Search when DuckDuckGo refuses automated searches. */
+export type WebSearchProvider = 'duckduckgo' | 'brave' | 'searxng';
 
 export interface AppSettings {
   userName: string;
@@ -51,6 +52,26 @@ export interface AppSettings {
   /** Shell for the integrated terminal and run_command. */
   terminalShell: TerminalShell;
   recentRepos: string[];
+  /** Chats with tool-capable models can search the web and read pages. */
+  chatWebSearch: boolean;
+  /** Skills turned off (by skill id). */
+  disabledSkills: string[];
+  /** Plugins turned off (by plugin id). */
+  disabledPlugins: string[];
+  /** Models see saved memories and can remember things when asked. */
+  memoryEnabled: boolean;
+  /** Models can search earlier chats (tool-capable models only). */
+  searchPastChats: boolean;
+  /** Closing the window keeps Cellar in the notification area so scheduled tasks keep running. */
+  runInBackground: boolean;
+  /** Global shortcut for the quick entry window ('' turns it off). Electron accelerator syntax. */
+  quickEntryShortcut: string;
+  /** whisper.cpp model file used for dictation. */
+  voiceModel: string;
+  /** Dictation language: 'auto' or an ISO 639-1 code. */
+  voiceLanguage: string;
+  /** Embedding model for project knowledge search; null keeps keyword search only. */
+  embeddingModel: ModelRef | null;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

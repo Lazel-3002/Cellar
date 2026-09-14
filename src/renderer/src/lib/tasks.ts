@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import {
+  Brain,
   File,
   FileArchive,
   FileCode,
@@ -10,12 +11,16 @@ import {
   FolderOpen,
   Globe,
   Hand,
+  History,
   ListTodo,
   Map as MapIcon,
+  Plug,
   Presentation,
   Search,
   Sheet,
+  Sparkles,
   SquareTerminal,
+  Stethoscope,
   TextSearch,
   Wrench,
   Zap,
@@ -59,9 +64,10 @@ export interface ToolDescription {
 
 const DOCUMENT_TOOLS: Record<string, Icon> = { create_docx: FileText, create_xlsx: Sheet, create_pptx: Presentation, create_pdf: FileText };
 
-export function describeTool(part: Pick<ToolPart, 'name' | 'args'>): ToolDescription {
+export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>): ToolDescription {
   const args = part.args ?? {};
   const path = text(args.path);
+  if (part.connector) return { icon: Plug, done: `Used ${part.connector.name}:`, active: `Using ${part.connector.name}:`, failed: `${part.connector.name} failed:`, target: part.connector.tool };
   switch (part.name) {
     case 'list_dir':
       return { icon: FolderOpen, done: 'Listed', active: 'Listing', failed: "Couldn't list", target: !path || path === '.' ? 'the working folder' : path };
@@ -91,8 +97,25 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args'>): ToolDescrip
       return { icon: Globe, done: 'Read', active: 'Opening', failed: "Couldn't open", target: short(text(args.url).replace(/^https?:\/\/(www\.)?/, ''), 60) };
     case 'todo_write':
       return { icon: ListTodo, done: 'Updated the plan', active: 'Updating the plan', failed: "Couldn't update the plan" };
-    default:
+    case 'get_diagnostics':
+      return { icon: Stethoscope, done: 'Checked for problems in', active: 'Checking for problems in', failed: "Couldn't check", target: path || 'the project' };
+    case 'skill':
+      return { icon: Sparkles, done: 'Loaded the skill', active: 'Loading the skill', failed: "Couldn't load the skill", target: text(args.name) };
+    case 'read_skill_file':
+      return { icon: Sparkles, done: 'Read', active: 'Reading', failed: "Couldn't read", target: `${text(args.skill)}/${path}` };
+    case 'remember':
+      return { icon: Brain, done: 'Remembered', active: 'Remembering', failed: "Couldn't remember", target: short(text(args.content), 60) };
+    case 'forget':
+      return { icon: Brain, done: 'Forgot', active: 'Forgetting', failed: "Couldn't forget", target: short(text(args.memory), 60) };
+    case 'search_chats':
+      return { icon: History, done: 'Searched past chats for', active: 'Searching past chats for', failed: "Couldn't search past chats for", target: text(args.query) };
+    case 'read_chat':
+      return { icon: History, done: 'Read an earlier chat', active: 'Reading an earlier chat', failed: "Couldn't read the chat" };
+    default: {
+      const connector = /^(.+?)__(.+)$/.exec(part.name);
+      if (connector) return { icon: Plug, done: `Used ${connector[1]}:`, active: `Using ${connector[1]}:`, failed: `${connector[1]} failed:`, target: connector[2] };
       return { icon: Wrench, done: 'Used', active: 'Using', failed: "Couldn't use", target: part.name };
+    }
   }
 }
 

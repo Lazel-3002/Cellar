@@ -9,9 +9,12 @@ import type { CodeMode } from '@shared/types/code';
 import type { ChatStreamEvent, GenerationStats, Message, ThinkingLevel } from '@shared/types/chat';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams, type LoadConfig, type ModelEntry } from '@shared/types/models';
 import { estimateTokens } from '../chat/context-window';
+import { buildSystemPrompt, supportsArtifactInstructions } from '../chat/prompts';
+import { problemsAfterChange } from '../code/diagnostics';
 import { buildCodePrompt } from '../code/prompt';
 import { loadProjectMemory, loadUserMemory } from '../code/session';
 import { snapshotBeforeChange } from '../code/snapshots';
+import { assistantContext } from '../customize/context';
 import type { ChatStore } from '../db/chat-store';
 import { bus } from '../lib/events';
 import { logger } from '../lib/log';
@@ -28,7 +31,7 @@ import { buildTaskHistory, historyTokens, transcriptForSummary, type ToolProtoco
 import { buildAgentPrompt, COMPACTION_SYSTEM, compactionRequest, CONTINUE_NUDGE } from './prompt';
 import { agentPowerShell } from './shell';
 import { parseLooseJson, parseTextToolCall, TEXT_PROTOCOL_STOPS, textProtocolInstructions, ToolCallTagSplitter } from './text-protocol';
-import { ALL_TOOLS, codeToolsFor, findTool, normalizeArgs, toolsFor, toolSchema, type AgentTool, type ToolContext } from './tools';
+import { ALL_TOOLS, ASSISTANT_TOOLS, chatBaseTools, codeToolsFor, extraTools, findTool, normalizeArgs, toolsFor, toolSchema, type AgentTool, type ToolContext } from './tools';
 import { ToolError } from './tools/types';
 import { extractUrls } from './tools/web';
 import { PathAccessError, Workspace } from './workspace';
@@ -40,6 +43,8 @@ const LIVE_RESULT_CHARS = 1500;
 /** Output kept while a command runs (its tail is shown live). */
 const LIVE_OUTPUT_CHARS = 8000;
 const MAX_IDENTICAL_CALLS = 3;
+/** Model calls per chat turn: chats use tools for lookups, not long projects. */
+export const CHAT_MAX_STEPS = 16;
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
 /** Nine alphanumeric characters: the strictest format chat templates expect (Mistral). */
@@ -75,8 +80,16 @@ function stableJson(value: unknown): string {
 }
 
 /** How notifications and messages name a conversation's agent work. */
-function agentNoun(kind: ConversationKind | undefined): { fallback: string; settings: string } {
-  return kind === 'code' ? { fallback: 'A Code session', settings: 'Settings → Code' } : { fallback: 'A Cowork task', settings: 'Settings → Cowork' };
+function agentNoun(kind: ConversationKind | undefined): { fallback: string; settings: string; mode: string } {
+  if (kind === 'chat') return { fallback: 'A chat', settings: '', mode: 'This chat' };
+  return kind === 'code' ? { fallback: 'A Code session', settings: 'Settings → Code', mode: 'Code' } : { fallback: 'A Cowork task', settings: 'Settings → Cowork', mode: 'Cowork' };
+}
+
+/** Chats that use tools run through the agent loop with this throwaway task state. */
+async function chatTaskState(): Promise<TaskState> {
+  const workDir = join(paths().cellarHome, 'chat');
+  await mkdir(workDir, { recursive: true });
+  return { folder: null, workDir, permissionMode: 'ask', status: 'running', todos: [], files: [], sources: [], allowCommands: false, allowedDomains: [], steps: 0, maxSteps: CHAT_MAX_STEPS };
 }
 
 export interface TaskRunInput {
@@ -93,6 +106,8 @@ export interface TaskRunnerHooks {
 
 interface LiveRun {
   controller: AbortController;
+  /** A chat turn with tools: no task state is saved and no task notifications are sent. */
+  chat: boolean;
   store: ChatStore;
   conversationId: string;
   messageId: string;
@@ -143,7 +158,7 @@ export class TaskRunner {
       todos: [],
       files: [],
       sources: [],
-      allowCommands: false,
+      allowCommands: !!options.allowCommands,
       allowedDomains: [],
       steps: 0,
       maxSteps: settings.get().coworkMaxSteps,
@@ -165,7 +180,7 @@ export class TaskRunner {
   }
 
   liveTask(conversationId: string): TaskState | undefined {
-    return [...this.runs.values()].find((r) => r.conversationId === conversationId)?.task;
+    return [...this.runs.values()].find((r) => r.conversationId === conversationId && !r.chat)?.task;
   }
 
   stop(messageId: string): void {
@@ -245,17 +260,19 @@ export class TaskRunner {
 
   private persist(run: LiveRun): void {
     run.store.updateMessage(run.messageId, { parts: run.parts, content: joinText(run.parts) });
-    run.store.updateConversation(run.conversationId, { task: run.task });
+    if (!run.chat) run.store.updateConversation(run.conversationId, { task: run.task });
   }
 
   async run(input: TaskRunInput): Promise<void> {
     const { store, conversationId, assistant } = input;
     const conversation = store.getConversation(conversationId);
-    if (!conversation?.task) throw new Error('Task not found');
+    const chat = conversation?.kind === 'chat';
+    if (!conversation || (!chat && !conversation.task)) throw new Error('Task not found');
     const app = settings.get();
-    const task: TaskState = { ...conversation.task, status: 'running', steps: 0, maxSteps: conversation.task.code ? app.codeMaxSteps : app.coworkMaxSteps };
+    const task: TaskState = chat ? await chatTaskState() : { ...conversation.task!, status: 'running', steps: 0, maxSteps: conversation.task!.code ? app.codeMaxSteps : app.coworkMaxSteps };
     const run: LiveRun = {
       controller: new AbortController(),
+      chat,
       store,
       conversationId,
       messageId: assistant.id,
@@ -267,7 +284,7 @@ export class TaskRunner {
     };
     run.emit = throttle(() => bus.emit('chat:stream', this.snapshot(run)), 80);
     this.runs.set(assistant.id, run);
-    store.updateConversation(conversationId, { task });
+    if (!chat) store.updateConversation(conversationId, { task });
     bus.emit('chat:changed', { conversationId });
 
     const stats: GenerationStats = {};
@@ -316,7 +333,7 @@ export class TaskRunner {
         projectName = project.name;
         projectInstructions = project.instructions;
         const lastUser = [...branch].reverse().find((m) => m.role === 'user');
-        knowledge = projectKnowledge(project.id, lastUser?.content ?? '', Math.min(6000, Math.floor(contextLength * 0.2)));
+        knowledge = await projectKnowledge(project.id, lastUser?.content ?? '', Math.min(6000, Math.floor(contextLength * 0.2)));
       } catch {
         // project deleted
       }
@@ -327,6 +344,7 @@ export class TaskRunner {
     const code = task.code;
     const powershell = agentPowerShell(app.terminalShell);
     const [memory, userMemory] = code ? await Promise.all([loadProjectMemory(workspace.root), loadUserMemory()]) : [undefined, undefined];
+    const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: true });
     const ctx: ToolContext = {
       workspace,
       task,
@@ -334,8 +352,11 @@ export class TaskRunner {
       signal,
       maxResultChars: Math.round(Math.min(60_000, Math.max(3_000, contextLength * 0.3 * 3.2))),
       knownUrls,
+      conversationId,
+      incognito: store.incognito,
       shell: code ? powershell.exe : undefined,
       beforeChange: code && !code.isGit ? (abs) => snapshotBeforeChange(conversationId, workspace.root, abs) : undefined,
+      afterChange: run.chat ? undefined : (abs) => problemsAfterChange(abs, workspace.root),
       recordFile: (file) => {
         const path = workspace.relative(file.absolutePath);
         const previous = task.files.find((f) => f.path === path);
@@ -357,16 +378,33 @@ export class TaskRunner {
     for (;;) {
       if (signal.aborted) throw signal.reason;
       if (task.steps >= task.maxSteps) {
-        parts.push({ type: 'text', round, text: `*Paused after ${task.maxSteps} steps. Reply "continue" to keep going, or raise the step limit in ${agentNoun(conversation.kind).settings}.*` });
+        const where = run.chat ? '' : `, or raise the step limit in ${agentNoun(conversation.kind).settings}`;
+        parts.push({ type: 'text', round, text: `*Paused after ${task.maxSteps} steps. Reply "continue" to keep going${where}.*` });
         stats.stopReason = 'step-limit';
         return;
       }
       // Mode changes during a run apply from the next step.
-      const tools = task.code ? codeToolsFor(task.code.mode, task.permissionMode, app) : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
+      const baseTools = run.chat ? chatBaseTools(app) : task.code ? codeToolsFor(task.code.mode, task.permissionMode, app) : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
+      const extras = await extraTools({ settings: app, skills: customize.skills.length > 0, incognito: store.incognito, readOnly: task.permissionMode === 'plan' && !run.chat });
+      const tools = [...baseTools, ...extras];
       const schemas = tools.map(toolSchema);
       const customSystemPrompt = conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt;
       const textProtocol = protocol === 'text' ? textProtocolInstructions(schemas) : undefined;
-      const system = task.code
+      const system = run.chat
+        ? buildSystemPrompt({
+            modelName: entry.displayName,
+            userName: app.userName,
+            preferences: app.personalPreferences,
+            projectName,
+            projectInstructions,
+            projectKnowledge: knowledge,
+            customSystemPrompt,
+            artifacts: app.artifacts && supportsArtifactInstructions(entry),
+            toolNames: tools.map((t) => t.name),
+            extraSections: customize.sections,
+            textProtocol,
+          })
+        : task.code
         ? buildCodePrompt({
             modelName: entry.displayName,
             userName: app.userName,
@@ -381,6 +419,7 @@ export class TaskRunner {
             userMemory,
             customSystemPrompt,
             textProtocol,
+            extraSections: customize.sections,
           })
         : buildAgentPrompt({
             modelName: entry.displayName,
@@ -395,6 +434,7 @@ export class TaskRunner {
             projectKnowledge: knowledge,
             customSystemPrompt,
             textProtocol,
+            extraSections: customize.sections,
           });
       const toolTokens = protocol === 'native' ? estimateTokens(JSON.stringify(schemas)) : 0;
       const history = await this.fitHistory(run, input, { system, protocol, budget: budget - toolTokens, contextLength, provider, load: preset.load, round });
@@ -467,9 +507,16 @@ export class TaskRunner {
     }
     const context = o.contextLength.toLocaleString('en-US');
     const firstStep = o.round === 0 && this.branchWithLive(run, input).filter((m) => m.role === 'user').length <= 1;
+    if (run.chat) {
+      throw new Error(
+        firstStep
+          ? `The chat's tools need more room than the model's ${context}-token context window. Raise the context length in Load settings, or turn off web search and connectors for chats.`
+          : `This chat no longer fits the model's ${context}-token context window, even after shortening earlier tool results. Raise the context length in Load settings, or start a new chat.`,
+      );
+    }
     throw new Error(
       firstStep
-        ? `Cowork needs more room than the model's ${context}-token context window: the instructions and tools alone nearly fill it. Raise the context length in Load settings (16K or more works best).`
+        ? `${agentNoun(input.store.getConversation(input.conversationId)?.kind).mode} needs more room than the model's ${context}-token context window: the instructions and tools alone nearly fill it. Raise the context length in Load settings (16K or more works best).`
         : `This task no longer fits the model's ${context}-token context window, even after shortening earlier steps. Raise the context length in Load settings, or start a new task.`,
     );
   }
@@ -657,16 +704,18 @@ export class TaskRunner {
 
     const tool = findTool(tools, call.name);
     if (!tool) {
-      const known = findTool(ALL_TOOLS, call.name);
-      if (known && task.permissionMode === 'plan' && (known.category === 'edit' || known.category === 'command')) {
+      const known = findTool(run.chat ? [] : ALL_TOOLS, call.name) ?? findTool(ASSISTANT_TOOLS, call.name);
+      if (known && !run.chat && task.permissionMode === 'plan' && (known.category === 'edit' || known.category === 'command')) {
         if (task.code?.mode === 'ask') return fail(`${known.name} is not available in Ask mode. Answer from what the read-only tools show; the user can switch to Code mode for changes.`);
         return fail(`${known.name} is not available in plan mode. Investigate with the read-only tools and finish with a plan.`);
       }
-      if (known?.category === 'web') return fail('Web access is turned off in Settings → Cowork.');
+      if (findTool(ALL_TOOLS, call.name)?.category === 'web') return fail(run.chat ? 'Web search is turned off for chats (use the tools menu in the composer).' : 'Web access is turned off in Settings → Cowork.');
+      if (known?.category === 'memory') return fail(run.store.incognito ? 'Nothing is remembered in incognito chats.' : 'Memory is turned off in Customize → Memory.');
       return fail(`There is no tool named "${call.name}". Available tools: ${tools.map((t) => t.name).join(', ')}.`);
     }
     call.name = tool.name;
     call.category = tool.category;
+    if (tool.connector) call.connector = tool.connector;
     const parsed = tool.input.safeParse(normalizeArgs(tool, call.args ?? {}));
     if (!parsed.success) return fail(`Invalid arguments for ${tool.name}:\n${z.prettifyError(parsed.error)}`);
     const args = parsed.data;
@@ -683,7 +732,8 @@ export class TaskRunner {
     try {
       const request = tool.approval ? await tool.approval(args, ctx) : null;
       const needsApproval =
-        !!request && (tool.category === 'web' || (tool.category === 'edit' && task.permissionMode !== 'auto-edits') || (tool.category === 'command' && !task.allowCommands));
+        !!request &&
+        (tool.category === 'web' || tool.category === 'connector' || (tool.category === 'edit' && task.permissionMode !== 'auto-edits') || (tool.category === 'command' && !task.allowCommands));
       if (request && needsApproval) {
         call.approval = request;
         call.status = 'awaiting-approval';
@@ -702,6 +752,7 @@ export class TaskRunner {
             const host = new URL(request.url).hostname;
             if (!task.allowedDomains.includes(host)) task.allowedDomains = [...task.allowedDomains, host];
           }
+          if (tool.category === 'connector') await tool.onAllowAll?.();
         }
       }
       call.status = 'running';
@@ -770,8 +821,10 @@ export class TaskRunner {
       }
     }
     const text = joinText(run.parts);
-    const final: GenerationStats = { ...stats, totalMs: Date.now() - startedAt };
+    const end = Date.now();
+    const final: GenerationStats = { ...stats, totalMs: end - startedAt };
     if (final.ttftMs === undefined && firstToken) final.ttftMs = firstToken - startedAt;
+    if (!final.tokensPerSecond && final.completionTokens && firstToken && end > firstToken) final.tokensPerSecond = final.completionTokens / ((end - firstToken) / 1000);
     if (status === 'stopped') final.stopReason = 'stopped';
     run.task.status = status === 'error' ? 'error' : status === 'stopped' || final.stopReason === 'step-limit' ? 'stopped' : 'done';
 
@@ -783,12 +836,14 @@ export class TaskRunner {
       status,
       ...(status === 'error' ? { error: run.state.error ?? 'Something went wrong.' } : {}),
     });
-    store.updateConversation(conversationId, { task: run.task });
+    if (!run.chat) store.updateConversation(conversationId, { task: run.task });
+    else store.updateConversation(conversationId, {});
     const saved = store.getMessage(assistant.id);
     if (saved) store.indexMessage(saved);
-    if (status === 'complete') {
+    if (status === 'complete' || (run.chat && status === 'stopped')) {
       const lastRound = Math.max(-1, ...run.parts.map((p) => p.round));
-      const finalText = run.parts.filter((p): p is TextPart => p.type === 'text' && p.round === lastRound).map((p) => p.text).join('\n\n');
+      // Chats keep artifacts from any round; agent work only from its final answer.
+      const finalText = run.chat ? text : run.parts.filter((p): p is TextPart => p.type === 'text' && p.round === lastRound).map((p) => p.text).join('\n\n');
       try {
         if (finalText) saveArtifactsFromMessage(conversationId, assistant.id, finalText, store.incognito);
       } catch (err) {
@@ -803,7 +858,9 @@ export class TaskRunner {
     const conversation = store.getConversation(conversationId);
     const conversationKind = conversation?.kind ?? 'task';
     const title = conversation?.title || (conversationKind === 'code' ? 'Your session' : 'Your task');
-    if (status === 'complete') {
+    if (run.chat) {
+      // Chats are interactive: no "done" or "failed" notifications.
+    } else if (status === 'complete') {
       bus.emit('tasks:notify', { conversationId, conversationKind, kind: 'done', title: `${title} is done`, body: text.split('\n').find((l) => l.trim())?.slice(0, 180) ?? 'The work is finished.' });
     } else if (status === 'error') {
       bus.emit('tasks:notify', { conversationId, conversationKind, kind: 'error', title: `${title} failed`, body: run.state.error ?? 'Something went wrong.' });

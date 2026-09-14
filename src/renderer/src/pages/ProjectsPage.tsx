@@ -263,6 +263,25 @@ export function ProjectDetailPage() {
             </Button>
           </div>
           {files.length > 0 && <div className="mt-1 text-[12px] text-muted-foreground">~{totalTokens.toLocaleString('en-US')} tokens · included in full when they fit the context, otherwise the most relevant excerpts are used</div>}
+          {files.length > 0 && data.index.state !== 'off' && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-divider bg-background px-2.5 py-1.5 text-[12px] text-muted-foreground" data-testid="project-index">
+              {data.index.state === 'indexing' && <Spinner className="size-3" />}
+              <span className="min-w-0 flex-1 truncate" title={data.index.message}>
+                {data.index.state === 'ready'
+                  ? `Searched by meaning · ${data.index.chunks} excerpts indexed`
+                  : data.index.state === 'indexing'
+                    ? `Indexing ${data.index.embedded} / ${data.index.chunks} excerpts…`
+                    : data.index.state === 'error'
+                      ? `Indexing failed: ${data.index.message ?? 'unknown error'}`
+                      : `${data.index.embedded} / ${data.index.chunks} excerpts indexed`}
+              </span>
+              {data.index.state !== 'indexing' && (
+                <button className="shrink-0 text-brand hover:underline" onClick={() => void invoke('projects:reindex', project.id)}>
+                  Reindex
+                </button>
+              )}
+            </div>
+          )}
           <div className="mt-2 space-y-1.5">
             {files.length === 0 && <p className="text-[13px] text-muted-foreground">Add PDFs, documents or code for models to reference.</p>}
             {files.map((f) => (

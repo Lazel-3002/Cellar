@@ -39,7 +39,7 @@ test.beforeAll(async () => {
   app = await electron.launch({
     args: [project],
     cwd: project,
-    env: { ...process.env, CELLAR_USER_DATA: join(profile, 'userdata'), CELLAR_HOME: join(profile, 'home') },
+    env: { ...process.env, CELLAR_USER_DATA: join(profile, 'userdata'), CELLAR_HOME: join(profile, 'home'), CELLAR_NO_GLOBAL_SHORTCUT: '1' },
   });
   win = await app.firstWindow();
   await app.evaluate(({ BrowserWindow }) => {
@@ -320,6 +320,95 @@ test('code fixes a bug in its own worktree, with changes, terminal, side chat an
   }
 });
 
+test('attached images show in the conversation, /tools lists tools, and chats use connector tools', async () => {
+  await goHome();
+  await win.getByRole('button', { name: 'Chat', exact: true }).click();
+  await selectModel('mock-echo');
+  // Drop a PNG onto the composer, as if dragged from the desktop.
+  await win.evaluate(() => {
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([png], 'fan-game.png', { type: 'image/png' }));
+    const target = document.querySelector('[data-testid="composer-input"]')!.parentElement!;
+    target.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  await expect(win.getByTestId('attachment-chip').locator('img')).toBeVisible({ timeout: 10_000 });
+  await send('try find this fan game');
+  await expect(lastAssistant()).toHaveAttribute('data-status', 'complete', { timeout: 20_000 });
+  const image = win.getByTestId('message-attachments').locator('img').first();
+  await expect(image).toBeVisible();
+  expect(await image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(2);
+  await image.click();
+  await expect(win.getByRole('dialog').locator('img')).toBeVisible();
+  await win.keyboard.press('Escape');
+
+  // /tools shows what the model can use in this chat.
+  await win.getByTestId('composer-input').last().fill('/to');
+  await expect(win.getByTestId('slash-commands')).toContainText('/tools');
+  await send('/tools');
+  await expect(win.getByTestId('tools-dialog')).toContainText('web_search', { timeout: 10_000 });
+  await win.keyboard.press('Escape');
+
+  // Add an MCP server in Customize → Connectors.
+  await win.getByRole('link', { name: 'Customize', exact: true }).click();
+  await win.getByRole('link', { name: 'Connectors' }).click();
+  await win.getByTestId('add-connector').click();
+  await win.getByTestId('connector-name').fill('Warehouse');
+  await win.getByTestId('connector-command').fill('node');
+  await win.getByTestId('connector-args').fill(`"${join(project, 'tests', 'fixtures', 'mcp-server.mjs')}"`);
+  await win.getByTestId('save-connector').click();
+  await expect(win.getByTestId('connector-row')).toContainText('3 tools', { timeout: 60_000 });
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-connectors.png') });
+
+  // A chat calls the connector's read-only tool without asking and answers from its result.
+  await goHome();
+  await selectModel('mock-tools');
+  await send('How many bolts are in stock?');
+  await expect(lastAssistant()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+  await expect(lastAssistant()).toContainText('The warehouse says: bolts: 42 in stock');
+  await expect(lastAssistant().getByTestId('tool-step')).toContainText('Warehouse');
+  const toolRequest = mock.requests.find((r) => r.model === 'mock-tools' && r.tools?.length);
+  expect(toolRequest?.tools?.map((t) => t.function.name)).toEqual(expect.arrayContaining(['warehouse__lookup', 'web_search']));
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-chat-connector.png') });
+  await selectModel('mock-echo');
+});
+
+test('skills, memory and scheduled tasks from their pages', async () => {
+  // A skill made in Customize → Skills.
+  await win.getByRole('link', { name: 'Customize', exact: true }).click();
+  await win.getByRole('link', { name: 'Skills' }).click();
+  await win.getByTestId('new-skill').click();
+  await win.getByTestId('skill-name').fill('haiku-writer');
+  await win.getByTestId('skill-description').fill('Write haiku when the user asks for a poem.');
+  await win.getByTestId('skill-body').fill('Write three lines: 5, 7 and 5 syllables.');
+  await win.getByTestId('save-skill').click();
+  await expect(win.getByTestId('skill-row').filter({ hasText: 'haiku-writer' })).toBeVisible();
+
+  // /remember saves to memory without sending anything to the model.
+  await goHome();
+  const before = mock.requests.length;
+  await send('/remember I prefer answers in metric units');
+  await win.getByRole('link', { name: 'Customize', exact: true }).click();
+  await win.getByRole('link', { name: 'Memory' }).click();
+  await expect(win.getByTestId('memory-row')).toContainText('I prefer answers in metric units');
+  expect(mock.requests.length).toBe(before);
+
+  // A scheduled chat, run now from the Scheduled page.
+  const providerId = (await ipc<Array<{ id: string; kind: string }>>('providers:configs')).find((c) => c.kind === 'openai')!.id;
+  await ipc('scheduled:save', { name: 'Daily hello', prompt: 'Say hello from the schedule', kind: 'chat', cron: '0 9 * * 1-5', model: { providerId, modelId: 'mock-echo' }, folder: null, permissionMode: 'auto-edits', allowCommands: false, projectId: null, enabled: true });
+  await win.getByRole('link', { name: 'Scheduled', exact: true }).click();
+  await expect(win.getByTestId('scheduled-row')).toContainText('Every weekday at 09:00');
+  await win.getByTestId('run-now').click();
+  await expect(win.getByTestId('scheduled-run').first()).toContainText('Daily hello', { timeout: 20_000 });
+  await expect.poll(async () => (await ipc<Array<{ status: string }>>('scheduled:runs'))[0]?.status, { timeout: 20_000 }).toBe('done');
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-scheduled.png') });
+  await win.getByTestId('scheduled-run').first().click();
+  await expect(lastAssistant()).toContainText('Echo: Say hello from the schedule');
+  const system = String([...mock.requests].reverse().find((r) => JSON.stringify(r.messages).includes('Say hello from the schedule'))?.messages[0].content);
+  expect(system).toContain('I prefer answers in metric units');
+  expect(system).toContain('haiku-writer');
+});
+
 test('a task keeps working in the background and says when it is done', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'cellar-cowork-bg-'));
   try {
@@ -340,7 +429,7 @@ test('a task keeps working in the background and says when it is done', async ()
     const pending = (await pendingApproval())!;
     await expect(win.getByText(/needs your approval/).first()).toBeVisible({ timeout: 10_000 });
     await ipc('tasks:approve', started.assistantMessageId, pending, { action: 'allow' });
-    const toast = win.locator('[data-sonner-toast]').filter({ hasText: 'is done' });
+    const toast = win.locator('[data-sonner-toast]').filter({ hasText: 'Turn my notes into a report is done' });
     await expect(toast).toBeVisible({ timeout: 20_000 });
     await toast.getByRole('button', { name: 'Open' }).click();
     await expect(win.getByTestId('task-turn').last()).toHaveAttribute('data-status', 'complete');

@@ -7,6 +7,7 @@ import { bus } from '../lib/events';
 import { newId } from '../lib/util';
 import { classifyFile, extractPdfText } from '../chat/attachments';
 import { estimateTokens } from '../chat/context-window';
+import { embeddingIndex, fuseRankings } from '../rag/embeddings';
 
 interface ProjectRow {
   id: string;
@@ -69,7 +70,7 @@ export function projectDetail(id: string): ProjectDetail {
     'SELECT id, project_id, name, mime, size, tokens, created_at FROM project_files WHERE project_id = ? ORDER BY created_at',
     id,
   ).map((f): ProjectFile => ({ id: f.id, projectId: f.project_id, name: f.name, mime: f.mime, size: f.size, tokens: f.tokens, createdAt: f.created_at }));
-  return { project, files, conversations: listConversations({ projectId: id }) };
+  return { project, files, conversations: listConversations({ projectId: id }), index: embeddingIndex.status(id) };
 }
 
 export function createProject(input: { name: string; description: string }): Project {
@@ -128,6 +129,7 @@ export async function addProjectFiles(projectId: string, filePaths: string[]): P
     added.push({ id, projectId, name, mime: type.mime, size: info.size, tokens, createdAt: Date.now() });
   }
   bus.emit('projects:changed', { projectId });
+  if (added.length) void embeddingIndex.index(projectId);
   return added;
 }
 
@@ -136,16 +138,18 @@ export function removeProjectFile(fileId: string): void {
   if (!row) return;
   transaction(() => {
     run('DELETE FROM project_chunks WHERE file_id = ?', fileId);
+    run('DELETE FROM project_vectors WHERE file_id = ?', fileId);
     run('DELETE FROM project_files WHERE id = ?', fileId);
   });
   bus.emit('projects:changed', { projectId: row.project_id });
 }
 
 /**
- * Project knowledge for the system prompt: every file when they fit the budget,
- * otherwise the best-matching chunks for the latest user message (BM25 via FTS5).
+ * Project knowledge for the system prompt: every file when they fit the budget, otherwise the
+ * best-matching chunks for the latest user message: BM25 via FTS5, fused with embedding similarity
+ * when an embedding model is set.
  */
-export function projectKnowledge(projectId: string, query: string, budgetTokens: number): string {
+export async function projectKnowledge(projectId: string, query: string, budgetTokens: number): Promise<string> {
   const files = all<{ id: string; name: string; content: string; tokens: number }>('SELECT id, name, content, tokens FROM project_files WHERE project_id = ? ORDER BY created_at', projectId);
   if (files.length === 0) return '';
   const total = files.reduce((s, f) => s + f.tokens, 0);
@@ -154,13 +158,27 @@ export function projectKnowledge(projectId: string, query: string, budgetTokens:
   }
   const names = new Map(files.map((f) => [f.id, f.name]));
   const match = ftsQuery(query);
-  const rows = match
-    ? all<{ content: string; file_id: string }>(
-        'SELECT content, file_id FROM project_chunks WHERE project_chunks MATCH ? AND project_id = ? ORDER BY bm25(project_chunks) LIMIT 40',
+  const keyword = match
+    ? all<{ content: string; file_id: string; ord: number }>(
+        'SELECT content, file_id, ord FROM project_chunks WHERE project_chunks MATCH ? AND project_id = ? ORDER BY bm25(project_chunks) LIMIT 40',
         match,
         projectId,
       )
     : [];
+  const semantic = await embeddingIndex.search(projectId, query);
+  let rows: Array<{ content: string; file_id: string }> = keyword;
+  if (semantic.length) {
+    const byKey = new Map(keyword.map((r) => [`${r.file_id}:${r.ord}`, r]));
+    const missing = semantic.filter((key) => !byKey.has(key));
+    for (const key of missing) {
+      const [fileId, ord] = [key.slice(0, key.lastIndexOf(':')), Number(key.slice(key.lastIndexOf(':') + 1))];
+      const row = get<{ content: string; file_id: string; ord: number }>('SELECT content, file_id, ord FROM project_chunks WHERE file_id = ? AND ord = ? AND project_id = ?', fileId, ord, projectId);
+      if (row) byKey.set(key, row);
+    }
+    rows = fuseRankings([keyword.map((r) => `${r.file_id}:${r.ord}`), semantic])
+      .map((key) => byKey.get(key))
+      .filter((r): r is { content: string; file_id: string; ord: number } => !!r);
+  }
   const picked: string[] = [];
   let used = 0;
   for (const row of rows) {

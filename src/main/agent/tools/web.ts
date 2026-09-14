@@ -2,7 +2,7 @@ import { isIP } from 'node:net';
 import { z } from 'zod';
 import { extractPdfText } from '../../chat/attachments';
 import { fetchWithTimeout } from '../../lib/util';
-import { htmlToText, parseDuckDuckGoHtml, parseSearxngJson, type SearchResult } from '../html';
+import { htmlToText, parseBraveHtml, parseDuckDuckGoHtml, parseSearxngJson, type SearchResult } from '../html';
 import { clip, defineTool, ToolError, type ToolContext } from './types';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36';
@@ -71,6 +71,36 @@ async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<Sea
   return parseDuckDuckGoHtml(html);
 }
 
+async function searchBrave(query: string, signal: AbortSignal): Promise<SearchResult[]> {
+  const res = await fetchOnceMore(`https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`, {
+    headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
+    timeoutMs: 15_000,
+    signal,
+  });
+  if (res.status === 429) throw new ToolError('Brave Search is limiting automated searches. Wait a minute and try again, or set up SearXNG in Settings → Cowork.');
+  if (!res.ok) throw new ToolError(`Brave Search returned HTTP ${res.status}.`);
+  return parseBraveHtml(await res.text());
+}
+
+/** DuckDuckGo first; when it refuses or finds nothing, Brave Search. */
+async function searchWithFallback(query: string, signal: AbortSignal): Promise<SearchResult[]> {
+  let first: unknown;
+  try {
+    const results = await searchDuckDuckGo(query, signal);
+    if (results.length) return results;
+  } catch (err) {
+    if (signal.aborted) throw err;
+    first = err;
+  }
+  try {
+    const results = await searchBrave(query, signal);
+    if (results.length || !first) return results;
+  } catch (err) {
+    if (signal.aborted || !first) throw err;
+  }
+  throw first;
+}
+
 async function searchSearxng(base: string, query: string, signal: AbortSignal): Promise<SearchResult[]> {
   if (!base) throw new ToolError('SearXNG is selected but no server URL is set. Add it in Settings → Cowork.');
   const res = await fetchOnceMore(`${base.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}&format=json`, { headers: { Accept: 'application/json' }, timeoutMs: 15_000, signal });
@@ -88,10 +118,14 @@ export const webSearch = defineTool({
     max_results: z.coerce.number().int().min(1).max(10).optional().describe('Number of results (default 6).'),
   }),
   async run(args, ctx) {
-    const results = (ctx.settings.webSearchProvider === 'searxng' ? await searchSearxng(ctx.settings.searxngUrl, args.query, ctx.signal) : await searchDuckDuckGo(args.query, ctx.signal)).slice(
-      0,
-      args.max_results ?? 6,
-    );
+    const provider = ctx.settings.webSearchProvider;
+    const found =
+      provider === 'searxng'
+        ? await searchSearxng(ctx.settings.searxngUrl, args.query, ctx.signal)
+        : provider === 'brave'
+          ? await searchBrave(args.query, ctx.signal)
+          : await searchWithFallback(args.query, ctx.signal);
+    const results = found.slice(0, args.max_results ?? 6);
     if (results.length === 0) return `No results for "${args.query}".`;
     for (const r of results) {
       const url = canonicalUrl(r.url);

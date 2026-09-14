@@ -28,7 +28,7 @@ export async function startMockServer(): Promise<MockServer> {
   const server: Server = createServer((req, res) => {
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -85,6 +85,20 @@ export async function startMockServer(): Promise<MockServer> {
             send({}, 'tool_calls');
           } else {
             send({ content: results.at(-1)?.startsWith('The user denied') ? 'Okay, I left your folder unchanged.' : 'Done. I wrote report.md from your notes.' }, 'stop');
+          }
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        const lookup = parsed.tools?.map((t) => t.function.name).find((name) => name.endsWith('__lookup'));
+        if (parsed.model === 'mock-tools' && lookup) {
+          // Scripted chat with a connector: look the item up, then answer from the result.
+          const result = [...parsed.messages].reverse().find((m) => m.role === 'tool');
+          if (!result) {
+            send({ content: 'Let me check the warehouse.' });
+            send({ tool_calls: [{ index: 0, id: 'look1', type: 'function', function: { name: lookup, arguments: JSON.stringify({ item: 'bolts' }) } }] });
+            send({}, 'tool_calls');
+          } else {
+            send({ content: `The warehouse says: ${String(result.content)}` }, 'stop');
           }
           res.end('data: [DONE]\n\n');
           return;

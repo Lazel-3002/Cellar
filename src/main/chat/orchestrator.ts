@@ -14,6 +14,9 @@ import type {
 import { DEFAULT_INFERENCE_PARAMS, type ModelEntry, type ModelRef } from '@shared/types/models';
 import { TaskRunner } from '../agent/runner';
 import { prepareCodeSession } from '../code/session';
+import { connectors } from '../connectors/manager';
+import { assistantContext } from '../customize/context';
+import { activeSkills } from '../customize/skills';
 import { MemoryChatStore, SqliteChatStore, type ChatStore } from '../db/chat-store';
 import { run } from '../db/client';
 import { bus } from '../lib/events';
@@ -36,17 +39,42 @@ interface ActiveGeneration {
   state: ChatStreamEvent;
 }
 
+export interface TurnFinished {
+  conversationId: string;
+  messageId: string;
+  status: 'complete' | 'stopped' | 'error';
+  error?: string;
+}
+
 class ChatOrchestrator {
   private readonly memory = new MemoryChatStore();
   private readonly sqlite = new SqliteChatStore();
   private readonly active = new Map<string, ActiveGeneration>();
+  private readonly finishedListeners = new Set<(event: TurnFinished) => void>();
   readonly tasks = new TaskRunner({
     onFinished: (input, result) => {
       if (result.status === 'complete' && input.assistant.parentId && settings.get().autoTitle && this.needsTitle.delete(input.conversationId)) {
         void this.autoTitle(input.store, input.conversationId, input.entry, input.assistant.parentId, result.text);
       }
+      this.turnFinished({ conversationId: input.conversationId, messageId: input.assistant.id, status: result.status, error: input.store.getMessage(input.assistant.id)?.error });
     },
   });
+
+  /** Called when any assistant turn (chat, task or session) ends. */
+  onTurnFinished(listener: (event: TurnFinished) => void): () => void {
+    this.finishedListeners.add(listener);
+    return () => this.finishedListeners.delete(listener);
+  }
+
+  private turnFinished(event: TurnFinished): void {
+    for (const listener of this.finishedListeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        log.warn('turn listener failed', errorMessage(err));
+      }
+    }
+  }
   /** Tasks whose first turn is still running and that should get a generated title. */
   private readonly needsTitle = new Set<string>();
 
@@ -110,7 +138,7 @@ class ChatOrchestrator {
       conversation = {
         id,
         kind,
-        title: '',
+        title: input.title?.trim().slice(0, 120) ?? '',
         projectId: input.projectId ?? null,
         starred: false,
         currentLeafId: null,
@@ -163,6 +191,7 @@ class ChatOrchestrator {
       log.error('task could not start', err);
       store.updateMessage(assistant.id, { status: 'error', error: errorMessage(err), parts: [] });
       this.notify(conversationId);
+      this.turnFinished({ conversationId, messageId: assistant.id, status: 'error', error: errorMessage(err) });
     }
   }
 
@@ -182,9 +211,9 @@ class ChatOrchestrator {
     return this.tasks.isRunningIn(conversationId) || [...this.active.values()].some((a) => a.state.conversationId === conversationId);
   }
 
-  /** Full output of a tool step (stream events carry a shortened copy). Tasks are never incognito. */
+  /** Full output of a tool step (stream events carry a shortened copy). */
   toolResult(messageId: string, toolCallId: string): string {
-    return this.tasks.toolResult(this.sqlite, messageId, toolCallId);
+    return this.tasks.toolResult(this.memory.getMessage(messageId) ? this.memory : this.sqlite, messageId, toolCallId);
   }
 
   /** The folder a task works in, for opening and saving its files. */
@@ -319,12 +348,13 @@ class ChatOrchestrator {
         projectName = project.name;
         projectInstructions = project.instructions;
         const lastUser = [...history].reverse().find((m) => m.role === 'user');
-        knowledge = projectKnowledge(project.id, lastUser?.content ?? '', 6000);
+        knowledge = await projectKnowledge(project.id, lastUser?.content ?? '', 6000);
       } catch {
         // project deleted
       }
     }
     const preset = getPreset(entry.ref, entry.contextLength);
+    const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: false });
     const system = buildSystemPrompt({
       modelName: entry.displayName,
       userName: app.userName,
@@ -334,11 +364,27 @@ class ChatOrchestrator {
       projectKnowledge: knowledge,
       customSystemPrompt: conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt,
       artifacts: app.artifacts && supportsArtifactInstructions(entry),
+      extraSections: customize.sections,
     });
     return { messages: out, system };
   }
 
+  /** Chats go through the agent loop when the model calls tools natively and any chat tool is on. */
+  private async chatUsesTools(store: ChatStore, entry: ModelEntry): Promise<boolean> {
+    if (!entry.capabilities.tools) return false;
+    const app = settings.get();
+    if (app.chatWebSearch) return true;
+    if (!store.incognito && (app.memoryEnabled || app.searchPastChats)) return true;
+    if (connectors.available().length > 0) return true;
+    return (await activeSkills()).length > 0;
+  }
+
   private async generate(store: ChatStore, conversationId: string, assistant: Message, entry: ModelEntry, thinking: ThinkingLevel, autoTitle: boolean): Promise<void> {
+    if (await this.chatUsesTools(store, entry).catch(() => false)) {
+      if (autoTitle) this.needsTitle.add(conversationId);
+      await this.runTask(store, conversationId, assistant, entry, thinking);
+      return;
+    }
     const controller = new AbortController();
     const state: ChatStreamEvent = { conversationId, messageId: assistant.id, content: '', reasoning: '', status: 'streaming' };
     this.active.set(assistant.id, { controller, state });
@@ -446,6 +492,8 @@ class ChatOrchestrator {
       this.active.delete(assistant.id);
       store.updateConversation(conversationId, {});
       this.notify(conversationId);
+      const status = state.status === 'complete' || state.status === 'stopped' ? state.status : 'error';
+      this.turnFinished({ conversationId, messageId: assistant.id, status, error: state.error });
     }
   }
 

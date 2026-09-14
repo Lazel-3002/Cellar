@@ -1,7 +1,9 @@
-import { createHashHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
+import { createHashHistory, createRootRoute, createRoute, createRouter, Navigate } from '@tanstack/react-router';
 import { AppShell } from './components/shell/AppShell';
 import { ChatPage } from './pages/ChatPage';
 import { CodeHomePage, CodeSessionPage } from './pages/CodePage';
+import { CustomizePage } from './pages/CustomizePage';
+import { ScheduledPage } from './pages/ScheduledPage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
 import { ArtifactsPage, ComingSoonPage, RecentsPage } from './pages/MiscPages';
@@ -32,8 +34,9 @@ const routes = [
     }),
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/$section', component: SettingsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/scheduled', component: () => <ComingSoonPage feature="scheduled" /> }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/customize', component: () => <ComingSoonPage feature="customize" /> }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/scheduled', component: ScheduledPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/customize', component: () => <Navigate to="/customize/$section" params={{ section: 'skills' }} replace /> }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/customize/$section', component: CustomizePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/code', component: CodeHomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/code/$conversationId', component: CodeSessionPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/design', component: () => <ComingSoonPage feature="design" /> }),

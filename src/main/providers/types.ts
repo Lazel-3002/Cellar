@@ -50,6 +50,8 @@ export interface Provider {
   status(): Promise<ProviderStatus>;
   listModels(): Promise<ModelEntry[]>;
   chat(request: ChatRequest): AsyncGenerator<StreamEvent>;
+  /** Embedding vectors for texts, in order (embedding models only). */
+  embed?(entry: ModelEntry, input: string[], signal?: AbortSignal): Promise<number[][]>;
   load?(entry: ModelEntry, config: LoadConfig, onProgress?: (event: LoadProgressEvent) => void): Promise<LoadedModelInfo>;
   unload?(entry: ModelEntry): Promise<void>;
   loadedModels?(): Promise<LoadedModelInfo[]>;

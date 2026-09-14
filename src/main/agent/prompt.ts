@@ -15,6 +15,8 @@ export interface AgentPromptInput {
   customSystemPrompt?: string;
   /** Tool instructions for models without native tool calling. */
   textProtocol?: string;
+  /** Memory, skills and connector instructions. */
+  extraSections?: string[];
   now?: Date;
 }
 
@@ -68,6 +70,8 @@ export function buildAgentPrompt(input: AgentPromptInput): string {
     if (input.projectInstructions?.trim()) parts.push(`<project_instructions>\n${input.projectInstructions.trim()}\n</project_instructions>`);
     if (input.projectKnowledge?.trim()) parts.push(`<project_knowledge>\n${input.projectKnowledge.trim()}\n</project_knowledge>`);
   }
+  if (has('get_diagnostics')) parts.push('After you write or change code, the tool result lists any syntax problems found in that file; fix them before you continue. get_diagnostics checks a file or the whole project on demand.');
+  for (const section of input.extraSections ?? []) if (section.trim()) parts.push(section.trim());
   if (input.customSystemPrompt?.trim()) parts.push(input.customSystemPrompt.trim());
   if (input.textProtocol) parts.push(input.textProtocol);
   return parts.join('\n\n');

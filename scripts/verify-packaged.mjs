@@ -23,5 +23,13 @@ const runtimes = await ipc('runtimes:list', true);
 console.log('runtimes:', runtimes.map((r) => r.label).join(' | '));
 const info = await ipc('app:info');
 console.log('app:', info.version, info.isDev ? 'dev' : 'packaged');
+// M4 dependencies inside the asar: croner (schedules) and the MCP SDK (connectors).
+const cron = await ipc('scheduled:preview', '0 9 * * 1-5');
+console.log('schedule preview:', cron.description, cron.next.length, 'next runs');
+const connector = await ipc('connectors:save', { name: 'Packaged check', transport: 'stdio', command: 'node', args: [join(project, 'tests', 'fixtures', 'mcp-server.mjs')], env: {}, url: '', headers: {}, enabled: true });
+console.log('connector:', connector.state, `${connector.tools.length} tools`, connector.message ?? '');
+await ipc('connectors:delete', connector.config.id);
+const tools = await ipc('tools:list', 'chat');
+console.log('chat tools:', tools.tools.map((t) => t.name).join(', '));
 await win.screenshot({ path: join(project, 'test-results', 'screenshots', 'packaged-home.png') });
 await app.close();

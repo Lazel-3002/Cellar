@@ -58,13 +58,17 @@ export interface TaskState {
   code?: CodeSessionInfo;
 }
 
-export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan';
+/** connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget. */
+export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory';
 
 export type ToolPartStatus = 'streaming' | 'awaiting-approval' | 'running' | 'done' | 'error' | 'denied' | 'cancelled';
 
 export interface ApprovalRequest {
-  kind: 'write' | 'edit' | 'document' | 'command' | 'web';
+  kind: 'write' | 'edit' | 'document' | 'command' | 'web' | 'connector';
   title: string;
+  /** Connector tools: the connector's name and the tool's own name. */
+  connector?: string;
+  tool?: string;
   path?: string;
   /** For writes: whether the file already exists. */
   exists?: boolean;
@@ -84,6 +88,8 @@ export interface ToolPart {
   args?: Record<string, unknown>;
   status: ToolPartStatus;
   category?: ToolCategory;
+  /** Connector tools: the connector's name and the tool's own name, for display. */
+  connector?: { name: string; tool: string };
   /** Tool output sent back to the model; live stream events carry a shortened copy. */
   result?: string;
   resultTruncated?: boolean;
@@ -128,6 +134,8 @@ export interface ApprovalDecision {
 export interface TaskStartOptions {
   folder: string | null;
   permissionMode: PermissionMode;
+  /** Run commands without asking (scheduled tasks that the user allowed to). */
+  allowCommands?: boolean;
 }
 
 export interface TaskNotice {

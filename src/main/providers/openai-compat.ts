@@ -181,6 +181,21 @@ export async function* streamChatCompletion(opts: StreamChatOptions): AsyncGener
   yield { type: 'done', stopReason: finishReason ?? undefined };
 }
 
+/** POST /v1/embeddings; vectors come back in input order. */
+export async function fetchEmbeddings(opts: { baseUrl: string; apiKey?: string; model: string; input: string[]; signal?: AbortSignal }): Promise<number[][]> {
+  const res = await fetch(`${trimBaseUrl(opts.baseUrl)}/v1/embeddings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(opts.apiKey) },
+    body: JSON.stringify({ model: opts.model, input: opts.input, encoding_format: 'float' }),
+    signal: opts.signal,
+  });
+  if (!res.ok) throw new ProviderHttpError(res.status, await readErrorBody(res));
+  const json = (await res.json()) as { data?: Array<{ index?: number; embedding: number[] }> };
+  const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  if (data.length !== opts.input.length) throw new Error(`The embedding server returned ${data.length} vectors for ${opts.input.length} texts.`);
+  return data.map((d) => d.embedding);
+}
+
 export interface OpenAIModelList {
   data?: Array<{ id: string; owned_by?: string; meta?: Record<string, unknown>; max_model_len?: number; context_length?: number }>;
 }

@@ -50,8 +50,21 @@ function defaults(): StoredSettings {
     codeMaxSteps: 80,
     terminalShell: 'auto',
     recentRepos: [],
+    chatWebSearch: true,
+    disabledSkills: [],
+    disabledPlugins: [],
+    memoryEnabled: true,
+    searchPastChats: true,
+    runInBackground: true,
+    // Ctrl+Alt+Space belongs to Claude Desktop's quick entry, which people often run alongside.
+    quickEntryShortcut: 'Alt+Shift+Space',
+    voiceModel: 'ggml-base.bin',
+    voiceLanguage: 'auto',
+    embeddingModel: null,
   };
 }
+
+const uniqueStrings = (values: string[], max = 500) => [...new Set(values.map((v) => String(v).trim()).filter(Boolean))].slice(0, max);
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(n)));
 
@@ -122,7 +135,7 @@ class SettingsService {
     if (patch.coworkMaxSteps !== undefined) set('coworkMaxSteps', clamp(patch.coworkMaxSteps, 5, 500));
     if (patch.coworkWebAccess !== undefined) set('coworkWebAccess', !!patch.coworkWebAccess);
     if (patch.coworkNotifications !== undefined) set('coworkNotifications', !!patch.coworkNotifications);
-    if (patch.webSearchProvider !== undefined && ['duckduckgo', 'searxng'].includes(patch.webSearchProvider)) set('webSearchProvider', patch.webSearchProvider);
+    if (patch.webSearchProvider !== undefined && ['duckduckgo', 'brave', 'searxng'].includes(patch.webSearchProvider)) set('webSearchProvider', patch.webSearchProvider);
     if (patch.searxngUrl !== undefined) set('searxngUrl', patch.searxngUrl.trim().replace(/\/+$/, ''));
     if (patch.recentFolders !== undefined) set('recentFolders', [...new Set(patch.recentFolders.map((d) => d.trim()).filter(Boolean))].slice(0, 8));
     if (patch.codeMode !== undefined && ['ask', 'plan', 'code'].includes(patch.codeMode)) set('codeMode', patch.codeMode);
@@ -131,6 +144,16 @@ class SettingsService {
     if (patch.codeMaxSteps !== undefined) set('codeMaxSteps', clamp(patch.codeMaxSteps, 5, 500));
     if (patch.terminalShell !== undefined && ['auto', 'pwsh', 'powershell', 'cmd'].includes(patch.terminalShell)) set('terminalShell', patch.terminalShell);
     if (patch.recentRepos !== undefined) set('recentRepos', [...new Set(patch.recentRepos.map((d) => d.trim()).filter(Boolean))].slice(0, 10));
+    if (patch.chatWebSearch !== undefined) set('chatWebSearch', !!patch.chatWebSearch);
+    if (patch.disabledSkills !== undefined) set('disabledSkills', uniqueStrings(patch.disabledSkills));
+    if (patch.disabledPlugins !== undefined) set('disabledPlugins', uniqueStrings(patch.disabledPlugins));
+    if (patch.memoryEnabled !== undefined) set('memoryEnabled', !!patch.memoryEnabled);
+    if (patch.searchPastChats !== undefined) set('searchPastChats', !!patch.searchPastChats);
+    if (patch.runInBackground !== undefined) set('runInBackground', !!patch.runInBackground);
+    if (patch.quickEntryShortcut !== undefined) set('quickEntryShortcut', patch.quickEntryShortcut.trim().slice(0, 60));
+    if (patch.voiceModel !== undefined && /^ggml-[\w.-]+\.bin$/.test(patch.voiceModel)) set('voiceModel', patch.voiceModel);
+    if (patch.voiceLanguage !== undefined && /^(auto|[a-z]{2,3})$/.test(patch.voiceLanguage)) set('voiceLanguage', patch.voiceLanguage);
+    if (patch.embeddingModel !== undefined) set('embeddingModel', patch.embeddingModel && patch.embeddingModel.providerId && patch.embeddingModel.modelId ? { providerId: patch.embeddingModel.providerId, modelId: patch.embeddingModel.modelId } : null);
 
     if (changes.length) {
       transaction(() => {

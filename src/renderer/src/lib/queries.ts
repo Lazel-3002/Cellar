@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ConversationFilter } from '@shared/types/chat';
+import type { ConversationFilter, ProjectDetail } from '@shared/types/chat';
+import type { ToolScope } from '@shared/types/customize';
 import type { HfSearchQuery } from '@shared/types/hub';
 import type { ModelRef } from '@shared/types/models';
 import type { AppSettings, AppSettingsPatch } from '@shared/types/settings';
@@ -35,6 +36,15 @@ export const keys = {
   hubRepo: (id: string) => ['hub-repo', id] as const,
   hubReadme: (id: string) => ['hub-readme', id] as const,
   quantFit: (repo: string, label: string) => ['quant-fit', repo, label] as const,
+  skills: ['skills'] as const,
+  plugins: ['plugins'] as const,
+  commands: (scope: string) => ['commands', scope] as const,
+  connectors: ['connectors'] as const,
+  memory: ['memory'] as const,
+  scheduled: ['scheduled'] as const,
+  scheduledRuns: (taskId?: string) => ['scheduled-runs', taskId ?? 'all'] as const,
+  voice: ['voice'] as const,
+  background: ['background'] as const,
 };
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => invoke('settings:get'), staleTime: Infinity });
@@ -66,6 +76,15 @@ export const useConversationArtifacts = (id: string | undefined) =>
   useQuery({ queryKey: keys.conversationArtifacts(id ?? ''), queryFn: () => invoke('artifacts:forConversation', id!), enabled: !!id });
 export const useDownloads = () => useQuery({ queryKey: keys.downloads, queryFn: () => invoke('downloads:list'), staleTime: Infinity });
 export const useRuntimes = () => useQuery({ queryKey: keys.runtimes, queryFn: () => invoke('runtimes:list', false), staleTime: 60_000 });
+export const useSkills = () => useQuery({ queryKey: keys.skills, queryFn: () => invoke('skills:list') });
+export const usePlugins = () => useQuery({ queryKey: keys.plugins, queryFn: () => invoke('plugins:list') });
+export const useCommands = (scope: ToolScope) => useQuery({ queryKey: keys.commands(scope), queryFn: () => invoke('commands:list', scope), staleTime: 60_000 });
+export const useConnectors = () => useQuery({ queryKey: keys.connectors, queryFn: () => invoke('connectors:list') });
+export const useMemories = () => useQuery({ queryKey: keys.memory, queryFn: () => invoke('memory:list') });
+export const useScheduled = () => useQuery({ queryKey: keys.scheduled, queryFn: () => invoke('scheduled:list'), refetchInterval: 30_000 });
+export const useScheduledRuns = (taskId?: string) => useQuery({ queryKey: keys.scheduledRuns(taskId), queryFn: () => invoke('scheduled:runs', taskId) });
+export const useVoice = () => useQuery({ queryKey: keys.voice, queryFn: () => invoke('voice:status'), staleTime: 60_000 });
+export const useBackground = () => useQuery({ queryKey: keys.background, queryFn: () => invoke('app:background'), staleTime: 10_000 });
 
 /** Subscribes to main-process events once and keeps the query cache in sync. */
 export function useIpcSync(): void {
@@ -94,6 +113,20 @@ export function useIpcSync(): void {
         void qc.invalidateQueries({ queryKey: keys.projects });
         if (projectId) void qc.invalidateQueries({ queryKey: keys.project(projectId) });
         else void qc.invalidateQueries({ queryKey: ['project'] });
+      }),
+      onEvent('projects:index', (status) => {
+        qc.setQueryData(keys.project(status.projectId), (old: ProjectDetail | undefined) => (old ? { ...old, index: status } : old));
+      }),
+      onEvent('customize:changed', ({ kind }) => {
+        if (kind === 'skills' || kind === 'plugins') void qc.invalidateQueries({ queryKey: keys.skills });
+        if (kind === 'plugins') void qc.invalidateQueries({ queryKey: keys.plugins });
+        if (kind === 'commands' || kind === 'plugins') void qc.invalidateQueries({ queryKey: ['commands'] });
+        if (kind === 'memory') void qc.invalidateQueries({ queryKey: keys.memory });
+      }),
+      onEvent('connectors:changed', (list) => qc.setQueryData(keys.connectors, list)),
+      onEvent('scheduled:changed', () => {
+        void qc.invalidateQueries({ queryKey: keys.scheduled });
+        void qc.invalidateQueries({ queryKey: ['scheduled-runs'] });
       }),
     ];
     void invoke('chat:activeStreams').then((streams) => streams.forEach(applyStream));

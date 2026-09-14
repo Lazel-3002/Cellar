@@ -1,0 +1,169 @@
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+import { Brain, Globe, Info, ListChecks, Plug, Settings2, Sparkles } from 'lucide-react';
+import type { ToolScope } from '@shared/types/customize';
+import type { ModelRef } from '@shared/types/models';
+import { Dialog } from '@/components/ui/dialog';
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
+import { Badge, Spinner, StatusDot } from '@/components/ui/misc';
+import { invoke } from '@/lib/ipc';
+import { useConnectors, useSettings, useSkills } from '@/lib/queries';
+import { cn } from '@/lib/utils';
+
+function Toggle({ on }: { on: boolean }) {
+  return (
+    <span className={cn('relative ml-auto h-4 w-7 shrink-0 rounded-full transition-colors', on ? 'bg-brand' : 'bg-track')}>
+      <span className={cn('absolute top-0.5 size-3 rounded-full bg-white shadow transition-transform', on ? 'translate-x-[14px]' : 'translate-x-0.5')} />
+    </span>
+  );
+}
+
+/** Web search, connectors, skills and memory switches next to the composer's + button. */
+export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTools: () => void }) {
+  const navigate = useNavigate();
+  const { data: settings } = useSettings();
+  const { data: connectors = [] } = useConnectors();
+  const { data: skills = [] } = useSkills();
+  if (!settings) return null;
+  const webOn = scope === 'chat' ? settings.chatWebSearch : settings.coworkWebAccess;
+  const activeConnectors = connectors.filter((c) => c.config.enabled);
+  const enabledSkills = skills.filter((s) => s.enabled && !s.error).length;
+  const keepOpen = (e: Event) => e.preventDefault();
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <button aria-label="Tools" data-testid="tools-menu" className="no-drag relative flex size-8 items-center justify-center rounded-lg text-fg-2 hover:bg-hover hover:text-foreground">
+          <Settings2 className="size-[17px]" strokeWidth={1.75} />
+          {activeConnectors.length > 0 && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-brand" />}
+        </button>
+      </MenuTrigger>
+      <MenuContent side="top" align="start" className="w-72">
+        <MenuItem
+          icon={<Globe />}
+          onSelect={(e) => {
+            keepOpen(e);
+            void invoke('settings:update', scope === 'chat' ? { chatWebSearch: !webOn } : { coworkWebAccess: !webOn });
+          }}
+        >
+          <span className="flex w-full items-center gap-2">
+            Web search
+            <Toggle on={webOn} />
+          </span>
+        </MenuItem>
+        <MenuItem
+          icon={<Brain />}
+          onSelect={(e) => {
+            keepOpen(e);
+            void invoke('settings:update', { memoryEnabled: !settings.memoryEnabled });
+          }}
+        >
+          <span className="flex w-full items-center gap-2">
+            Memory
+            <Toggle on={settings.memoryEnabled} />
+          </span>
+        </MenuItem>
+        <MenuSeparator />
+        <MenuLabel>Connectors</MenuLabel>
+        {connectors.length === 0 && <div className="px-2 pb-1 text-[12.5px] text-muted-foreground">No connectors yet.</div>}
+        {connectors.map((c) => (
+          <MenuItem
+            key={c.config.id}
+            icon={<Plug />}
+            onSelect={(e) => {
+              keepOpen(e);
+              void invoke('connectors:setEnabled', c.config.id, !c.config.enabled);
+            }}
+          >
+            <span className="flex w-full min-w-0 items-center gap-2">
+              <StatusDot state={c.state === 'connected' ? 'online' : c.state === 'connecting' ? 'loading' : c.state === 'error' ? 'warning' : 'offline'} />
+              <span className="truncate">{c.config.name}</span>
+              {c.state === 'connected' && <span className="text-[11px] text-muted-foreground">{c.tools.length}</span>}
+              <Toggle on={c.config.enabled} />
+            </span>
+          </MenuItem>
+        ))}
+        <MenuItem icon={<Settings2 />} onSelect={() => void navigate({ to: '/customize/$section', params: { section: 'connectors' } })}>
+          Manage connectors
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem icon={<Sparkles />} onSelect={() => void navigate({ to: '/customize/$section', params: { section: 'skills' } })}>
+          <span className="flex w-full items-center gap-2">
+            Skills
+            <span className="ml-auto text-[12px] text-muted-foreground">{enabledSkills} on</span>
+          </span>
+        </MenuItem>
+        <MenuItem icon={<ListChecks />} onSelect={onShowTools}>
+          See all tools
+        </MenuItem>
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/** `/tools`: every tool the model gets here, grouped by where it comes from. */
+export function ToolsDialog({ open, onOpenChange, scope, conversationId, model }: { open: boolean; onOpenChange: (open: boolean) => void; scope: ToolScope; conversationId?: string; model?: ModelRef }) {
+  const navigate = useNavigate();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['tools', scope, conversationId ?? '', model?.providerId ?? '', model?.modelId ?? ''],
+    queryFn: () => invoke('tools:list', scope, conversationId, model),
+    enabled: open,
+    staleTime: 0,
+  });
+  const groups = new Map<string, NonNullable<typeof data>['tools']>();
+  for (const tool of data?.tools ?? []) groups.set(tool.group, [...(groups.get(tool.group) ?? []), tool]);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} title="Tools" description={`What the model can use in this ${scope === 'code' ? 'session' : scope === 'task' ? 'task' : 'chat'}.`} className="w-[min(620px,calc(100vw-40px))]">
+      <div data-testid="tools-dialog">
+        {isLoading && <Spinner />}
+        {error && <div className="text-[13px] text-danger">{error instanceof Error ? error.message : String(error)}</div>}
+        {data?.notes.map((note) => (
+          <div key={note} className="mb-2 flex items-start gap-2 rounded-lg border border-divider bg-card px-3 py-2 text-[12.5px] text-fg-2">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            {note}
+          </div>
+        ))}
+        {data && data.tools.length === 0 && <div className="py-4 text-[13px] text-muted-foreground">No tools are available here. Turn on web search, add a connector or enable a skill.</div>}
+        {[...groups.entries()].map(([group, tools]) => (
+          <section key={group} className="mt-3">
+            <h3 className="mb-1 flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+              {group}
+              {tools[0].kind === 'connector' && <Badge tone="outline">Connector</Badge>}
+            </h3>
+            <div className="divide-y divide-divider rounded-lg border border-divider">
+              {tools.map((tool) => (
+                <div key={tool.name} className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[12.5px] text-foreground">{tool.name}</span>
+                    {tool.policy === 'allow' && <Badge tone="success">Runs without asking</Badge>}
+                    {tool.policy === 'ask' && <Badge tone="outline">Asks first</Badge>}
+                  </div>
+                  <div className="mt-0.5 line-clamp-2 text-[12.5px] text-muted-foreground">{tool.description}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+        <div className="mt-4 flex gap-3 text-[13px]">
+          <button
+            className="text-brand hover:underline"
+            onClick={() => {
+              onOpenChange(false);
+              void navigate({ to: '/customize/$section', params: { section: 'connectors' } });
+            }}
+          >
+            Manage connectors
+          </button>
+          <button
+            className="text-brand hover:underline"
+            onClick={() => {
+              onOpenChange(false);
+              void navigate({ to: '/customize/$section', params: { section: 'skills' } });
+            }}
+          >
+            Manage skills
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}

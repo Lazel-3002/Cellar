@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { protocol } from 'electron';
 import type { Artifact } from '@shared/types/chat';
+import { attachmentImage } from '../chat/attachments';
 import { PREVIEW_SCHEME_PRIVILEGES } from '../code/preview';
 import { getArtifact } from '../services/artifacts';
 import { paths } from '../system/paths';
@@ -27,12 +28,26 @@ const RUNTIME_FILES: Record<string, string> = {
   'tailwind.js': 'text/javascript',
 };
 
+/** Images attached to messages: `cellar-attachment://image/<attachment id>`. */
+export const ATTACHMENT_SCHEME = 'cellar-attachment';
+
 /** Registers every privileged scheme: Electron keeps only the last `registerSchemesAsPrivileged` call. */
 export function registerArtifactScheme(): void {
   protocol.registerSchemesAsPrivileged([
     { scheme: ARTIFACT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     PREVIEW_SCHEME_PRIVILEGES,
+    { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
+}
+
+export function handleAttachmentProtocol(): void {
+  protocol.handle(ATTACHMENT_SCHEME, async (request) => {
+    const url = new URL(request.url);
+    const id = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    const image = url.hostname === 'image' && /^[\w-]{8,64}$/.test(id) ? await attachmentImage(id) : null;
+    if (!image) return new Response('Not found', { status: 404 });
+    return new Response(new Uint8Array(image.bytes), { headers: { 'Content-Type': image.mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=86400' } });
+  });
 }
 
 const escapeScript = (code: string) => code.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');

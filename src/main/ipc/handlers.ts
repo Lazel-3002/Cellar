@@ -23,9 +23,11 @@ import { artifactsForConversation, getArtifact, listArtifacts } from '../service
 import * as models from '../services/models';
 import { addProjectFiles, createProject, deleteProject, listProjects, projectDetail, removeProjectFile, updateProject } from '../services/projects';
 import { settings } from '../services/settings';
+import { embeddingIndex } from '../rag/embeddings';
 import { detectHardware } from '../system/hardware';
 import { paths } from '../system/paths';
 import { applyTitleBarTheme } from '../window';
+import { registerM4Handlers } from './m4-handlers';
 import { handle } from './register';
 
 const modelRef = z.object({ providerId: z.string().min(1), modelId: z.string().min(1) });
@@ -153,6 +155,9 @@ export function registerIpcHandlers(): void {
       JSON.stringify(before.extraModelDirs) !== JSON.stringify(next.extraModelDirs)
     ) {
       void models.rescanModels();
+    }
+    if (JSON.stringify(before.embeddingModel) !== JSON.stringify(next.embeddingModel) && next.embeddingModel) {
+      for (const project of listProjects()) if (project.fileCount > 0) void embeddingIndex.index(project.id);
     }
     return next;
   });
@@ -304,4 +309,5 @@ export function registerIpcHandlers(): void {
   registerTerminalHandlers();
   registerPreviewHandlers();
   registerSideChatHandlers();
+  registerM4Handlers();
 }

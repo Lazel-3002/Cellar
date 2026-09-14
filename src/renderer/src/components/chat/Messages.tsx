@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, Image as ImageIcon, Pencil, RefreshCw } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleAlert, Copy, Pencil, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ChatStreamEvent, Conversation, Message } from '@shared/types/chat';
+import { AgentParts } from '@/components/task/AgentParts';
 import { Button } from '@/components/ui/button';
 import { Spinner, Tip } from '@/components/ui/misc';
 import { effectiveThinking, useSelectedModel } from '@/lib/hooks';
 import { invoke } from '@/lib/ipc';
 import { useSettings } from '@/lib/queries';
-import { cn, copyText, formatBytes } from '@/lib/utils';
+import { cn, copyText } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
+import { MessageAttachments } from './Attachments';
 import { Markdown } from './Markdown';
 import { ThinkingBlock } from './ThinkingBlock';
 
@@ -79,19 +81,7 @@ export function UserMessage({ message, conversation, siblings, disabled }: { mes
 
   return (
     <div className="group flex flex-col items-end gap-1.5 animate-fade-in">
-      {message.attachments.length > 0 && (
-        <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
-          {message.attachments.map((a) => (
-            <div key={a.id} className="flex h-11 items-center gap-2 rounded-xl border border-composer-border bg-composer px-2.5 text-[12.5px]">
-              {a.kind === 'image' ? <ImageIcon className="size-4 text-muted-foreground" /> : <FileText className="size-4 text-muted-foreground" />}
-              <div>
-                <div className="max-w-44 truncate text-foreground">{a.name}</div>
-                <div className="text-[11px] text-muted-foreground">{formatBytes(a.size)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <MessageAttachments attachments={message.attachments} />
       {editing ? (
         <div className="w-full max-w-[85%] rounded-2xl border border-composer-border bg-composer p-3">
           <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-24 w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none" />
@@ -159,6 +149,11 @@ export function AssistantMessage({
   const error = live?.error ?? message.error;
   const stats = live?.stats ?? message.stats;
   const merged: Message = { ...message, content, reasoning, stats, status: status === 'loading-model' ? 'streaming' : status };
+  // Chats with tools stream ordered parts (text, thinking and tool steps) like Cowork turns.
+  const parts = live?.parts ?? message.parts;
+  const hasParts = !!parts && parts.length > 0;
+  const lastPart = parts?.[parts.length - 1];
+  const waitingOnModel = hasParts && status === 'streaming' && lastPart?.type === 'tool' && ['done', 'error', 'denied'].includes(lastPart.status);
 
   const retry = async () => {
     try {
@@ -179,13 +174,25 @@ export function AssistantMessage({
           <span>{live?.statusMessage || 'Loading model…'}</span>
         </div>
       )}
-      {status === 'streaming' && !content && !reasoning && (
+      {status === 'streaming' && !content && !reasoning && !hasParts && (
         <div className="flex h-7 items-center">
           <span className="size-2.5 animate-pulse rounded-full bg-brand" />
         </div>
       )}
-      {reasoning && <ThinkingBlock reasoning={reasoning} active={thinkingActive} durationMs={stats?.reasoningMs} />}
-      {content && <Markdown content={content} streaming={streaming} conversationId={conversation.id} />}
+      {hasParts ? (
+        <AgentParts parts={parts} messageId={message.id} conversationId={conversation.id} streaming={streaming} />
+      ) : (
+        <>
+          {reasoning && <ThinkingBlock reasoning={reasoning} active={thinkingActive} durationMs={stats?.reasoningMs} />}
+          {content && <Markdown content={content} streaming={streaming} conversationId={conversation.id} />}
+        </>
+      )}
+      {(waitingOnModel || (hasParts && live?.statusMessage && status === 'streaming')) && (
+        <div className="my-2 flex items-center gap-2 font-sans text-[13.5px] text-muted-foreground">
+          <span className="size-2.5 animate-pulse rounded-full bg-brand" />
+          <span className="shimmer">{live?.statusMessage || 'Working…'}</span>
+        </div>
+      )}
       {status === 'error' && (
         <div className="mt-2 flex items-start gap-2.5 rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-3 font-sans text-[13.5px] text-foreground">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" />

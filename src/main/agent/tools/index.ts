@@ -2,6 +2,7 @@ import type { PermissionMode } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
 import type { AppSettings } from '@shared/types/settings';
 import { runCommand } from './command';
+import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFileTool, rememberTool, searchChatsTool, skillTool } from './extra';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
 import { createDocx, createPdf, createPptx, createXlsx, normalizeTodoArgs, todoWrite } from './plan-docs';
 import type { AgentTool } from './types';
@@ -20,9 +21,36 @@ export const ALL_TOOLS: AgentTool[] = [
   createPptx,
   createPdf,
   runCommand,
+  diagnosticsTool,
   webSearch,
   webFetch,
 ] as AgentTool[];
+
+/** Tools that do not depend on the working folder: skills, memory and past chats. */
+export const ASSISTANT_TOOLS: AgentTool[] = [skillTool, readSkillFileTool, rememberTool, forgetTool, searchChatsTool, readChatTool] as AgentTool[];
+
+export interface ExtraToolOptions {
+  settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats'>;
+  /** At least one skill is enabled. */
+  skills: boolean;
+  incognito: boolean;
+  /** Plan / Ask modes: connector tools must be read-only. */
+  readOnly: boolean;
+}
+
+/** Skills, memory, past-chat search and connector tools, as the settings allow. */
+export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]> {
+  const tools: AgentTool[] = [];
+  if (options.skills) tools.push(skillTool as AgentTool, readSkillFileTool as AgentTool);
+  if (options.settings.memoryEnabled && !options.incognito) tools.push(rememberTool as AgentTool, forgetTool as AgentTool);
+  if (options.settings.searchPastChats && !options.incognito) tools.push(searchChatsTool as AgentTool, readChatTool as AgentTool);
+  return [...tools, ...(await connectorTools(options.readOnly))];
+}
+
+/** Chat: web tools (when turned on) plus the extras. */
+export function chatBaseTools(settings: Pick<AppSettings, 'chatWebSearch'>): AgentTool[] {
+  return settings.chatWebSearch ? ([webSearch, webFetch] as AgentTool[]) : [];
+}
 
 export interface ToolAvailability {
   pdf: boolean;
@@ -38,7 +66,7 @@ export function toolsFor(mode: PermissionMode, settings: Pick<AppSettings, 'cowo
   });
 }
 
-const CODE_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'todo_write', 'write_file', 'edit_file', 'run_command', 'web_search', 'web_fetch']);
+const CODE_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'todo_write', 'write_file', 'edit_file', 'run_command', 'get_diagnostics', 'web_search', 'web_fetch']);
 
 /** Code sessions: file, search, command and web tools (no office documents). Ask mode also drops the plan tool. */
 export function codeToolsFor(mode: CodeMode, permissionMode: PermissionMode, settings: Pick<AppSettings, 'coworkWebAccess'>): AgentTool[] {
@@ -67,6 +95,19 @@ const ALIASES: Record<string, string> = {
   find_files: 'glob',
   todo: 'todo_write',
   update_todos: 'todo_write',
+  diagnostics: 'get_diagnostics',
+  get_errors: 'get_diagnostics',
+  check_errors: 'get_diagnostics',
+  lint: 'get_diagnostics',
+  load_skill: 'skill',
+  use_skill: 'skill',
+  save_memory: 'remember',
+  memory_add: 'remember',
+  add_memory: 'remember',
+  delete_memory: 'forget',
+  remove_memory: 'forget',
+  conversation_search: 'search_chats',
+  search_conversations: 'search_chats',
 };
 
 const snake = (name: string) =>
@@ -85,6 +126,7 @@ export function findTool(tools: AgentTool[], name: string): AgentTool | undefine
 
 /** Small fixes for argument shapes models commonly get slightly wrong. */
 export function normalizeArgs(tool: AgentTool, args: Record<string, unknown>): Record<string, unknown> {
+  if (tool.category === 'connector') return args;
   if (tool.name === 'todo_write') return normalizeTodoArgs(args);
   const out = { ...args };
   if (typeof out.path !== 'string') {

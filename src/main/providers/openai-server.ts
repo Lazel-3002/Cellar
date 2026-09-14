@@ -7,6 +7,7 @@ import type { StoredProviderConfig } from '../db/provider-configs';
 import { paths } from '../system/paths';
 import {
   baseEntry,
+  fetchEmbeddings,
   fetchOpenAIModels,
   guessCapabilitiesFromName,
   samplingBody,
@@ -104,6 +105,11 @@ export class OpenAIServerProvider implements Provider {
       signal: req.signal,
       reasoningStyle: req.entry.reasoningStyle,
     });
+  }
+
+  embed(entry: ModelEntry, input: string[], signal?: AbortSignal): Promise<number[][]> {
+    const cfg = this.config();
+    return fetchEmbeddings({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: entry.ref.modelId, input, signal });
   }
 
   /** Launch Unsloth Studio in the background via its CLI shim. */

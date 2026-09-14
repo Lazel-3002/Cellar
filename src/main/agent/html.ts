@@ -125,6 +125,25 @@ export function parseDuckDuckGoHtml(html: string): SearchResult[] {
   return results;
 }
 
+/** Web results from search.brave.com (server-rendered `data-type="web"` snippets). */
+export function parseBraveHtml(html: string): SearchResult[] {
+  const results: SearchResult[] = [];
+  const blocks = html.split(/<div\b[^>]*data-type="web"[^>]*>/).slice(1);
+  for (const block of blocks) {
+    const href = block.match(/<a\b[^>]*href="(https?:\/\/[^"]+)"/)?.[1];
+    if (!href) continue;
+    const url = decodeEntities(href);
+    if (/^https?:\/\/([^/]+\.)?(brave\.com|search\.brave\.com)\//i.test(url)) continue;
+    // Class names must start with the word: "result-content" and "site-name-content" are other elements.
+    const titleTag = block.match(/<div\b[^>]*class="title\b[^"]*"[^>]*?(?:title="([^"]*)")?[^>]*>([\s\S]*?)<\/div>/);
+    const title = decodeEntities(titleTag?.[1] ?? '') || stripTags(titleTag?.[2] ?? '');
+    const content = block.match(/<div\b[^>]*class="content\b[^"]*"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    const snippet = stripTags(content.replace(/<span\b[^>]*class="[^"]*t-secondary[^"]*"[^>]*>[\s\S]*?<\/span>/, ''));
+    if (title && !results.some((r) => r.url === url)) results.push({ title, url, snippet });
+  }
+  return results;
+}
+
 export function parseSearxngJson(json: unknown): SearchResult[] {
   const list = (json as { results?: Array<{ title?: string; url?: string; content?: string }> })?.results ?? [];
   return list

@@ -9,7 +9,8 @@ const shared = resolve(__dirname, 'src/shared');
 const baseCsp = [
   "default-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
+  "img-src 'self' data: blob: https: cellar-attachment:",
+  "media-src 'self' blob:",
   "font-src 'self' data:",
   // Code preview: session files and localhost dev servers (CSP cannot list IPv6 literals; [::1] is opened as localhost).
   'frame-src cellar-artifact: cellar-preview: http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*',

@@ -50,6 +50,8 @@ assert.equal(mean([2, 4, 6]), 4);
 console.log('all tests passed');
 `,
 );
+// Stray "\n" escapes written as code: the kind of syntax error editors underline (for get_diagnostics runs).
+writeFileSync(join(repo, 'physics.py'), 'import math\\n\\ndef fall_time(height):\\n    return math.sqrt(2 * height / 9.81)\n\nprint(round(fall_time(20), 2))\n');
 writeFileSync(join(repo, 'index.html'), '<!doctype html><html><body style="font-family:sans-serif"><h1>mini-math</h1><p>Preview check.</p></body></html>\n');
 writeFileSync(join(repo, 'CELLAR.md'), '# mini-math\n\nRun the tests with `node test.js`. Plain ES modules, no dependencies.\n');
 git(repo, 'init', '-q', '-b', 'main');

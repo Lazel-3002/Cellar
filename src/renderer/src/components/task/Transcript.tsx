@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { ChevronRight, CircleAlert, Layers, ListTree } from 'lucide-react';
+import { ChevronRight, CircleAlert, ListTree } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AgentPart, ToolPart } from '@shared/types/agent';
 import type { ChatStreamEvent, Conversation, Message } from '@shared/types/chat';
 import type { TranscriptView } from '@shared/types/code';
+import { MessageAttachments } from '@/components/chat/Attachments';
 import { CopyButton, StatsLine } from '@/components/chat/Messages';
-import { Markdown } from '@/components/chat/Markdown';
-import { ThinkingBlock } from '@/components/chat/ThinkingBlock';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/misc';
 import { effectiveThinking, useSelectedModel } from '@/lib/hooks';
@@ -16,40 +15,9 @@ import { describeTool } from '@/lib/tasks';
 import { cn } from '@/lib/utils';
 import { isLive } from '@/stores/streams';
 import { useUi } from '@/stores/ui';
-import { ApprovalCard, ToolStep } from './ToolStep';
+import { AgentParts } from './AgentParts';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
-type Block = { kind: 'tools'; key: string; parts: ToolPart[] } | { kind: 'part'; key: string; part: AgentPart };
-
-function toBlocks(parts: AgentPart[]): Block[] {
-  const blocks: Block[] = [];
-  parts.forEach((part, i) => {
-    if (part.type === 'tool' && part.status !== 'awaiting-approval') {
-      const last = blocks[blocks.length - 1];
-      if (last?.kind === 'tools') last.parts.push(part);
-      else blocks.push({ kind: 'tools', key: part.id, parts: [part] });
-    } else {
-      blocks.push({ kind: 'part', key: part.type === 'tool' ? part.id : `${part.type}-${i}`, part });
-    }
-  });
-  return blocks;
-}
-
-function CompactionNote({ summary }: { summary: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="my-3 font-sans">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-[12.5px] text-muted-foreground hover:text-foreground">
-        <span className="h-px flex-1 bg-divider" />
-        <Layers className="size-3.5" /> Earlier steps were summarized to free up context
-        <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
-        <span className="h-px flex-1 bg-divider" />
-      </button>
-      {open && <div className="selectable mt-2 rounded-lg border border-divider bg-card px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-fg-2">{summary}</div>}
-    </div>
-  );
-}
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -109,29 +77,7 @@ export function AgentTurn({ message, live, conversation, view = 'normal' }: Turn
     }
   };
 
-  const renderParts = (list: AgentPart[]) =>
-    toBlocks(list).map((block) => {
-      if (block.kind === 'tools') {
-        return (
-          <div key={block.key} className="my-2 ml-[9px] border-l border-divider pl-3">
-            {block.parts.map((p) => (
-              <ToolStep key={`${p.id}:${verbose}`} part={p} messageId={message.id} defaultOpen={verbose || (p.status === 'running' && p.name === 'run_command')} />
-            ))}
-          </div>
-        );
-      }
-      const part = block.part;
-      switch (part.type) {
-        case 'text':
-          return <Markdown key={block.key} content={part.text} streaming={streaming && part === last} conversationId={conversation.id} className="my-2" />;
-        case 'reasoning':
-          return <ThinkingBlock key={`${block.key}:${verbose}`} reasoning={part.text} active={streaming && part === last} durationMs={part.durationMs} defaultOpen={verbose} />;
-        case 'tool':
-          return <ApprovalCard key={block.key} part={part} messageId={message.id} />;
-        case 'compaction':
-          return <CompactionNote key={block.key} summary={part.summary} />;
-      }
-    });
+  const renderParts = (list: AgentPart[]) => <AgentParts parts={list} last={last} messageId={message.id} conversationId={conversation.id} streaming={streaming} verbose={verbose} />;
 
   let body: React.ReactNode;
   if (summary) {
@@ -212,8 +158,9 @@ export function AgentTurn({ message, live, conversation, view = 'normal' }: Turn
 
 export function UserTurn({ message }: { message: Message }) {
   return (
-    <div className="flex flex-col items-end animate-fade-in">
-      <div className="selectable max-w-[85%] rounded-2xl bg-bubble px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground">{message.content}</div>
+    <div className="flex flex-col items-end gap-1.5 animate-fade-in">
+      <MessageAttachments attachments={message.attachments} />
+      {message.content && <div className="selectable max-w-[85%] rounded-2xl bg-bubble px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground">{message.content}</div>}
     </div>
   );
 }

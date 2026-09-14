@@ -159,7 +159,7 @@ export function Sidebar() {
         <NavItem icon={FolderClosed} label="Projects" to="/projects" active={pathname.startsWith('/projects')} />
         <NavItem icon={Shapes} label="Artifacts" to="/artifacts" active={pathname.startsWith('/artifacts')} />
         <NavItem icon={Clock} label="Scheduled" to="/scheduled" active={pathname.startsWith('/scheduled')} />
-        <NavItem icon={BriefcaseBusiness} label="Customize" to="/customize" active={pathname.startsWith('/customize')} />
+        <NavItem icon={BriefcaseBusiness} label="Customize" to="/customize/skills" active={pathname.startsWith('/customize')} />
       </nav>
 
       <div className="mt-[22px] flex h-6 items-center justify-between pr-2 pl-3.5">

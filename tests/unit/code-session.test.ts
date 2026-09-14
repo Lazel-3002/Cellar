@@ -185,9 +185,9 @@ describe('code prompt and tools', () => {
 
   it('offers code tools per mode', () => {
     const names = (mode: 'ask' | 'plan' | 'code', auto = false) => codeToolsFor(mode, codePermissionMode(mode, auto), { coworkWebAccess: false }).map((t) => t.name);
-    expect(names('code')).toEqual(['list_dir', 'read_file', 'glob', 'grep', 'todo_write', 'write_file', 'edit_file', 'run_command']);
-    expect(names('plan')).toEqual(['list_dir', 'read_file', 'glob', 'grep', 'todo_write']);
-    expect(names('ask')).toEqual(['list_dir', 'read_file', 'glob', 'grep']);
+    expect(names('code')).toEqual(['list_dir', 'read_file', 'glob', 'grep', 'todo_write', 'write_file', 'edit_file', 'run_command', 'get_diagnostics']);
+    expect(names('plan')).toEqual(['list_dir', 'read_file', 'glob', 'grep', 'todo_write', 'get_diagnostics']);
+    expect(names('ask')).toEqual(['list_dir', 'read_file', 'glob', 'grep', 'get_diagnostics']);
     expect(codeToolsFor('code', 'ask', { coworkWebAccess: true }).map((t) => t.name)).toContain('web_fetch');
   });
 

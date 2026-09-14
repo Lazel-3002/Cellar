@@ -9,9 +9,10 @@ import { logger } from '../../lib/log';
 import { fetchWithTimeout, sleep } from '../../lib/util';
 import { isEmbeddingModel } from '../../models/gguf';
 import { localModels, type LocalModel } from '../../models/local-index';
+import { getPreset } from '../../models/presets';
 import { runtimes } from '../../runtimes/llamacpp-runtimes';
 import { settings } from '../../services/settings';
-import { samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages, toolsBody } from '../openai-compat';
+import { fetchEmbeddings, samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages, toolsBody } from '../openai-compat';
 import type { ChatRequest, Provider } from '../types';
 import { buildServerArgs, validateLoadConfig } from './args';
 import { describeStage, emptyLoadInfo, failureHint, parseLogLine, type LoadInfo } from './log-parser';
@@ -34,6 +35,8 @@ interface Instance {
   activeRequests: number;
   contextLength?: number;
   exited: boolean;
+  /** Embedding servers are small and do not count toward the loaded-models limit. */
+  embedding: boolean;
 }
 
 function freePort(): Promise<number> {
@@ -161,10 +164,11 @@ export class LlamaCppProvider implements Provider {
     const runtime = await runtimes.active();
     if (!runtime) throw new Error('No llama.cpp runtime is installed. Open Settings → Engines & runtimes to install one.');
 
-    await this.evictFor(model.id);
+    const embedding = entry.capabilities.embedding;
+    if (!embedding) await this.evictFor(model.id);
     const port = await freePort();
     const apiKey = randomBytes(24).toString('hex');
-    const args = buildServerArgs({ modelPath: model.path, mmprojPath: model.mmprojPath, port, alias: model.id }, config);
+    const args = buildServerArgs({ modelPath: model.path, mmprojPath: model.mmprojPath, port, alias: model.id, embedding }, config);
     log.info('starting llama-server', runtime.serverPath, args.join(' '));
 
     const child = spawn(runtime.serverPath, args, {
@@ -188,6 +192,7 @@ export class LlamaCppProvider implements Provider {
       lastUsed: Date.now(),
       activeRequests: 0,
       exited: false,
+      embedding,
     };
     this.instances.set(model.id, inst);
     this.emitProgress(model.id, inst.info, onProgress, 'starting');
@@ -311,7 +316,7 @@ export class LlamaCppProvider implements Provider {
 
   private async evictFor(modelId: string): Promise<void> {
     const max = settings.get().maxLoadedModels;
-    const others = [...this.instances.values()].filter((i) => i.modelId !== modelId).sort((a, b) => a.lastUsed - b.lastUsed);
+    const others = [...this.instances.values()].filter((i) => i.modelId !== modelId && !i.embedding).sort((a, b) => a.lastUsed - b.lastUsed);
     while (others.length >= max) {
       const victim = others.shift();
       if (!victim) break;
@@ -377,6 +382,26 @@ export class LlamaCppProvider implements Provider {
         signal: req.signal,
         reasoningStyle: req.entry.reasoningStyle,
       });
+    } finally {
+      inst.activeRequests--;
+      inst.lastUsed = Date.now();
+    }
+  }
+
+  async embed(entry: ModelEntry, input: string[], signal?: AbortSignal): Promise<number[][]> {
+    if (!entry.capabilities.embedding) throw new Error(`${entry.displayName} is not an embedding model.`);
+    let inst = this.instances.get(entry.ref.modelId);
+    if (!inst || inst.state === 'error' || inst.state === 'stopped') {
+      await this.load(entry, getPreset(entry.ref, entry.contextLength).load);
+      inst = this.instances.get(entry.ref.modelId);
+    } else if (inst.state === 'loading') {
+      await inst.ready;
+    }
+    if (!inst) throw new Error('The embedding model failed to load.');
+    inst.activeRequests++;
+    inst.lastUsed = Date.now();
+    try {
+      return await fetchEmbeddings({ baseUrl: `http://127.0.0.1:${inst.port}`, apiKey: inst.apiKey, model: inst.modelId, input, signal });
     } finally {
       inst.activeRequests--;
       inst.lastUsed = Date.now();

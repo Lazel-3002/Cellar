@@ -27,6 +27,7 @@ import type {
   Project,
   ProjectDetail,
   ProjectFile,
+  ProjectIndexStatus,
   ProjectSummary,
   SearchHit,
   SendMessageInput,
@@ -44,9 +45,26 @@ import type {
   ModelPreset,
   ModelRef,
 } from './types/models';
+import type {
+  CommandDetail,
+  CommandInfo,
+  CommandInput,
+  ConnectorInput,
+  ConnectorStatus,
+  MemoryItem,
+  PluginInfo,
+  SkillDetail,
+  SkillInfo,
+  SkillInput,
+  ToolListing,
+  ToolPolicy,
+  ToolScope,
+} from './types/customize';
 import type { ProviderConfig, ProviderConfigInput, ProviderStatus } from './types/providers';
+import type { CronPreview, ScheduledRun, ScheduledTask, ScheduledTaskInput } from './types/scheduled';
 import type { AppSettings, AppSettingsPatch } from './types/settings';
 import type { HardwareInfo, RuntimeInfo, RuntimeInstallProgress, RuntimeRelease, RuntimeVariant } from './types/system';
+import type { TranscriptionResult, VoiceProgress, VoiceStatus, WhisperVariant } from './types/voice';
 
 export type Platform = 'win32' | 'darwin' | 'linux' | 'aix' | 'android' | 'freebsd' | 'haiku' | 'openbsd' | 'sunos' | 'cygwin' | 'netbsd';
 
@@ -59,7 +77,16 @@ export interface AppInfo {
   logsDir: string;
 }
 
-export type AppCommand = 'new-chat' | 'new-incognito' | 'search' | 'settings' | 'toggle-sidebar' | 'models' | 'discover';
+export type AppCommand = 'new-chat' | 'new-incognito' | 'search' | 'settings' | 'toggle-sidebar' | 'models' | 'discover' | 'scheduled';
+
+export interface BackgroundStatus {
+  /** The quick entry shortcut is registered (another app may hold it). */
+  quickEntryActive: boolean;
+  /** Claude Desktop settings exist on this computer (connectors can be imported). */
+  claudeDesktopConfig: boolean;
+  /** Claude Code skills exist on this computer (~/.claude/skills). */
+  claudeSkills: boolean;
+}
 
 export type WindowAction = 'reload' | 'devtools' | 'zoom-in' | 'zoom-out' | 'zoom-reset' | 'quit' | 'minimize' | 'toggle-maximize';
 
@@ -182,6 +209,73 @@ export interface IpcInvokeMap {
   'artifacts:get': Handler<[id: string], Artifact>;
   'artifacts:forConversation': Handler<[conversationId: string], Artifact[]>;
   'artifacts:saveAs': Handler<[id: string], string | null>;
+
+  'app:background': Handler<[], BackgroundStatus>;
+  /** Quick entry: show the main window on a conversation. */
+  'app:openConversation': Handler<[conversationId: string, kind: ConversationKind], void>;
+  'app:hideQuickEntry': Handler<[], void>;
+  'system:pickPath': Handler<[kind: 'skill' | 'plugin'], string | null>;
+
+  'skills:list': Handler<[], SkillInfo[]>;
+  'skills:get': Handler<[id: string], SkillDetail>;
+  'skills:save': Handler<[input: SkillInput], SkillInfo>;
+  'skills:setEnabled': Handler<[id: string, enabled: boolean], void>;
+  'skills:delete': Handler<[id: string], void>;
+  /** Import a skill folder, a folder of skills, or a .zip / .skill file. */
+  'skills:import': Handler<[path: string], SkillInfo[]>;
+  'skills:importClaude': Handler<[], number>;
+  'skills:reveal': Handler<[id?: string], void>;
+
+  'plugins:list': Handler<[], PluginInfo[]>;
+  /** Install from a folder, a .zip or a git URL. */
+  'plugins:install': Handler<[source: string], PluginInfo[]>;
+  'plugins:setEnabled': Handler<[id: string, enabled: boolean], void>;
+  'plugins:remove': Handler<[id: string], void>;
+  'plugins:reveal': Handler<[id: string], void>;
+
+  'commands:list': Handler<[scope: ToolScope], CommandInfo[]>;
+  'commands:get': Handler<[name: string], CommandDetail>;
+  /** The prompt a custom command sends for the text typed after it. */
+  'commands:expand': Handler<[name: string, args: string], string>;
+  'commands:save': Handler<[input: CommandInput], CommandInfo>;
+  'commands:delete': Handler<[name: string], void>;
+
+  'connectors:list': Handler<[], ConnectorStatus[]>;
+  'connectors:save': Handler<[input: ConnectorInput], ConnectorStatus>;
+  'connectors:delete': Handler<[id: string], void>;
+  'connectors:setEnabled': Handler<[id: string, enabled: boolean], void>;
+  'connectors:reconnect': Handler<[id: string], void>;
+  /** null resets the tool to its default policy. */
+  'connectors:setToolPolicy': Handler<[id: string, tool: string, policy: ToolPolicy | null], void>;
+  'connectors:importJson': Handler<[json: string], number>;
+  'connectors:importClaude': Handler<[], number>;
+
+  'memory:list': Handler<[], MemoryItem[]>;
+  'memory:add': Handler<[content: string], MemoryItem>;
+  'memory:update': Handler<[id: string, content: string], MemoryItem>;
+  'memory:delete': Handler<[id: string], void>;
+  'memory:clear': Handler<[], void>;
+
+  /** The tools a model would get in a context (for /tools). */
+  'tools:list': Handler<[scope: ToolScope, conversationId?: string, model?: ModelRef], ToolListing>;
+
+  'scheduled:list': Handler<[], ScheduledTask[]>;
+  'scheduled:save': Handler<[input: ScheduledTaskInput], ScheduledTask>;
+  'scheduled:setEnabled': Handler<[id: string, enabled: boolean], ScheduledTask>;
+  'scheduled:delete': Handler<[id: string], void>;
+  'scheduled:runNow': Handler<[id: string], { conversationId: string | null }>;
+  'scheduled:runs': Handler<[taskId?: string], ScheduledRun[]>;
+  'scheduled:preview': Handler<[cron: string], CronPreview>;
+
+  'voice:status': Handler<[], VoiceStatus>;
+  'voice:installRuntime': Handler<[variant: WhisperVariant], void>;
+  'voice:downloadModel': Handler<[id: string], void>;
+  'voice:deleteModel': Handler<[id: string], void>;
+  /** 16 kHz mono 16-bit WAV. */
+  'voice:transcribe': Handler<[wav: Uint8Array, language?: string], TranscriptionResult>;
+
+  'projects:indexStatus': Handler<[projectId: string], ProjectIndexStatus>;
+  'projects:reindex': Handler<[projectId: string], void>;
 }
 
 export interface IpcEventMap {
@@ -202,6 +296,13 @@ export interface IpcEventMap {
   'terminal:exit': TerminalExitEvent;
   'terminal:changed': { conversationId: string };
   'code:side': SideChatEvent;
+  'customize:changed': { kind: 'skills' | 'plugins' | 'commands' | 'memory' };
+  'connectors:changed': ConnectorStatus[];
+  'scheduled:changed': Record<string, never>;
+  'voice:progress': VoiceProgress;
+  'projects:index': ProjectIndexStatus;
+  /** Sent to the quick entry window each time it opens. */
+  'quick:shown': Record<string, never>;
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;
@@ -305,6 +406,56 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'artifacts:get': true,
   'artifacts:forConversation': true,
   'artifacts:saveAs': true,
+  'app:background': true,
+  'app:openConversation': true,
+  'app:hideQuickEntry': true,
+  'system:pickPath': true,
+  'skills:list': true,
+  'skills:get': true,
+  'skills:save': true,
+  'skills:setEnabled': true,
+  'skills:delete': true,
+  'skills:import': true,
+  'skills:importClaude': true,
+  'skills:reveal': true,
+  'plugins:list': true,
+  'plugins:install': true,
+  'plugins:setEnabled': true,
+  'plugins:remove': true,
+  'plugins:reveal': true,
+  'commands:list': true,
+  'commands:get': true,
+  'commands:expand': true,
+  'commands:save': true,
+  'commands:delete': true,
+  'connectors:list': true,
+  'connectors:save': true,
+  'connectors:delete': true,
+  'connectors:setEnabled': true,
+  'connectors:reconnect': true,
+  'connectors:setToolPolicy': true,
+  'connectors:importJson': true,
+  'connectors:importClaude': true,
+  'memory:list': true,
+  'memory:add': true,
+  'memory:update': true,
+  'memory:delete': true,
+  'memory:clear': true,
+  'tools:list': true,
+  'scheduled:list': true,
+  'scheduled:save': true,
+  'scheduled:setEnabled': true,
+  'scheduled:delete': true,
+  'scheduled:runNow': true,
+  'scheduled:runs': true,
+  'scheduled:preview': true,
+  'voice:status': true,
+  'voice:installRuntime': true,
+  'voice:downloadModel': true,
+  'voice:deleteModel': true,
+  'voice:transcribe': true,
+  'projects:indexStatus': true,
+  'projects:reindex': true,
 };
 
 const eventChannelFlags: Record<EventChannel, true> = {
@@ -324,6 +475,12 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'terminal:exit': true,
   'terminal:changed': true,
   'code:side': true,
+  'customize:changed': true,
+  'connectors:changed': true,
+  'scheduled:changed': true,
+  'voice:progress': true,
+  'projects:index': true,
+  'quick:shown': true,
 };
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelFlags) as InvokeChannel[];

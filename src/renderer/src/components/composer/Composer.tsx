@@ -1,21 +1,25 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { ArrowUp, Check, ChevronDown, FileText, Image as ImageIcon, Mic, Paperclip, Plus, SlidersHorizontal, Square, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { ArrowUp, Check, ChevronDown, FileText, Mic, Paperclip, Plus, SlidersHorizontal, Square, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { CODE_SLASH_COMMANDS } from '@shared/code-commands';
 import type { ConversationKind, PermissionMode } from '@shared/types/agent';
 import type { AttachmentRef, SendMessageResult } from '@shared/types/chat';
 import type { CodeStartOptions } from '@shared/types/code';
+import type { ToolScope } from '@shared/types/customize';
+import { AttachmentImage } from '@/components/chat/Attachments';
 import { CodeModeMenu, nextCodeMode, type CodeModeValue } from '@/components/code/CodeModeMenu';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { Segmented } from '@/components/ui/form';
 import { Spinner, Tip } from '@/components/ui/misc';
+import { useDictation } from '@/lib/dictation';
 import { effectiveThinking, useSelectedModel } from '@/lib/hooks';
 import { invoke } from '@/lib/ipc';
-import { useSettings } from '@/lib/queries';
+import { useCommands, useSettings, useVoice } from '@/lib/queries';
 import { PERMISSION_MODES } from '@/lib/tasks';
 import { cn, formatBytes } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import { ModelPicker } from './ModelPicker';
+import { ToolsDialog, ToolsMenu } from './ToolsMenu';
 
 export interface ComposerProps {
   variant: 'home' | 'chat' | 'task' | 'code-home' | 'code';
@@ -74,9 +78,9 @@ export function PermissionMenu({ value, onChange }: { value: PermissionMode; onC
 
 function AttachmentChip({ attachment, onRemove }: { attachment: AttachmentRef; onRemove: () => void }) {
   return (
-    <div className="group relative flex h-12 max-w-[220px] items-center gap-2.5 rounded-xl border border-composer-border bg-background/40 pr-7 pl-2">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-selected text-muted-foreground">
-        {attachment.kind === 'image' ? <ImageIcon className="size-4" /> : <FileText className="size-4" />}
+    <div data-testid="attachment-chip" className="group relative flex h-12 max-w-[220px] items-center gap-2.5 rounded-xl border border-composer-border bg-background/40 pr-7 pl-2">
+      <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-selected text-muted-foreground">
+        {attachment.kind === 'image' ? <AttachmentImage attachment={attachment} className="size-8" /> : <FileText className="size-4" />}
       </span>
       <div className="min-w-0">
         <div className="truncate text-[12.5px] text-foreground">{attachment.name}</div>
@@ -147,8 +151,32 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
     if (variant === 'code-home') void invoke('settings:update', { codeMode: value.mode, codeAutoAcceptEdits: value.autoAcceptEdits });
     else if (conversationId) void invoke('code:setMode', conversationId, value.mode, value.autoAcceptEdits).catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
   };
-  const slashQuery = isCode && /^\/[\w-]*$/.test(text) ? text.toLowerCase() : null;
-  const slashMatches = slashQuery ? CODE_SLASH_COMMANDS.filter((c) => c.name.startsWith(slashQuery)) : [];
+  const scope: ToolScope = isCode ? 'code' : coworkMode || variant === 'task' ? 'task' : 'chat';
+  const { data: commands = [] } = useCommands(scope);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const navigate = useNavigate();
+  const slashQuery = /^\/[\w:-]*$/.test(text) ? text.slice(1).toLowerCase() : null;
+  const slashMatches = slashQuery !== null ? commands.filter((c) => c.name.startsWith(slashQuery)).slice(0, 12) : [];
+
+  const { data: voice } = useVoice();
+  const insertDictation = useCallback((spoken: string) => {
+    setText((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')} ${spoken}` : spoken));
+    requestAnimationFrame(() => textarea.current?.focus());
+  }, []);
+  const dictationError = useCallback((message: string) => toast.error('Dictation failed', { description: message }), []);
+  const dictation = useDictation(insertDictation, dictationError);
+  const toggleDictation = () => {
+    if (dictation.state === 'recording') return dictation.stop();
+    if (dictation.state !== 'idle') return;
+    if (!voice?.ready) {
+      toast('Set up voice dictation', {
+        description: 'Cellar transcribes speech on your computer with whisper.cpp. Install it and download a voice model first.',
+        action: { label: 'Open settings', onClick: () => void navigate({ to: '/settings/$section', params: { section: 'voice' } }) },
+      });
+      return;
+    }
+    void dictation.start();
+  };
 
   const addPaths = async (paths: string[]) => {
     if (paths.length === 0) return;
@@ -195,18 +223,35 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
       return;
     }
     setSending(true);
+    const clear = () => {
+      setText('');
+      setDraft(draftKey, '');
+    };
     try {
       let content = text;
-      const command = isCode ? /^(\/[\w-]+)(?:\s+([\s\S]*))?$/.exec(text.trim()) : null;
+      const command = /^(\/[\w:-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+      const commandName = command?.[1].toLowerCase() ?? '';
+      const commandArgs = command?.[2] ?? '';
+      const known = command ? commands.find((c) => `/${c.name}` === commandName) : undefined;
       if (command && onCommand) {
-        const replacement = await onCommand(command[1].toLowerCase(), command[2] ?? '');
-        if (replacement === null) {
-          setText('');
-          setDraft(draftKey, '');
-          return;
-        }
+        const replacement = await onCommand(commandName, commandArgs);
+        if (replacement === null) return clear();
         if (replacement !== undefined) content = replacement;
       }
+      if (content === text && known?.name === 'tools') {
+        setToolsOpen(true);
+        return clear();
+      }
+      if (content === text && known?.name === 'remember') {
+        if (!commandArgs.trim()) {
+          toast.error('Write what to remember after /remember.');
+          return;
+        }
+        await invoke('memory:add', commandArgs);
+        toast.success('Saved to memory', { description: commandArgs.trim().slice(0, 140) });
+        return clear();
+      }
+      if (content === text && known && known.source !== 'built-in') content = await invoke('commands:expand', known.name, commandArgs);
       const result = await invoke('chat:send', {
         conversationId,
         incognito: coworkMode || isCode ? false : incognito,
@@ -217,7 +262,7 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         thinking: effectiveThinking(model.reasoningStyle, thinking),
         ...(coworkMode ? { task: { folder: coworkSkipped ? null : coworkFolder, permissionMode: homeMode } } : {}),
         // /init writes CELLAR.md, so it always starts in Code mode.
-        ...(variant === 'code-home' && codeStart ? { code: { ...codeStart, ...newSessionMode, ...(command?.[1].toLowerCase() === '/init' ? { mode: 'code' as const } : {}) } } : {}),
+        ...(variant === 'code-home' && codeStart ? { code: { ...codeStart, ...newSessionMode, ...(commandName === '/init' ? { mode: 'code' as const } : {}) } } : {}),
       });
       setText('');
       setDraft(draftKey, '');
@@ -238,7 +283,12 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
     }
     if (slashMatches.length > 0 && e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
-      setText(`${slashMatches[0].name} `);
+      setText(`/${slashMatches[0].name} `);
+      return;
+    }
+    if (e.key === 'Escape' && dictation.state === 'recording') {
+      e.preventDefault();
+      dictation.cancel();
       return;
     }
     const sendWithEnter = settings?.sendWithEnter ?? true;
@@ -297,13 +347,15 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
               key={command.name}
               onMouseDown={(e) => {
                 e.preventDefault();
-                setText(`${command.name} `);
+                setText(`/${command.name} `);
                 textarea.current?.focus();
               }}
               className="flex w-full items-center gap-3 px-3 py-1.5 text-left hover:bg-hover"
             >
-              <span className="font-mono text-[13px] text-foreground">{command.name}</span>
+              <span className="shrink-0 font-mono text-[13px] text-foreground">/{command.name}</span>
+              {command.argumentHint && <span className="shrink-0 font-mono text-[12px] text-muted-foreground">{command.argumentHint}</span>}
               <span className="truncate text-[12.5px] text-muted-foreground">{command.description}</span>
+              {command.source !== 'built-in' && <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{command.pluginName ?? 'Yours'}</span>}
             </button>
           ))}
         </div>
@@ -350,6 +402,7 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
             </MenuItem>
           </MenuContent>
         </Menu>
+        <ToolsMenu scope={scope} onShowTools={() => setToolsOpen(true)} />
         {variant === 'home' && !incognito && (
           <Segmented
             value={mode}
@@ -367,6 +420,20 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         {variant === 'code-home' && <CodeModeMenu value={newSessionMode} onChange={setCodeModeValue} />}
         {variant === 'code' && codeMode && <CodeModeMenu value={codeMode} onChange={setCodeModeValue} />}
         <div className="flex-1" />
+        {dictation.state === 'recording' && (
+          <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground tabular-nums" data-testid="dictation-recording">
+            <span className="size-2 rounded-full bg-danger" style={{ opacity: 0.35 + dictation.level * 0.65, transform: `scale(${1 + dictation.level * 0.6})` }} />
+            {Math.floor(dictation.elapsed / 60)}:{String(dictation.elapsed % 60).padStart(2, '0')}
+            <button className="ml-1 text-[12px] hover:text-foreground" onClick={dictation.cancel}>
+              Cancel
+            </button>
+          </span>
+        )}
+        {dictation.state === 'transcribing' && (
+          <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+            <Spinner className="size-3.5" /> Transcribing…
+          </span>
+        )}
         <ModelPicker model={model} preferTools={coworkMode || variant === 'task' || isCode} />
         {isStreaming ? (
           <Tip label="Stop generating  Esc">
@@ -374,18 +441,28 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
               <Square className="size-3.5 fill-current" />
             </button>
           </Tip>
-        ) : text.trim() || attachments.length ? (
+        ) : (text.trim() || attachments.length) && dictation.state === 'idle' ? (
           <button aria-label="Send" data-testid="composer-send" disabled={!canSend} onClick={() => void send()} className="no-drag flex size-8 items-center justify-center rounded-lg bg-brand text-white transition hover:brightness-110 disabled:opacity-40">
             {sending ? <Spinner className="size-4 text-white" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
           </button>
         ) : (
-          <Tip label="Voice dictation arrives in Milestone 4">
-            <span className="flex size-8 items-center justify-center rounded-lg text-muted-foreground/60">
-              <Mic className="size-[17px]" strokeWidth={1.75} />
-            </span>
+          <Tip label={dictation.state === 'recording' ? 'Stop and transcribe' : voice?.ready ? 'Dictate' : 'Set up voice dictation'}>
+            <button
+              aria-label={dictation.state === 'recording' ? 'Stop dictation' : 'Dictate'}
+              data-testid="dictate"
+              disabled={dictation.state === 'transcribing'}
+              onClick={toggleDictation}
+              className={cn(
+                'no-drag flex size-8 items-center justify-center rounded-lg transition-colors disabled:opacity-40',
+                dictation.state === 'recording' ? 'bg-danger text-white hover:brightness-110' : 'text-fg-2 hover:bg-hover hover:text-foreground',
+              )}
+            >
+              {dictation.state === 'recording' ? <Square className="size-3.5 fill-current" /> : <Mic className="size-[17px]" strokeWidth={1.75} />}
+            </button>
           </Tip>
         )}
       </div>
+      <ToolsDialog open={toolsOpen} onOpenChange={setToolsOpen} scope={scope} conversationId={conversationId} model={model?.ref} />
     </div>
   );
 }

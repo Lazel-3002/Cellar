@@ -46,9 +46,12 @@ function saveState(win: BrowserWindow) {
   }
 }
 
+/** Windows drawn with a native title bar overlay (the quick entry window has none). */
+const overlayWindows = new WeakSet<BrowserWindow>();
+
 export function applyTitleBarTheme(win: BrowserWindow, theme: 'dark' | 'light'): void {
   if (process.platform === 'darwin' || win.isDestroyed()) return;
-  win.setTitleBarOverlay({ ...THEMES[theme], height: TITLE_BAR_HEIGHT });
+  if (overlayWindows.has(win)) win.setTitleBarOverlay({ ...THEMES[theme], height: TITLE_BAR_HEIGHT });
   win.setBackgroundColor(THEMES[theme].color);
 }
 
@@ -56,6 +59,57 @@ export function isAppUrl(url: string): boolean {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl && url.startsWith(devUrl)) return true;
   return url.startsWith('file://');
+}
+
+function loadRenderer(win: BrowserWindow, hash?: string): void {
+  if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}${hash ? `#${hash}` : ''}`);
+  else void win.loadFile(join(__dirname, '../renderer/index.html'), hash ? { hash } : undefined);
+}
+
+function guardNavigation(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAppUrl(url)) {
+      event.preventDefault();
+      if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    }
+  });
+}
+
+/** The main window, or the small quick entry window (frameless, on top, hidden from the taskbar). */
+export function createAppWindow(options: { quick?: boolean } = {}): BrowserWindow {
+  if (!options.quick) return createMainWindow();
+  const win = new BrowserWindow({
+    width: 680,
+    height: 200,
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: 'Cellar quick entry',
+    backgroundColor: THEMES.dark.color,
+    roundedCorners: true,
+    icon: join(app.getAppPath(), 'resources', 'icon.png'),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: false,
+      spellcheck: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  guardNavigation(win);
+  loadRenderer(win, '/quick');
+  return win;
 }
 
 export function createMainWindow(): BrowserWindow {
@@ -85,6 +139,7 @@ export function createMainWindow(): BrowserWindow {
     },
   });
   win.setMenuBarVisibility(false);
+  if (process.platform !== 'darwin') overlayWindows.add(win);
 
   win.once('ready-to-show', () => {
     if (state.maximized) win.maximize();
@@ -100,18 +155,7 @@ export function createMainWindow(): BrowserWindow {
   win.on('move', scheduleSave);
   win.on('close', () => saveState(win));
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  win.webContents.on('will-navigate', (event, url) => {
-    if (!isAppUrl(url)) {
-      event.preventDefault();
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
-    }
-  });
-
-  if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void win.loadFile(join(__dirname, '../renderer/index.html'));
+  guardNavigation(win);
+  loadRenderer(win);
   return win;
 }

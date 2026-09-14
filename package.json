@@ -1,7 +1,7 @@
 {
   "name": "cellar",
   "productName": "Cellar",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "A Claude Desktop-style app for running local models.",
   "main": "./out/main/index.js",
   "author": "Cellar",
@@ -22,6 +22,8 @@
   },
   "dependencies": {
     "@huggingface/gguf": "^0.4.6",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "croner": "^10.0.1",
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",
     "extract-zip": "^2.0.1",

@@ -69,6 +69,9 @@ export function useAppCommands(): void {
           case 'discover':
             void navigate({ to: '/discover' });
             break;
+          case 'scheduled':
+            void navigate({ to: '/scheduled' });
+            break;
         }
       }),
     [navigate, toggleSidebar, setSearchOpen, setIncognito],
@@ -77,7 +80,8 @@ export function useAppCommands(): void {
   useEffect(
     () =>
       onEvent('app:open', ({ conversationId, kind }) => {
-        void navigate({ to: conversationRoute(kind), params: { conversationId } });
+        if (conversationId) void navigate({ to: conversationRoute(kind), params: { conversationId } });
+        else void navigate({ to: '/scheduled' });
       }),
     [navigate],
   );
@@ -88,8 +92,10 @@ export function useAppCommands(): void {
   useEffect(
     () =>
       onEvent('tasks:notify', (notice) => {
-        if (pathname === `/task/${notice.conversationId}` || pathname === `/code/${notice.conversationId}`) return;
-        const open = { label: 'Open', onClick: () => void navigate({ to: conversationRoute(notice.conversationKind), params: { conversationId: notice.conversationId } }) };
+        if (notice.conversationId && [`/task/${notice.conversationId}`, `/code/${notice.conversationId}`, `/chat/${notice.conversationId}`].includes(pathname)) return;
+        const open = notice.conversationId
+          ? { label: 'Open', onClick: () => void navigate({ to: conversationRoute(notice.conversationKind), params: { conversationId: notice.conversationId } }) }
+          : { label: 'Scheduled', onClick: () => void navigate({ to: '/scheduled' }) };
         if (notice.kind === 'error') toast.error(notice.title, { description: notice.body, action: open });
         else if (notice.kind === 'approval') toast.warning(notice.title, { description: notice.body, action: open, duration: 10_000 });
         else toast.success(notice.title, { description: notice.body, action: open });

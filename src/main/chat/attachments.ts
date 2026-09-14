@@ -1,5 +1,5 @@
 import { copyFile, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, extname, join, resolve, sep } from 'node:path';
 import type { AttachmentKind, AttachmentRef } from '@shared/types/chat';
 import { all, get, run } from '../db/client';
 import { newId } from '../lib/util';
@@ -132,6 +132,20 @@ export async function withAttachments(content: string, refs: AttachmentRef[], vi
     }
   }
   return { content: blocks.length ? `${blocks.join('\n\n')}\n\n${content}` : content, images: images.length ? images : undefined };
+}
+
+/** The bytes of an attached image, for showing it in the conversation. */
+export async function attachmentImage(id: string): Promise<{ mime: string; bytes: Buffer } | null> {
+  const row = get<Row>("SELECT * FROM attachments WHERE id = ? AND kind = 'image'", id);
+  if (!row?.path) return null;
+  const root = resolve(paths().attachments);
+  const file = resolve(row.path);
+  if (!file.startsWith(root + sep)) return null;
+  try {
+    return { mime: row.mime.startsWith('image/') ? row.mime : 'image/png', bytes: await readFile(file) };
+  } catch {
+    return null;
+  }
 }
 
 export async function cleanupOrphanAttachments(): Promise<void> {

@@ -8,8 +8,8 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M1 Foundation** | App shell, Chat, Projects, Artifacts, incognito, Model Hub, all backends | ✅ Done 2026-09-13 |
 | **M2 Cowork** | Local agent that works inside a folder you choose | ✅ Done 2026-09-13 |
 | **M3 Code** | Coding agent for repositories | ✅ Done 2026-09-14 |
-| **M4 Customize, Scheduled, Voice** | Skills, MCP connectors, plugins, scheduled tasks, dictation, embeddings RAG | Next |
-| **M5 Design** (optional) | Canvas for mockups and slides | Planned |
+| **M4 Customize, Scheduled, Voice** | Skills, MCP connectors, plugins, scheduled tasks, dictation, embeddings RAG | ✅ Done 2026-09-15 |
+| **M5 Design** (optional) | Canvas for mockups and slides, better-designed documents | Next |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -111,6 +111,90 @@ Real model through the UI (`scripts/code-smoke.mjs`), Ollama qwen3.5:9b: given "
 - **Preview:** PDFs do not render in the sandboxed preview frame (use "Open"). Non-localhost web pages open in the browser.
 - **Editor:** Monaco has syntax highlighting only (no language servers or IntelliSense).
 - **Packaging:** node-pty's prebuilt N-API binaries are unpacked from the asar; the installer is not code signed.
+
+---
+
+## M4 Customize, Scheduled, Voice — delivered
+
+Customize (skills, connectors, plugins, commands, memory), tools in Chat, Scheduled tasks with a notification-area icon, voice dictation, semantic project search and a quick entry window. It also fixes the issues noted in `docs/Creator Ideas - important things/`: attached images now show in the conversation, Chat has web search and `/tools`, and Code sees syntax errors after it writes code.
+
+- **Tools in Chat** (`agent/runner.ts`, `chat/orchestrator.ts`)
+  - A chat whose model has native tool calling runs through the agent loop when any chat tool is on. The loop uses a throwaway task state and saves no task data. Tool steps, thinking and approvals render inline in the chat (`AgentParts.tsx`). Branching, retry, incognito and artifacts work as before.
+  - Chat tools: `web_search` / `web_fetch` (on by default, toggle in the composer's tools menu), connector tools, skills, `remember` / `forget`, and `search_chats` / `read_chat`. A chat allows 16 model calls per turn. Models without native tools keep the plain chat path, which still includes saved memories.
+  - Web search: DuckDuckGo falls back to Brave Search when it refuses automated requests or finds nothing. Brave is also selectable.
+- **Slash commands** in every composer: `/tools` (dialog listing the tools for this chat, task or session, grouped by source, with connector permissions and notes such as "this model has no native tool calling"), `/remember <fact>`, Code's `/init`, `/memory` and `/btw`, plus custom commands (`customize/commands.ts`). Custom commands are Markdown files in `~/.cellar/commands` or in a plugin's `commands/` folder, in Claude Code format (`description`, `argument-hint`, `$ARGUMENTS`, `$1…$9`).
+- **Skills** (`customize/skills.ts`): folders with a `SKILL.md` in `~/.cellar/skills` or a plugin's `skills/`.
+  - Create and edit them in the app, import a folder or a `.zip` / `.skill` archive, or import from Claude Code (`~/.claude/skills`), and turn each one on or off.
+  - Models see each skill's name and description, load the instructions with the `skill` tool, and read helper files with `read_skill_file`.
+- **Connectors** (`connectors/manager.ts`, `store.ts`): MCP servers through `@modelcontextprotocol/sdk` 1.30.
+  - Transports: stdio, Streamable HTTP (falls back to SSE) and SSE. Enabled connectors connect at startup; changed settings reconnect.
+  - Tools are named `<connector>__<tool>`. Read-only tools (`readOnlyHint`) run without asking; others show an approval card with "Always allow". Each tool has an Allow / Ask / Off policy.
+  - Plan, Ask and read-only modes keep only read-only connector tools. Server instructions go into the prompt.
+  - Environment variables and headers are encrypted with safeStorage.
+  - Import from Claude Desktop's `claude_desktop_config.json` or a pasted `mcpServers` JSON.
+- **Plugins** (`customize/plugins.ts`): the Claude Code plugin layout (`.claude-plugin/plugin.json`, `skills/`, `commands/`, `.mcp.json` with `${CLAUDE_PLUGIN_ROOT}` and `${VAR:-default}`).
+  - Install from a folder, a `.zip` or a git URL (a marketplace repository installs every plugin it lists).
+  - Enable, disable or remove a plugin; its skills, commands and connectors follow.
+- **Memory** (`customize/memory.ts`): short facts in SQLite, included in chat, task and Code prompts (newest first, 6,000-character budget).
+  - Models save and delete memories only when asked; you can add, edit and delete them in Customize → Memory.
+  - Incognito chats never read or write memory. Past-chat search is a separate switch.
+- **Scheduled tasks** (`scheduled/scheduler.ts`, `cron.ts`, `ScheduledPage.tsx`)
+  - Five-field cron schedules (croner 10) with presets (hourly, daily, weekdays, weekly, monthly) and a live preview.
+  - A task runs as a chat or as a Cowork task: a chosen folder or a new one, a permission mode, and optionally commands without asking.
+  - Model and project are per task. Each run gets its own titled conversation.
+  - A 20-second timer fires due tasks. A run missed while Cellar was closed happens once at startup, marked as a missed run. "Run now" is also available.
+  - Run history links to each run. Notifications fire when a scheduled chat finishes or a run cannot start.
+- **Background and quick entry** (`app/background.ts`)
+  - A notification-area icon (Open, New chat, Quick entry, Scheduled, Quit). With "Keep running in the notification area" on, closing the window hides it.
+  - The global shortcut (default Alt+Shift+Space, changeable) opens a small always-on-top window. Enter sends the message, and the conversation opens in the main window.
+- **Voice dictation** (`voice/whisper.ts`, `lib/dictation.ts`)
+  - The mic button records with MediaRecorder, which the renderer decodes and resamples to 16 kHz mono WAV. whisper-cli transcribes it, and the text is inserted into the composer (Esc cancels).
+  - Settings → Voice installs an official ggml-org/whisper.cpp build (CPU, OpenBLAS or CUDA 12) and downloads a ggml model (Tiny to Large v3 Turbo) from Hugging Face. The language is set there too.
+- **Semantic project search** (`rag/embeddings.ts`)
+  - Choose an embedding model in Settings → Models. Project chunks are embedded into `project_vectors` (normalized float32 blobs, per model).
+  - Embeddings come from Ollama `/api/embed`, an OpenAI-compatible `/v1/embeddings`, or llama.cpp started with `--embedding` (which does not count toward the loaded-model limit).
+  - Retrieval fuses BM25 and cosine rankings (reciprocal rank fusion). Models with a known query prefix get it (nomic, e5, bge/mxbai).
+  - The project page shows the index status and a Reindex button.
+- **Code diagnostics** (`code/diagnostics.ts`)
+  - After `write_file` / `edit_file` (Code and Cowork), a quick check runs on the changed file, and problems are appended to the tool result ("app.py:1:12 error: …").
+    - Python: `compile()`, plus ruff when installed.
+    - JavaScript: `node --check` via Electron's own Node.
+    - TypeScript: syntax errors, using the project's own `typescript`.
+    - JSON (comments allowed) and PowerShell (the parser API).
+  - `get_diagnostics` checks one file, or the project with the checkers that are installed: tsc, pyright or ruff, Python syntax, `cargo check`, `go vet`.
+- **Attachments:** images appear as thumbnails in the composer and in sent messages (chat, task and Code transcripts), served by a `cellar-attachment://image/<id>` scheme limited to the attachments folder. Click an image to see it full size.
+- **Data:** migration 3 adds `connectors`, `memories`, `scheduled_tasks`, `scheduled_runs` and `project_vectors`. Skills, plugins, commands and whisper.cpp live under `~/.cellar/`.
+
+Tests: 188 unit tests (20 new) and 14 Playwright tests (2 new). New unit tests cover:
+- frontmatter, skills (including `.skill` import), plugin install with skills, commands and connectors, command expansion, memory
+- a real stdio MCP server (`tests/fixtures/mcp-server.mjs`): tools, policies and calls
+- a chat that uses a skill, a connector tool with approval and "Always allow", and `remember`
+- JSON import of connectors
+- diagnostics (JavaScript, JSON, Python, problems in `write_file` results, tsc/cargo output)
+- cron descriptions, previews and a scheduler catch-up run
+- embedding retrieval that finds a chunk by meaning, not keywords
+- Brave result parsing and transcript cleanup
+
+The new Playwright tests cover:
+- a dropped image shown in the message and the lightbox, `/tools`, and adding the MCP server in Customize → Connectors, then a chat calling its tool
+- creating a skill, `/remember` without a model call, a scheduled chat run from the Scheduled page, and memory and skills in the prompt
+
+Real software (`scripts/m4-smoke.mjs`, Ollama, throwaway profile):
+- **qwen3.5:9b chat:** called the test connector's tool (5.7 s). Searched the web and read two GitHub pages to answer with the latest llama.cpp release (23.7 s). Saved "favorite language is Rust" to memory when asked.
+- **nomic-embed-text:** embedded a project's files (10 / 10 chunks).
+- **whisper.cpp:** CPU build b5130 and `ggml-base.bin` installed in 14 s. A Windows TTS recording came back as "Please remind me to water the tomatoes tomorrow morning." in 0.7 s.
+- **Code session:** given a `physics.py` with stray `\n` escapes (qwen3.5:9b, `scripts/code-smoke.mjs`), the model read, edited and ran the file, then called `get_diagnostics`. The fixed file prints 2.02.
+- **Quick entry:** a real Alt+Shift+Space keypress opened the window.
+
+### Known gaps and follow-ups from M4
+- **Connectors:** no OAuth sign-in for remote servers (use headers with a token); MCP resources, prompts and sampling are not used; image results from tools are described as text, not shown to vision models.
+- **Plugins:** hooks and agents in Claude Code plugins are ignored; there is no marketplace browser (install from a git URL instead).
+- **Chat tools** need native tool calling; models on the text protocol chat without tools. DuckDuckGo and Brave can still rate-limit bursts; SearXNG remains the robust choice.
+- **Scheduled tasks** run only while Cellar is running (in the notification area); there is no wake-from-sleep or Windows Task Scheduler integration. A Cowork run in Ask mode waits for approval while you are away.
+- **Voice:** the CUDA 12 whisper.cpp build predates RTX 50-series support (the CPU build is recommended there); there is no streaming transcription or voice mode for replies.
+- **Diagnostics:** TypeScript files get syntax checks only (type errors need `get_diagnostics`, which runs tsc); no language servers.
+- **Design ideas:** the "AI design engine" note in `docs/Creator Ideas - important things/` (styled documents, charts, themes and layouts in PDF/PPTX/DOCX) moves to M5.
+
 ## M2 Cowork — original goals
 
 Give Cellar an agent mode like Claude Cowork: describe an outcome, the model plans, works through steps using tools in a chosen folder, and you watch progress and steer.
@@ -171,7 +255,12 @@ A Claude Code-style coding agent for repositories, sharing the M2 agent loop.
 
 ## M5 Design (optional) — goals
 
-Multi-artboard canvas for mockups, slides and visual layouts generated by local models; visual editing of elements; PNG/PDF export.
+- **Canvas:** multi-artboard canvas for mockups, slides and visual layouts generated by local models, with visual editing of elements and PNG/PDF export.
+- **Better-designed documents**, from the creator note in `docs/Creator Ideas - important things/`:
+  - themes (palette, font pairing, backgrounds) for PDF, PPTX and DOCX output
+  - charts and images placed in the document flow
+  - precise typography and layout control
+  - absolute positioning on slides
 
 ---
 
@@ -233,3 +322,21 @@ Things that are easy to get wrong when continuing:
 - **Worktree removal on Windows:** a terminal whose working folder is the worktree keeps it locked for a moment after the pty is killed. `fs.rm` with `maxRetries` covers it.
 - **Monaco 0.56** loads from its ESM entry points with only `editor.worker`; it works under the renderer CSP (`worker-src 'self' blob:`, no eval). Load it lazily so the main bundle stays small.
 - **Radix dropdown check items** have the ARIA role `menuitem`, not `menuitemcheckbox`.
+
+## Technical notes learned in M4
+
+- **MCP SDK 1.30:** import `@modelcontextprotocol/sdk/client/index.js` (and `/stdio.js`, `/streamableHttp.js`, `/sse.js`); the `./*` export maps CJS for the main bundle.
+  - `StdioClientTransport` uses cross-spawn, so `npx` works on Windows, and passes only a short list of default environment variables (add your own through `env`).
+  - `stderr: 'pipe'` gives useful connection errors.
+  - `callTool(params, undefined, { signal, timeout, resetTimeoutOnProgress })`.
+- **Tool names:** connector tools need `[A-Za-z0-9_-]{1,64}`. `normalizeArgs` must not touch connector arguments, because strict schemas reject extra keys.
+- **Global shortcuts:** Claude Desktop holds Ctrl+Alt+Space on Windows, and `globalShortcut.register` then returns false. Cellar defaults to Alt+Shift+Space and says in Settings when a shortcut is taken. Ctrl+Alt+letter clashes with AltGr characters on Turkish and other layouts.
+- **Windows sessions:** `setTitleBarOverlay` throws on windows created without an overlay (the quick entry window), so track which windows have one. In background mode the window only hides, so `window-all-closed` never fires; quit explicitly when the main window really closes without a tray.
+- **Search:** DuckDuckGo's HTML endpoint answers GET but refuses POST and bursts with a 202 anomaly page. Brave Search serves results server-rendered in `data-type="web"` blocks. Match class names by their first word, because `result-content` also contains `content`. Bing's automated HTML results were irrelevant.
+- **Croner 10:** `new Cron(pattern, { paused: true })` with `nextRun(date)` / `nextRuns(n, date)`. The `mode` option works at runtime but is not in `CronOptions` types, so validate five fields yourself.
+- **Diagnostics:**
+  - Electron runs `--check` and helper scripts as Node with `ELECTRON_RUN_AS_NODE=1`.
+  - `where python` can return the Microsoft Store stub in `WindowsApps`; skip it and probe with `-c "print(1)"`.
+  - `node --check` reports some errors a line after where they start (for example `function f( {`).
+- **Embeddings:** llama-server embedding requests must fit one physical batch, so embedding servers start with `-b/-ub 4096`. Ollama's `/api/embed` takes an array input and `truncate: true`.
+- **Dictation:** MediaRecorder (webm/opus), then `decodeAudioData`, then an `OfflineAudioContext` at 16 kHz gives mono PCM for WAV without an AudioWorklet (which the CSP would block). The renderer CSP needs `media-src blob:`. whisper-cli prints plain text with `-nt -np`.

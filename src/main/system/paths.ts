@@ -17,6 +17,17 @@ export interface CellarPaths {
   unslothLlamaCppDirs: string[];
   unslothCli: string;
   artifactRuntime: string;
+  /** Your skills: one folder with a SKILL.md each. */
+  skills: string;
+  /** Installed plugins: one folder each. */
+  plugins: string;
+  /** Your slash commands: one Markdown file each. */
+  commands: string;
+  /** whisper.cpp builds and models. */
+  whisper: string;
+  /** Claude Desktop's config and Claude Code's skills, for importing. */
+  claudeDesktopConfig: string;
+  claudeSkills: string;
 }
 
 let current: CellarPaths | null = null;
@@ -44,6 +55,12 @@ export function initPaths(userData: string, artifactRuntimeDir: string): CellarP
     ],
     unslothCli: join(unslothHome, 'studio', 'bin', process.platform === 'win32' ? 'unsloth.cmd' : 'unsloth'),
     artifactRuntime: artifactRuntimeDir,
+    skills: join(cellarHome, 'skills'),
+    plugins: join(cellarHome, 'plugins'),
+    commands: join(cellarHome, 'commands'),
+    whisper: join(cellarHome, 'whisper'),
+    claudeDesktopConfig: join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json'),
+    claudeSkills: join(home, '.claude', 'skills'),
   };
   for (const dir of [current.logs, current.attachments, current.cellarHome, current.runtimes, current.tmp]) {
     mkdirSync(dir, { recursive: true });

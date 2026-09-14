@@ -13,14 +13,3 @@ export const INIT_PROMPT = [
   'Include: a one-paragraph overview; how to install dependencies, build, run, test and lint (exact commands, found in the manifests and scripts); the layout of the main folders; code style and conventions you observe; and anything easy to get wrong.',
   'Keep it under 120 lines, factual and specific to this repository. If CELLAR.md already exists, improve it instead of starting over.',
 ].join(' ');
-
-export interface SlashCommand {
-  name: string;
-  description: string;
-}
-
-export const CODE_SLASH_COMMANDS: SlashCommand[] = [
-  { name: '/init', description: 'Study the repository and write CELLAR.md' },
-  { name: '/memory', description: 'Open CELLAR.md in the editor' },
-  { name: '/btw', description: 'Ask a side question that stays out of the session' },
-];

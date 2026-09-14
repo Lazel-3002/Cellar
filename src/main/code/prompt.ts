@@ -23,6 +23,8 @@ export interface CodePromptInput {
   userMemory?: string;
   customSystemPrompt?: string;
   textProtocol?: string;
+  /** Memory, skills and connector instructions. */
+  extraSections?: string[];
   now?: Date;
 }
 
@@ -79,6 +81,9 @@ export function buildCodePrompt(input: CodePromptInput): string {
       has('todo_write') ? 'For work with several steps, keep a short plan with todo_write and update it as you go.' : null,
       'Make focused changes with edit_file (old_string must match the file exactly, including indentation); use write_file only for new files or complete rewrites.',
       has('run_command') ? 'After changing code, verify it: run the relevant tests, type checker, linter or build with run_command when the project has them, and fix what you broke.' : null,
+      has('get_diagnostics')
+        ? 'Edits report syntax problems in the changed file right away; fix them before moving on. Use get_diagnostics to check a file or the whole project (tsc, pyright/ruff, cargo, go vet) before you finish.'
+        : null,
       'Do not commit, push, reset or delete branches unless the user asks; the user reviews and commits changes in the Changes panel. Avoid destructive commands (Remove-Item -Recurse, git reset --hard, git clean) unless the user asked for them.',
       has('run_command') ? 'Do not start long-running servers or watchers with run_command: they block until the timeout. Ask the user to start them in the Terminal tab and open the Preview tab instead.' : null,
       'If a tool returns an error, read it and try a different approach instead of repeating the same call.',
@@ -100,6 +105,7 @@ export function buildCodePrompt(input: CodePromptInput): string {
   if (input.memory?.content.trim()) {
     parts.push(`<project_memory file="${input.memory.path}">\n${input.memory.content.trim()}\n</project_memory>\nFollow the project memory: it describes how this repository is built, tested and organized.`);
   }
+  for (const section of input.extraSections ?? []) if (section.trim()) parts.push(section.trim());
   if (input.customSystemPrompt?.trim()) parts.push(input.customSystemPrompt.trim());
   if (input.textProtocol) parts.push(input.textProtocol);
   return parts.join('\n\n');

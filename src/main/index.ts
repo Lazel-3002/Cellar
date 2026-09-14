@@ -1,11 +1,13 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, safeStorage } from 'electron';
 import { installPdfRenderer, installTaskNotifications } from './agent/desktop';
+import { attachCloseToTray, backgroundActive, installBackground, isQuitting, markQuitting, showMainWindow } from './app/background';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
 import { installPreview, registerPreviewScheme } from './code/preview';
 import { stopAllSideChats } from './code/side-chat';
 import { terminals } from './code/terminal';
+import { connectors } from './connectors/manager';
 import { closeDatabase, openDatabase } from './db/client';
 import { downloads } from './hub/downloads';
 import { handlers } from './ipc';
@@ -14,9 +16,10 @@ import { initLogFile, logger } from './lib/log';
 import { setSecretCodec } from './lib/secrets';
 import { installAppMenu } from './menu';
 import { localModels } from './models/local-index';
-import { handleArtifactProtocol, registerArtifactScheme } from './protocol/artifact-protocol';
+import { handleArtifactProtocol, handleAttachmentProtocol, registerArtifactScheme } from './protocol/artifact-protocol';
 import { providers } from './providers/registry';
 import { runtimes } from './runtimes/llamacpp-runtimes';
+import { scheduler } from './scheduled/scheduler';
 import { initPaths, paths } from './system/paths';
 import { detectHardware } from './system/hardware';
 import { createMainWindow, isAppUrl } from './window';
@@ -34,10 +37,19 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   let mainWindow: BrowserWindow | null = null;
 
+  const openMainWindow = (): BrowserWindow => {
+    mainWindow = createMainWindow();
+    attachCloseToTray(mainWindow);
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+      // The (hidden) quick entry window would otherwise keep the app alive without a tray icon.
+      if (!backgroundActive()) app.quit();
+    });
+    return mainWindow;
+  };
+
   app.on('second-instance', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    if (app.isReady()) showMainWindow();
   });
 
   app.whenReady().then(() => {
@@ -58,37 +70,40 @@ if (!app.requestSingleInstanceLock()) {
     handlers.register();
     forwardBusToWindows();
     handleArtifactProtocol();
+    handleAttachmentProtocol();
     installPreview();
     installAppMenu();
     installPdfRenderer();
     installTaskNotifications(() => mainWindow);
 
-    mainWindow = createMainWindow();
-    mainWindow.on('closed', () => {
-      mainWindow = null;
-    });
+    openMainWindow();
+    installBackground({ getMainWindow: () => mainWindow, createMainWindow: openMainWindow });
 
     // Warm caches in the background so the first screens render instantly.
     void detectHardware();
     void runtimes.list().then(() => providers.statusAll(true));
     void localModels.scan().catch((err) => log.error('model scan failed', err));
     void cleanupOrphanAttachments().catch(() => undefined);
+    connectors.init(app.getVersion());
+    scheduler.init();
   });
 
   app.on('window-all-closed', () => {
-    app.quit();
+    // In background mode the window only hides; without a tray icon nothing could bring it back.
+    if (isQuitting() || !backgroundActive()) app.quit();
   });
 
   let disposing = false;
   app.on('before-quit', (event) => {
+    markQuitting();
     if (disposing) return;
     disposing = true;
     event.preventDefault();
     chat.stopAll();
     stopAllSideChats();
     terminals.disposeAll();
-    void providers
-      .dispose()
+    scheduler.dispose();
+    void Promise.all([providers.dispose(), connectors.dispose()])
       .catch((err) => log.error('dispose failed', err))
       .finally(() => {
         closeDatabase();

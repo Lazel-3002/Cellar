@@ -140,7 +140,8 @@ export function ChatPage() {
   const path = useMemo(() => (data ? branchPath(data.messages, data.conversation.currentLeafId) : []), [data]);
   const streamingMessage = path.find((m) => m.role === 'assistant' && m.status === 'streaming' && (!streams[m.id] || isLive(streams[m.id])));
   const lastLive = path.length ? streams[path[path.length - 1].id] : undefined;
-  const scrollSignal = `${path.length}:${lastLive?.content.length ?? 0}:${lastLive?.reasoning.length ?? 0}:${lastLive?.status ?? ''}`;
+  const lastPart = lastLive?.parts?.at(-1);
+  const scrollSignal = `${path.length}:${lastLive?.content.length ?? 0}:${lastLive?.reasoning.length ?? 0}:${lastLive?.status ?? ''}:${lastLive?.parts?.length ?? 0}:${lastPart?.type === 'reasoning' ? lastPart.text.length : lastPart?.type === 'tool' ? lastPart.status : ''}`;
 
   useEffect(() => {
     if (atBottom && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;

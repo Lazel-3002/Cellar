@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { BriefcaseBusiness, Clock, MessageSquare, Palette, Search, Shapes, Star, Trash } from 'lucide-react';
+import { MessageSquare, Palette, Search, Shapes, Star, Trash } from 'lucide-react';
 import { ARTIFACT_ICONS, ARTIFACT_LABELS } from '@/components/chat/ArtifactCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/form';
@@ -159,20 +159,6 @@ export function RecentsPage() {
 }
 
 const COMING: Record<string, { icon: ReactNode; title: string; milestone: string; description: string; bullets: string[] }> = {
-  scheduled: {
-    icon: <Clock className="size-5" />,
-    title: 'Scheduled',
-    milestone: 'Milestone 4',
-    description: 'Run prompts and Cowork tasks on a schedule with your local models — daily briefings, weekly summaries, folder clean-ups.',
-    bullets: ['Cron-style schedules that run while Cellar is in the tray', 'Run history with full transcripts', 'Desktop notifications when a task finishes'],
-  },
-  customize: {
-    icon: <BriefcaseBusiness className="size-5" />,
-    title: 'Customize',
-    milestone: 'Milestone 4',
-    description: 'Teach your models how you work with skills, and connect tools through MCP servers.',
-    bullets: ['Skills: folders with a SKILL.md and helper files', 'Connectors: local and remote MCP servers', 'Plugins that bundle skills, connectors and commands'],
-  },
   design: {
     icon: <Palette className="size-5" />,
     title: 'Design',

@@ -170,7 +170,8 @@ export const writeFileTool = defineTool({
     await writeFile(w.abs, args.content, 'utf8');
     const bytes = Buffer.byteLength(args.content);
     ctx.recordFile({ absolutePath: w.abs, action: w.exists ? 'modified' : 'created', tool: 'write_file', bytes });
-    return `${w.exists ? 'Replaced' : 'Created'} ${w.rel} (${args.content.split('\n').length} lines, ${formatBytes(bytes)}).`;
+    const problems = (await ctx.afterChange?.(w.abs)) ?? '';
+    return `${w.exists ? 'Replaced' : 'Created'} ${w.rel} (${args.content.split('\n').length} lines, ${formatBytes(bytes)}).${problems}`;
   },
 });
 
@@ -217,7 +218,8 @@ export const editFileTool = defineTool({
     await ctx.beforeChange?.(plan.abs);
     await writeFile(plan.abs, plan.next, 'utf8');
     ctx.recordFile({ absolutePath: plan.abs, action: 'modified', tool: 'edit_file', bytes: Buffer.byteLength(plan.next) });
-    return `Edited ${plan.rel} (${plan.matches} replacement${plan.matches === 1 ? '' : 's'}).`;
+    const problems = (await ctx.afterChange?.(plan.abs)) ?? '';
+    return `Edited ${plan.rel} (${plan.matches} replacement${plan.matches === 1 ? '' : 's'}).${problems}`;
   },
 });
 

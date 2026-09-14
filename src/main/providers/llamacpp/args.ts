@@ -5,6 +5,8 @@ export interface ServerLaunch {
   mmprojPath?: string;
   port: number;
   alias: string;
+  /** Serve /v1/embeddings (embedding models). */
+  embedding?: boolean;
 }
 
 /** Split a user-supplied argument string, honouring double and single quotes. */
@@ -73,8 +75,10 @@ export function buildServerArgs(launch: ServerLaunch, cfg: LoadConfig): string[]
   else if (cfg.moeCpuLayers > 0) args.push('--n-cpu-moe', String(cfg.moeCpuLayers));
 
   if (cfg.threads) args.push('-t', String(cfg.threads));
-  if (cfg.batchSize) args.push('-b', String(cfg.batchSize));
-  if (cfg.ubatchSize) args.push('-ub', String(cfg.ubatchSize));
+  // Embedding requests are processed in one physical batch, so it must hold a whole chunk.
+  if (cfg.batchSize || launch.embedding) args.push('-b', String(cfg.batchSize ?? 4096));
+  if (cfg.ubatchSize || launch.embedding) args.push('-ub', String(cfg.ubatchSize ?? 4096));
+  if (launch.embedding) args.push('--embedding');
   // llama.cpp warns that CPU tensor overrides are slow with mmap; read weights fully instead.
   const loadMode = moeOffload && cfg.loadMode === 'mmap' ? 'none' : cfg.loadMode;
   if (loadMode !== 'mmap') args.push('--load-mode', loadMode);

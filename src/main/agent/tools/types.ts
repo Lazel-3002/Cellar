@@ -22,6 +22,12 @@ export interface ToolContext {
   shell?: string;
   /** Output so far of the running command, for live display. */
   onOutput?(text: string): void;
+  /** The conversation the tool runs for. */
+  conversationId?: string;
+  /** Incognito chats: nothing may be remembered. */
+  incognito?: boolean;
+  /** Run after a file tool changed a file; returns problems found in it (Code and Cowork). */
+  afterChange?(absolutePath: string): Promise<string>;
 }
 
 export interface AgentTool<S extends z.ZodType = z.ZodType> {
@@ -29,6 +35,14 @@ export interface AgentTool<S extends z.ZodType = z.ZodType> {
   description: string;
   category: ToolCategory;
   input: S;
+  /** JSON schema sent to the model instead of one derived from `input` (connector tools). */
+  parameters?: Record<string, unknown>;
+  /** Connector tools only read data (the server says so); plan and ask modes keep only these. */
+  readOnly?: boolean;
+  /** Connector tools: where the tool comes from. */
+  connector?: { name: string; tool: string };
+  /** Called when the user picks "Always allow" on this tool's approval card. */
+  onAllowAll?(): Promise<void> | void;
   /**
    * What the user is asked before the call runs. Edit and command tools always describe
    * themselves (the permission mode decides whether to ask); web tools return null when
@@ -66,7 +80,7 @@ export function toolSchema(tool: AgentTool): ToolSchema {
   return {
     name: tool.name,
     description: tool.description,
-    parameters: cleanSchema(z.toJSONSchema(tool.input, { io: 'input' })) as Record<string, unknown>,
+    parameters: cleanSchema(tool.parameters ?? z.toJSONSchema(tool.input, { io: 'input' })) as Record<string, unknown>,
   };
 }
 

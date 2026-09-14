@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react';
-import { Ban, ChevronRight, CircleAlert, FileCode, Globe, ShieldAlert, SquareTerminal } from 'lucide-react';
+import { Ban, ChevronRight, CircleAlert, FileCode, Globe, Plug, ShieldAlert, SquareTerminal } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ApprovalAction, ToolPart } from '@shared/types/agent';
 import { Button } from '@/components/ui/button';
@@ -180,13 +180,21 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
     }
   };
   const allowAllLabel =
-    approval.kind === 'command' ? 'Always allow commands' : approval.kind === 'web' ? `Always allow ${approval.url ? hostOf(approval.url) : 'this site'}` : 'Allow all edits';
+    approval.kind === 'command'
+      ? 'Always allow commands'
+      : approval.kind === 'web'
+        ? `Always allow ${approval.url ? hostOf(approval.url) : 'this site'}`
+        : approval.kind === 'connector'
+          ? `Always allow ${approval.tool ?? 'this tool'}`
+          : 'Allow all edits';
   const heading =
     approval.kind === 'command'
       ? 'Cellar wants to run a command'
       : approval.kind === 'web'
         ? 'Cellar wants to open a page it was not given'
-        : approval.kind === 'edit'
+        : approval.kind === 'connector'
+          ? `Cellar wants to use ${approval.tool ?? 'a tool'} from ${approval.connector ?? 'a connector'}`
+          : approval.kind === 'edit'
           ? `Cellar wants to edit ${approval.path}`
           : approval.exists
             ? `Cellar wants to replace ${approval.path}`
@@ -194,7 +202,7 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
   return (
     <div data-testid="approval-card" className="my-2 overflow-hidden rounded-xl border border-brand/45 bg-card font-sans shadow-[0_2px_16px_rgba(0,0,0,0.12)] animate-fade-in">
       <div className="flex items-center gap-2.5 border-b border-divider px-4 py-2.5">
-        {approval.kind === 'command' ? <SquareTerminal className="size-4 text-brand" /> : <ShieldAlert className="size-4 text-brand" />}
+        {approval.kind === 'command' ? <SquareTerminal className="size-4 text-brand" /> : approval.kind === 'connector' ? <Plug className="size-4 text-brand" /> : <ShieldAlert className="size-4 text-brand" />}
         <span className="text-[14px] font-medium text-foreground">{heading}</span>
       </div>
       <div className="space-y-2 px-4 py-3">

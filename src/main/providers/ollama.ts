@@ -256,6 +256,19 @@ export class OllamaProvider implements Provider {
     }
   }
 
+  async embed(entry: ModelEntry, input: string[], signal?: AbortSignal): Promise<number[][]> {
+    const res = await fetch(this.url('/api/embed'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: entry.ref.modelId, input, keep_alive: '10m', truncate: true }),
+      signal,
+    });
+    if (!res.ok) throw new ProviderHttpError(res.status, await readErrorBody(res));
+    const json = (await res.json()) as { embeddings?: number[][] };
+    if (!json.embeddings || json.embeddings.length !== input.length) throw new Error('Ollama returned no embeddings.');
+    return json.embeddings;
+  }
+
   async *chat(req: ChatRequest): AsyncGenerator<StreamEvent> {
     const think = ollamaThink(req.entry.reasoningStyle, req.thinking);
     const body: Record<string, unknown> = {

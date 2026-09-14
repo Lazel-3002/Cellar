@@ -161,4 +161,70 @@ export const migrations: string[] = [
   ALTER TABLE messages ADD COLUMN parts TEXT;
   CREATE INDEX conversations_kind ON conversations(kind, updated_at DESC);
   `,
+  /* 3: Customize, Scheduled, embeddings */ `
+  CREATE TABLE connectors (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    transport TEXT NOT NULL,
+    command TEXT NOT NULL DEFAULT '',
+    args TEXT NOT NULL DEFAULT '[]',
+    env TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    headers TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    tool_policies TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE memories (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'user',
+    conversation_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'chat',
+    cron TEXT NOT NULL,
+    model TEXT,
+    folder TEXT,
+    permission_mode TEXT NOT NULL DEFAULT 'auto-edits',
+    allow_commands INTEGER NOT NULL DEFAULT 0,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at INTEGER,
+    last_status TEXT,
+    last_fire_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE scheduled_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    conversation_id TEXT,
+    trigger TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER
+  );
+  CREATE INDEX scheduled_runs_task ON scheduled_runs(task_id, started_at DESC);
+
+  CREATE TABLE project_vectors (
+    file_id TEXT NOT NULL REFERENCES project_files(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    ord INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    dims INTEGER NOT NULL,
+    vector BLOB NOT NULL,
+    PRIMARY KEY (file_id, ord, model)
+  );
+  CREATE INDEX project_vectors_project ON project_vectors(project_id, model);
+  `,
 ];

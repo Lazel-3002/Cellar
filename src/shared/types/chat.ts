@@ -119,6 +119,8 @@ export interface SendMessageInput {
   task?: TaskStartOptions;
   /** Starts a Code session (only for new conversations). */
   code?: CodeStartOptions;
+  /** Title for a new conversation (no generated title). Set by scheduled runs. */
+  title?: string;
 }
 
 export interface SendMessageResult {
@@ -181,6 +183,16 @@ export interface ProjectFile {
   createdAt: number;
 }
 
+/** Semantic search index of a project's files (Settings → Models → embedding model). */
+export interface ProjectIndexStatus {
+  projectId: string;
+  model: ModelRef | null;
+  chunks: number;
+  embedded: number;
+  state: 'off' | 'indexing' | 'partial' | 'ready' | 'error';
+  message?: string;
+}
+
 export interface ProjectSummary extends Project {
   fileCount: number;
   conversationCount: number;
@@ -190,6 +202,7 @@ export interface ProjectDetail {
   project: Project;
   files: ProjectFile[];
   conversations: ConversationSummary[];
+  index: ProjectIndexStatus;
 }
 
 export type ArtifactType = 'html' | 'svg' | 'react' | 'mermaid' | 'markdown' | 'code';

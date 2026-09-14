@@ -5,13 +5,14 @@ import { Check, FolderOpen, Plus, RefreshCw, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProviderConfig, ProviderStatus } from '@shared/types/providers';
 import type { RuntimeInstallProgress, RuntimeVariant } from '@shared/types/system';
+import type { VoiceProgress, WhisperVariant } from '@shared/types/voice';
 import { CellarMark } from '@/components/brand/Logo';
 import { ProviderStatusDot } from '@/components/models/bits';
 import { Button } from '@/components/ui/button';
-import { Field, Input, NumberInput, Segmented, Switch, Textarea } from '@/components/ui/form';
+import { Field, Input, NumberInput, Segmented, Select, Switch, Textarea } from '@/components/ui/form';
 import { Badge, Kbd, Progress, Spinner } from '@/components/ui/misc';
 import { invoke, onEvent } from '@/lib/ipc';
-import { keys, useAppInfo, useHardware, useProviderConfigs, useProviders, useRuntimes, useSettings, useUpdateSettings } from '@/lib/queries';
+import { keys, useAppInfo, useBackground, useHardware, useModels, useProviderConfigs, useProviders, useRuntimes, useSettings, useUpdateSettings, useVoice } from '@/lib/queries';
 import { cn, formatBytes } from '@/lib/utils';
 
 const SECTIONS = [
@@ -19,6 +20,7 @@ const SECTIONS = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'cowork', label: 'Cowork' },
   { id: 'code', label: 'Code' },
+  { id: 'voice', label: 'Voice' },
   { id: 'models', label: 'Models' },
   { id: 'engines', label: 'Engines & runtimes' },
   { id: 'connections', label: 'Connections' },
@@ -83,10 +85,182 @@ function General() {
         <Field label="Artifacts" description="Ask models to put web pages, SVGs, React components, diagrams and long documents in a side panel. Skipped automatically for models under 3B parameters.">
           <Switch checked={s.artifacts} onCheckedChange={(v) => update.mutate({ artifacts: v })} />
         </Field>
+        <Field label="Web search in chats" description="Models with native tool calling can search the web and read pages while they answer. Search queries go to the provider set in Cowork settings.">
+          <Switch checked={s.chatWebSearch} onCheckedChange={(v) => update.mutate({ chatWebSearch: v })} />
+        </Field>
+      </Card>
+      <DesktopCard />
+    </>
+  );
+}
+
+function DesktopCard() {
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  const { data: background, refetch } = useBackground();
+  const [shortcut, setShortcut] = useState(s?.quickEntryShortcut ?? '');
+  useEffect(() => setShortcut(s?.quickEntryShortcut ?? ''), [s?.quickEntryShortcut]);
+  if (!s) return null;
+  return (
+    <Card title="Desktop">
+      <Field label="Keep running in the notification area" description="Closing the window keeps Cellar running so scheduled tasks still run. Quit from the icon in the notification area.">
+        <Switch checked={s.runInBackground} onCheckedChange={(v) => update.mutate({ runInBackground: v })} />
+      </Field>
+      <Field
+        label="Quick entry shortcut"
+        description={
+          s.quickEntryShortcut
+            ? background?.quickEntryActive
+              ? 'Press it anywhere to ask a quick question. Leave empty to turn it off.'
+              : 'This shortcut is not active: another app may be using it. Try a different one.'
+            : 'Off. Enter a shortcut such as Alt+Shift+Space.'
+        }
+      >
+        <Input
+          value={shortcut}
+          onChange={(e) => setShortcut(e.target.value)}
+          onBlur={() => shortcut !== s.quickEntryShortcut && update.mutate({ quickEntryShortcut: shortcut }, { onSuccess: () => setTimeout(() => void refetch(), 300) })}
+          placeholder="Alt+Shift+Space"
+          className="w-44 font-mono"
+        />
+      </Field>
+    </Card>
+  );
+}
+
+const LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Detect automatically' },
+  { value: 'en', label: 'English' },
+  { value: 'tr', label: 'Turkish' },
+  { value: 'de', label: 'German' },
+  { value: 'fr', label: 'French' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'it', label: 'Italian' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'nl', label: 'Dutch' },
+  { value: 'ru', label: 'Russian' },
+  { value: 'uk', label: 'Ukrainian' },
+  { value: 'pl', label: 'Polish' },
+  { value: 'ar', label: 'Arabic' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'zh', label: 'Chinese' },
+];
+
+function Voice() {
+  const qc = useQueryClient();
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  const { data: voice, isLoading } = useVoice();
+  const [progress, setProgress] = useState<Record<string, VoiceProgress>>({});
+  useEffect(
+    () =>
+      onEvent('voice:progress', (p) => {
+        setProgress((prev) => ({ ...prev, [`${p.kind}:${p.id}`]: p }));
+        if (p.stage === 'done' || p.stage === 'error') void qc.invalidateQueries({ queryKey: keys.voice });
+      }),
+    [qc],
+  );
+  if (!s || isLoading || !voice) return <Spinner />;
+  const busy = (key: string) => {
+    const p = progress[key];
+    return !!p && (p.stage === 'downloading' || p.stage === 'extracting');
+  };
+  const run = async (fn: () => Promise<unknown>, success: string) => {
+    try {
+      await fn();
+      toast.success(success);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      void qc.invalidateQueries({ queryKey: keys.voice });
+    }
+  };
+  const bar = (key: string) => {
+    const p = progress[key];
+    if (!p || !busy(key)) return null;
+    return (
+      <div className="mt-1.5">
+        <Progress value={p.totalBytes ? (p.receivedBytes / p.totalBytes) * 100 : 0} />
+        <div className="mt-0.5 text-[11.5px] text-muted-foreground tabular-nums">
+          {p.stage === 'extracting' ? 'Extracting…' : `${formatBytes(p.receivedBytes)} / ${formatBytes(p.totalBytes)}`}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <>
+      <Card title="Voice dictation" description="The mic button in the composer turns speech into text on this computer with whisper.cpp. Nothing is sent anywhere.">
+        <Field label="Status">
+          {voice.ready ? <Badge tone="success">Ready</Badge> : <Badge tone="warning">{voice.runtime ? 'Download a voice model' : 'Install whisper.cpp'}</Badge>}
+        </Field>
+        <Field label="Language" description="Detecting automatically works for most speech; choosing your language is a little faster and more reliable.">
+          <Select value={s.voiceLanguage} onChange={(voiceLanguage) => update.mutate({ voiceLanguage })} options={LANGUAGES} className="w-52" />
+        </Field>
+      </Card>
+      <Card title="whisper.cpp" description={voice.runtime ? `Installed: ${voice.runtime.variant.toUpperCase()} build ${voice.runtime.tag}` : 'Official Windows builds from ggml-org/whisper.cpp on GitHub.'}>
+        {WHISPER_BUILDS.map((b) => (
+          <div key={b.variant} className="py-3">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[13.5px]">
+                  {b.label}
+                  {b.variant === 'cpu' && <Badge tone="brand">Recommended</Badge>}
+                  {voice.runtime?.variant === b.variant && <Badge tone="success">Installed</Badge>}
+                </div>
+                <div className="text-[12px] text-muted-foreground">{b.description}</div>
+              </div>
+              <Button size="sm" variant={voice.runtime ? 'outline' : b.variant === 'cpu' ? 'primary' : 'outline'} disabled={busy(`runtime:${b.variant}`)} onClick={() => void run(() => invoke('voice:installRuntime', b.variant), 'whisper.cpp installed')}>
+                {voice.runtime?.variant === b.variant ? 'Reinstall' : 'Install'}
+              </Button>
+            </div>
+            {bar(`runtime:${b.variant}`)}
+          </div>
+        ))}
+      </Card>
+      <Card title="Voice models" description="Downloaded from huggingface.co/ggerganov/whisper.cpp. The one you pick is used for dictation.">
+        {voice.models.map((m) => (
+          <div key={m.id} className="py-3">
+            <div className="flex items-center gap-3">
+              <button
+                aria-label={`Use ${m.label}`}
+                disabled={!m.installed}
+                onClick={() => update.mutate({ voiceModel: m.id }, { onSuccess: () => void qc.invalidateQueries({ queryKey: keys.voice }) })}
+                className={cn('flex size-4 shrink-0 items-center justify-center rounded-full border border-composer-border disabled:opacity-40', voice.model === m.id && m.installed && 'border-brand bg-brand')}
+              >
+                {voice.model === m.id && m.installed && <span className="size-1.5 rounded-full bg-white" />}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[13.5px]">
+                  {m.label}
+                  <span className="text-[12px] text-muted-foreground">{formatBytes(m.sizeBytes)}</span>
+                </div>
+                <div className="text-[12px] text-muted-foreground">{m.description}</div>
+              </div>
+              {m.installed ? (
+                <Button size="sm" variant="ghost" onClick={() => void run(() => invoke('voice:deleteModel', m.id), `${m.label} removed`)}>
+                  <Trash className="size-3.5" />
+                </Button>
+              ) : (
+                <Button size="sm" variant={m.id === 'ggml-base.bin' ? 'primary' : 'outline'} disabled={busy(`model:${m.id}`)} onClick={() => void run(() => invoke('voice:downloadModel', m.id), `${m.label} downloaded`)}>
+                  Download
+                </Button>
+              )}
+            </div>
+            {bar(`model:${m.id}`)}
+          </div>
+        ))}
       </Card>
     </>
   );
 }
+
+const WHISPER_BUILDS: Array<{ variant: WhisperVariant; label: string; description: string }> = [
+  { variant: 'cpu', label: 'CPU', description: 'About 9 MB. Fast enough for dictation with the Tiny, Base and Small models.' },
+  { variant: 'blas', label: 'CPU with OpenBLAS', description: 'About 21 MB. Faster on long recordings.' },
+  { variant: 'cuda-12', label: 'NVIDIA CUDA 12', description: 'About 675 MB including the CUDA runtime. For NVIDIA GPUs up to the RTX 40 series.' },
+];
 
 const ACCENTS = ['#D97757', '#C2410C', '#B45309', '#65A30D', '#0D9488', '#2563EB', '#7C3AED', '#DB2777'];
 
@@ -149,16 +323,17 @@ function Cowork() {
           </Field>
         )}
       </Card>
-      <Card title="Web access" description="Search queries go to the provider below; pages are fetched directly from this computer.">
+      <Card title="Web access" description="Search queries go to the provider below; pages are fetched directly from this computer. Chats use the same provider.">
         <Field label="Let tasks search the web and read pages">
           <Switch checked={s.coworkWebAccess} onCheckedChange={(v) => update.mutate({ coworkWebAccess: v })} />
         </Field>
-        <Field label="Search provider">
+        <Field label="Search provider" description={s.webSearchProvider === 'duckduckgo' ? 'When DuckDuckGo refuses automated searches, Cellar asks Brave Search instead.' : undefined}>
           <Segmented
             value={s.webSearchProvider}
             onChange={(webSearchProvider) => update.mutate({ webSearchProvider })}
             options={[
               { value: 'duckduckgo', label: 'DuckDuckGo' },
+              { value: 'brave', label: 'Brave' },
               { value: 'searxng', label: 'SearXNG' },
             ]}
           />
@@ -240,8 +415,11 @@ function Code() {
 function Models() {
   const { data: s } = useSettings();
   const update = useUpdateSettings();
+  const { data: models = [] } = useModels();
   const [token, setToken] = useState('');
   if (!s) return null;
+  const embedders = models.filter((m) => m.capabilities.embedding);
+  const embeddingValue = s.embeddingModel ? `${s.embeddingModel.providerId}::${s.embeddingModel.modelId}` : 'none';
   const pickDir = async (onPick: (dir: string) => void) => {
     const dir = await invoke('system:pickDirectory', 'Choose a folder');
     if (dir) onPick(dir);
@@ -260,6 +438,27 @@ function Models() {
         </Field>
         <Field label="Models loaded at once" description="Loading another model unloads the least recently used one.">
           <NumberInput value={s.maxLoadedModels} min={1} max={8} onChange={(v) => v && update.mutate({ maxLoadedModels: v })} />
+        </Field>
+      </Card>
+      <Card title="Project knowledge search" description="With an embedding model, large project files are searched by meaning as well as by keywords.">
+        <Field
+          label="Embedding model"
+          description={
+            embedders.length === 0
+              ? 'No embedding models found. Pull nomic-embed-text in Ollama, or download a GGUF embedding model such as nomic-embed-text-v1.5 from Discover.'
+              : 'Embedding models are small; llama.cpp runs them next to your chat model without unloading it.'
+          }
+        >
+          <Select
+            value={embeddingValue}
+            onChange={(value) => {
+              if (value === 'none') return update.mutate({ embeddingModel: null });
+              const [providerId, ...rest] = value.split('::');
+              update.mutate({ embeddingModel: { providerId, modelId: rest.join('::') } });
+            }}
+            options={[{ value: 'none', label: 'Keyword search only' }, ...embedders.map((m) => ({ value: `${m.ref.providerId}::${m.ref.modelId}`, label: `${m.displayName} · ${m.providerName}` }))]}
+            className="w-64"
+          />
         </Field>
       </Card>
       <Card title="Model folders" description="Cellar finds GGUF files in these locations.">
@@ -662,6 +861,7 @@ function DataSection() {
 }
 
 const SHORTCUTS: Array<[string, string]> = [
+  ['Quick entry (anywhere, changeable in General)', 'Alt+Shift+Space'],
   ['New chat', 'Ctrl+N'],
   ['New incognito chat', 'Ctrl+Shift+N'],
   ['Search', 'Ctrl+K'],
@@ -683,12 +883,12 @@ function About() {
         <div>
           <div className="font-serif text-[24px]">Cellar</div>
           <div className="text-[13px] text-muted-foreground">
-            Version {info?.version} · Milestone 2 {info?.isDev ? '· development build' : ''}
+            Version {info?.version} · Milestone 4 {info?.isDev ? '· development build' : ''}
           </div>
         </div>
       </div>
       <p className="py-4 text-[13.5px] leading-relaxed text-muted-foreground">
-        A Claude Desktop-style home for local models. Chat and Cowork run on llama.cpp, Ollama, LM Studio, Unsloth Studio or any OpenAI-compatible server. Code, Scheduled tasks and Customize are planned for upcoming milestones.
+        A Claude Desktop-style home for local models. Chat, Cowork and Code run on llama.cpp, Ollama, LM Studio, Unsloth Studio or any OpenAI-compatible server, with skills, connectors, plugins, memory, scheduled tasks and voice dictation. Design is planned for the next milestone.
       </p>
     </Card>
   );
@@ -701,6 +901,7 @@ export function SettingsPage() {
     appearance: <Appearance />,
     cowork: <Cowork />,
     code: <Code />,
+    voice: <Voice />,
     models: <Models />,
     engines: <Engines />,
     connections: <Connections />,

@@ -6,7 +6,7 @@ import type { LoadConfig, LoadedModelInfo, ModelEntry, ReasoningStyle } from '@s
 import type { ProviderStatus } from '@shared/types/providers';
 import type { StoredProviderConfig } from '../db/provider-configs';
 import { fetchWithTimeout } from '../lib/util';
-import { authHeaders, baseEntry, samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages, toolsBody } from './openai-compat';
+import { authHeaders, baseEntry, fetchEmbeddings, samplingBody, streamChatCompletion, thinkingBody, toOpenAIMessages, toolsBody } from './openai-compat';
 import { ProviderHttpError, readErrorBody, trimBaseUrl, type ChatRequest, type Provider } from './types';
 
 interface LmsModel {
@@ -180,5 +180,9 @@ export class LmStudioProvider implements Provider {
       signal: req.signal,
       reasoningStyle: req.entry.reasoningStyle,
     });
+  }
+
+  embed(entry: ModelEntry, input: string[], signal?: AbortSignal): Promise<number[][]> {
+    return fetchEmbeddings({ baseUrl: this.config().baseUrl, apiKey: this.config().apiKey, model: entry.ref.modelId, input, signal });
   }
 }
