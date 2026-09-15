@@ -31,5 +31,21 @@ console.log('connector:', connector.state, `${connector.tools.length} tools`, co
 await ipc('connectors:delete', connector.config.id);
 const tools = await ipc('tools:list', 'chat');
 console.log('chat tools:', tools.tools.map((t) => t.name).join(', '));
+// M5: a design rendered to PDF, PNG and PowerPoint (Chromium rendering and pptxgenjs inside the asar).
+const { conversationId, designId } = await ipc('design:create', { format: 'slides', themeId: 'corporate', title: 'Packaged check' });
+const blank = await ipc('design:get', conversationId);
+await ipc('design:save', { ...blank, artboards: [{ id: 'a1', name: 'Check', width: 1920, height: 1080, background: 'background', elements: [{ id: 't1', type: 'text', text: 'Packaged', x: 120, y: 120, w: 900, h: 120, size: 96, color: 'primary' }, { id: 'c1', type: 'chart', x: 120, y: 400, w: 1000, h: 560, chart: { kind: 'bar', labels: ['A', 'B'], series: [{ name: 'x', values: [1, 2] }] } }] }] }, blank.version);
+const exportDir = join(tmpdir(), 'cellar-packaged', 'exports');
+const { mkdirSync, statSync } = await import('node:fs');
+mkdirSync(exportDir, { recursive: true });
+for (const format of ['pdf', 'png', 'pptx']) {
+  const target = join(exportDir, `check.${format}`);
+  await app.evaluate(({ dialog }, file) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+  }, target);
+  const written = await ipc('design:export', { designId, format });
+  console.log(`design ${format}:`, written ? `${statSync(written).size} bytes` : 'cancelled');
+}
+await ipc('chat:delete', [conversationId]);
 await win.screenshot({ path: join(project, 'test-results', 'screenshots', 'packaged-home.png') });
 await app.close();
