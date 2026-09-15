@@ -2,8 +2,8 @@
 
 A Claude Desktop-style app for **local models**. Chat with models running on your own GPU through Cellar's built-in llama.cpp engine, or through Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server. Find and download GGUFs from Hugging Face with LM Studio-style control over how they load.
 
-> This build: Milestone 1 (app shell, Chat, Projects, Artifacts, incognito chats, the Model Hub and all backends), Milestone 2 (Cowork agents), Milestone 3 (Code) and Milestone 4 (Customize, Scheduled, voice).
-> Coming next: Design (M5) — see [docs/ROADMAP.md](docs/ROADMAP.md).
+> This build: Milestone 1 (app shell, Chat, Projects, Artifacts, incognito chats, the Model Hub and all backends), Milestone 2 (Cowork agents), Milestone 3 (Code), Milestone 4 (Customize, Scheduled, voice) and Milestone 5 (Design).
+> Follow-ups and known gaps are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Features
 
@@ -20,11 +20,18 @@ A Claude Desktop-style app for **local models**. Chat with models running on you
   - **Plugins**: the Claude Code layout (skills, commands, `.mcp.json`), installed from a folder, a zip or a git URL.
   - **Slash commands**: `/tools`, `/remember` and your own Markdown commands.
   - **Memory**: facts models keep across conversations.
+- **Design**: a canvas where a local model builds slides, pages, posters, web pages and app screens, and you refine them by hand.
+  - Describe what you want; the model picks a theme and creates artboards from layouts (cover, bullets, columns, chart, stats, cards, quote, hero, app screen, poster…) or places elements itself. It sees the canvas and your selection, so "make this bigger" works.
+  - Visual editing: select, move with snapping guides, resize, edit text in place, arrow-key nudging, align and order, layers, undo/redo, copy/paste, image drop and paste, pan and zoom.
+  - Properties: position, typography (font, size, weight, line height, tracking, alignment, lists), colors from the theme or custom, fills, borders, radius, shadows, chart type and data.
+  - Themes (10 presets or your own colors and fonts) restyle every artboard at once; elements refer to theme colors by name.
+  - Export to PDF (one page per artboard), PowerPoint with editable text and native charts, and PNG; present full screen.
 - **Scheduled**: prompts and Cowork tasks on cron schedules with local models, run history and notifications. A notification-area icon keeps them running when the window is closed.
 - **Voice dictation**: the mic button transcribes speech on your computer with whisper.cpp (Cellar installs the build and a model).
 - **Quick entry**: a global shortcut (Alt+Shift+Space) opens a small window for a quick question.
 - **Cowork**: describe a task and a local model works through it inside a folder you choose.
   - Tools: list, read (including PDF, Word, PowerPoint and Excel), write and edit files, glob and grep, PowerShell commands, web search (DuckDuckGo or SearXNG) and page reading, a live plan, and Word, Excel, PowerPoint and PDF creation.
+  - Designed documents: PDF, Word and PowerPoint files use a theme (palette and font pairing), draw charts from ```chart blocks, embed images from the folder, and slides use the Design layouts with absolutely positioned extras.
   - Permissions: ask before changes, auto-accept edits, or plan only. Approvals appear inline with the file content, a diff or the command.
   - Tools cannot reach outside the folder (junctions and links included); commands and unknown web pages always ask first.
   - A task view with steps, thinking, files created or changed, and sources. Tasks keep running in the background and notify you when they finish or need you.
@@ -84,12 +91,13 @@ On first launch:
 | Your notes for every repository | `~/.cellar/CELLAR.md` |
 | Skills, plugins and slash commands | `~/.cellar/skills/`, `~/.cellar/plugins/`, `~/.cellar/commands/` |
 | whisper.cpp builds and voice models | `~/.cellar/whisper/` |
+| Designs (artboards and themes) | in the SQLite database; each design session also has `~/.cellar/designs/<id>/` |
 
 ## Development
 
 | Script | Purpose |
 | --- | --- |
-| `npm test` | Unit tests (Vitest): stream parsers, llama.cpp args/log parsing, memory estimator, quant grouping, context fitting, branching, artifacts, downloader resume, SQLite/FTS5, the Cowork agent (path containment, tools, documents, text protocol, compaction, the agent loop), Code (worktrees, modes, changes, terminal, preview, side chat) and M4 (skills, plugins, commands, memory, a real MCP server, chat tools, diagnostics, scheduler, embeddings) |
+| `npm test` | Unit tests (Vitest): stream parsers, llama.cpp args/log parsing, memory estimator, quant grouping, context fitting, branching, artifacts, downloader resume, SQLite/FTS5, the Cowork agent (path containment, tools, documents, text protocol, compaction, the agent loop), Code (worktrees, modes, changes, terminal, preview, side chat), M4 (skills, plugins, commands, memory, a real MCP server, chat tools, diagnostics, scheduler, embeddings) and Design (element normalization, layouts, layout checks, charts, SVG cleaning, PowerPoint export, design sessions through the agent loop, themed documents) |
 | `npm run test:e2e` | Playwright end-to-end tests against a deterministic mock OpenAI server, including a scripted tool-calling agent (build first) |
 | `npm run typecheck` | TypeScript for main/preload and renderer |
 | `node scripts/screenshots.mjs "/,/models"` | Screenshot routes of the built app |
@@ -97,6 +105,7 @@ On first launch:
 | `node scripts/cowork-smoke.mjs <provider> <model or name=…> ["<task>"]` | Real-model Cowork task in a sample folder, approving each request (`SMOKE_MODE=plan` for plan mode) |
 | `node scripts/code-smoke.mjs <provider> <model or name=…> ["<task>"]` | Real-model Code session on a sample git repository, then the Changes, Files, Terminal and Preview tabs (`SMOKE_MODE`, `SMOKE_WORKTREE=0`) |
 | `node scripts/m4-smoke.mjs <provider> <chat model> [embedding model]` | Real-model M4 check: connector and web search in a chat, memory, project embeddings, whisper.cpp install and transcription (`SMOKE_SKIP=chat,rag,voice`) |
+| `node scripts/design-smoke.mjs <provider> <model or name=…> ["<prompt>"]` | Real-model Design session: builds a design, edits the selected title in a follow-up, exports PDF, PowerPoint and PNG, and takes screenshots (`SMOKE_FORMAT`, `SMOKE_THEME`, `SMOKE_FOLLOWUP`) |
 | `node scripts/verify-downloads.mjs [repo]` | Hub download, pause/resume, checksum, rescan and Ollama pull |
 | `node scripts/ipc-run.mjs '[["runtimes:list", true]]'` | Call backend IPC handlers directly |
 | `node scripts/verify-packaged.mjs` | Smoke-test the packaged build |
@@ -113,6 +122,7 @@ src/main        Electron main process
   voice/        whisper.cpp install and transcription
   rag/          embedding index and hybrid project search
   app/          notification-area icon, background mode, quick entry
+  design/       Design sessions: store, model tools and prompt, PowerPoint exporter, PNG/PDF rendering
   providers/    llama.cpp engine, Ollama, LM Studio, OpenAI-compatible (Unsloth, custom), registry
   runtimes/     llama.cpp build detection and installation
   models/       local GGUF index, header summaries, memory estimator, presets
@@ -123,6 +133,7 @@ src/main        Electron main process
   protocol/     sandboxed cellar-artifact:// protocol
 src/preload     typed, allow-listed IPC bridge
 src/shared      IPC contract, types, message tree, artifact parser
+  design/       design model shared by main and renderer: themes, layouts, charts, HTML rendering, layout checks
 src/renderer    React 19 + Tailwind 4 UI (TanStack Router/Query, Radix, streamdown)
 src/artifact-runtime  offline React runtime for artifacts
 ```

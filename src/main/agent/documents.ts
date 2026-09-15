@@ -5,6 +5,7 @@ import {
   Document,
   ExternalHyperlink,
   HeadingLevel,
+  ImageRun,
   LevelFormat,
   Packer,
   Paragraph,
@@ -17,26 +18,96 @@ import {
 } from 'docx';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
-import { lexer, parse as parseMarkdown, type Token, type Tokens } from 'marked';
-import PptxGenJS from 'pptxgenjs';
+import { lexer, Marked, type Token, type Tokens } from 'marked';
+import { chartSvg, escapeXml, normalizeChart } from '@shared/design/charts';
+import { layoutContent, layoutName, type LayoutName } from '@shared/design/layouts';
+import { LIMITS, normalizeElement } from '@shared/design/normalize';
+import { buildLayout } from '@shared/design/ops';
+import { contrastRatio, defaultTheme, fontStack, hex6, readableOn } from '@shared/design/theme';
+import type { Artboard, ChartSpec, DesignTheme } from '@shared/types/design';
 import { extractPdfText } from '../chat/attachments';
+import type { ResolvedImage } from '../design/images';
+import { artboardsToPptx } from '../design/pptx';
 import { decodeEntities } from './html';
+import { parseLooseJson } from './text-protocol';
+
+/* ───────────────────────── Shared: themes, charts and images ───────────────────────── */
+
+export type SvgRasterizer = (svg: string, width: number, height: number) => Promise<Buffer | null>;
+
+let svgRasterizer: SvgRasterizer | null = null;
+
+/** Installed by the app: turns chart SVGs into PNGs for Word and PowerPoint. */
+export function setSvgRasterizer(rasterizer: SvgRasterizer | null): void {
+  svgRasterizer = rasterizer;
+}
+
+export interface DocumentOptions {
+  theme?: DesignTheme;
+  /** Loads an image referenced by Markdown (a path in the working folder). */
+  image?: (href: string) => Promise<ResolvedImage | null>;
+}
+
+/** A chart from a ```chart fenced block (JSON), or null when the block is not a readable chart. */
+export function chartFromCode(code: Pick<Tokens.Code, 'lang' | 'text'>): ChartSpec | null {
+  if ((code.lang ?? '').trim().toLowerCase() !== 'chart') return null;
+  try {
+    const spec = normalizeChart(parseLooseJson(code.text));
+    return spec.series.length ? spec : null;
+  } catch {
+    return null;
+  }
+}
+
+function walkTokens(tokens: Token[], visit: (token: Token) => void): void {
+  for (const token of tokens) {
+    visit(token);
+    if ('tokens' in token && Array.isArray(token.tokens)) walkTokens(token.tokens, visit);
+    if (token.type === 'list') for (const item of (token as Tokens.List).items) walkTokens(item.tokens, visit);
+    if (token.type === 'table') {
+      const table = token as Tokens.Table;
+      for (const cell of [...table.header, ...table.rows.flat()]) walkTokens(cell.tokens, visit);
+    }
+  }
+}
+
+async function loadImages(tokens: Token[], options: DocumentOptions): Promise<Map<string, ResolvedImage>> {
+  const images = new Map<string, ResolvedImage>();
+  if (!options.image) return images;
+  const hrefs = new Set<string>();
+  walkTokens(tokens, (t) => {
+    if (t.type === 'image') hrefs.add((t as Tokens.Image).href);
+  });
+  for (const href of hrefs) {
+    const image = await options.image(href).catch(() => null);
+    if (image) images.set(href, image);
+  }
+  return images;
+}
 
 /* ───────────────────────── Word (.docx) from Markdown ───────────────────────── */
 
 type RunStyle = { bold?: boolean; italics?: boolean; strike?: boolean; code?: boolean };
-type Inline = TextRun | ExternalHyperlink;
+type Inline = TextRun | ExternalHyperlink | ImageRun;
 
 const HEADINGS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
 const NUMBERING_REF = 'cellar-numbers';
+const DOCX_CONTENT_WIDTH = 600;
 
-function run(text: string, style: RunStyle, characterStyle?: string): TextRun {
+interface DocxContext {
+  listInstance: number;
+  theme: DesignTheme;
+  images: Map<string, ResolvedImage>;
+  charts: Map<string, Buffer | null>;
+}
+
+function run(text: string, style: RunStyle, ctx: DocxContext, characterStyle?: string): TextRun {
   return new TextRun({
     text,
     bold: style.bold,
     italics: style.italics,
     strike: style.strike,
-    ...(style.code ? { font: 'Consolas', size: 20, shading: { type: ShadingType.CLEAR, fill: 'F1F1F1', color: 'auto' } } : {}),
+    ...(style.code ? { font: 'Consolas', size: 20, shading: { type: ShadingType.CLEAR, fill: hex6(ctx.theme.colors.surface), color: 'auto' } } : {}),
     ...(characterStyle ? { style: characterStyle } : {}),
   });
 }
@@ -45,44 +116,52 @@ function plainText(tokens: Token[] | undefined): string {
   return (tokens ?? []).map((t) => ('tokens' in t && t.tokens?.length ? plainText(t.tokens) : 'text' in t ? decodeEntities(String(t.text)) : '')).join('');
 }
 
-function inlineRuns(tokens: Token[] | undefined, style: RunStyle = {}): Inline[] {
+const DOCX_IMAGE_TYPES: Record<string, 'png' | 'jpg' | 'gif' | 'bmp'> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
+
+function imageRun(image: ResolvedImage, maxWidth = DOCX_CONTENT_WIDTH): ImageRun | null {
+  const type = DOCX_IMAGE_TYPES[image.mime];
+  if (!type) return null;
+  const scale = Math.min(1, maxWidth / image.width);
+  return new ImageRun({ type, data: image.bytes, transformation: { width: Math.round(image.width * scale), height: Math.round(image.height * scale) } });
+}
+
+function inlineRuns(tokens: Token[] | undefined, ctx: DocxContext, style: RunStyle = {}): Inline[] {
   const out: Inline[] = [];
   for (const t of tokens ?? []) {
     switch (t.type) {
       case 'strong':
-        out.push(...inlineRuns(t.tokens, { ...style, bold: true }));
+        out.push(...inlineRuns(t.tokens, ctx, { ...style, bold: true }));
         break;
       case 'em':
-        out.push(...inlineRuns(t.tokens, { ...style, italics: true }));
+        out.push(...inlineRuns(t.tokens, ctx, { ...style, italics: true }));
         break;
       case 'del':
-        out.push(...inlineRuns(t.tokens, { ...style, strike: true }));
+        out.push(...inlineRuns(t.tokens, ctx, { ...style, strike: true }));
         break;
       case 'codespan':
-        out.push(run(decodeEntities(t.text), { ...style, code: true }));
+        out.push(run(decodeEntities(t.text), { ...style, code: true }, ctx));
         break;
       case 'br':
         out.push(new TextRun({ text: '', break: 1 }));
         break;
       case 'link':
-        out.push(new ExternalHyperlink({ link: t.href, children: [run(plainText(t.tokens) || t.href, style, 'Hyperlink')] }));
+        out.push(new ExternalHyperlink({ link: t.href, children: [run(plainText(t.tokens) || t.href, style, ctx, 'Hyperlink')] }));
         break;
-      case 'image':
-        out.push(run(`[${t.text || 'image'}]`, style));
+      case 'image': {
+        const image = ctx.images.get((t as Tokens.Image).href);
+        const picture = image ? imageRun(image) : null;
+        out.push(picture ?? run(`[${t.text || 'image'}]`, style, ctx));
         break;
+      }
       case 'html':
-        out.push(run(decodeEntities(t.text.replace(/<[^>]*>/g, '')), style));
+        out.push(run(decodeEntities(t.text.replace(/<[^>]*>/g, '')), style, ctx));
         break;
       default:
-        if ('tokens' in t && t.tokens?.length) out.push(...inlineRuns(t.tokens, style));
-        else if ('text' in t) out.push(run(decodeEntities(String(t.text)), style));
+        if ('tokens' in t && t.tokens?.length) out.push(...inlineRuns(t.tokens, ctx, style));
+        else if ('text' in t) out.push(run(decodeEntities(String(t.text)), style, ctx));
     }
   }
   return out;
-}
-
-interface DocxContext {
-  listInstance: number;
 }
 
 function listParagraphs(list: Tokens.List, level: number, ctx: DocxContext): Paragraph[] {
@@ -94,7 +173,7 @@ function listParagraphs(list: Tokens.List, level: number, ctx: DocxContext): Par
         out.push(...listParagraphs(tok as Tokens.List, Math.min(level + 1, 8), ctx));
         continue;
       }
-      const inline = 'tokens' in tok && tok.tokens?.length ? inlineRuns(tok.tokens) : 'text' in tok ? [run(decodeEntities(String(tok.text)), {})] : [];
+      const inline = 'tokens' in tok && tok.tokens?.length ? inlineRuns(tok.tokens, ctx) : 'text' in tok ? [run(decodeEntities(String(tok.text)), {}, ctx)] : [];
       if (inline.length === 0) continue;
       if (item.task) inline.unshift(new TextRun(item.checked ? '☑ ' : '☐ '));
       out.push(
@@ -108,52 +187,73 @@ function listParagraphs(list: Tokens.List, level: number, ctx: DocxContext): Par
   return out;
 }
 
-function tableBlock(table: Tokens.Table): Table {
-  const cell = (c: Tokens.TableCell, header: boolean) =>
+function tableBlock(table: Tokens.Table, ctx: DocxContext): Table {
+  const headerFill = hex6(ctx.theme.colors.primary);
+  const headerText = hex6(readableOn(ctx.theme.colors.primary));
+  const border = { style: BorderStyle.SINGLE, size: 4, color: hex6(ctx.theme.colors.surface) };
+  const cell = (c: Tokens.TableCell, header: boolean, zebra: boolean) =>
     new TableCell({
-      children: [new Paragraph({ children: inlineRuns(c.tokens, header ? { bold: true } : {}) })],
-      ...(header ? { shading: { type: ShadingType.CLEAR, fill: 'EDEDED', color: 'auto' } } : {}),
+      children: [new Paragraph({ children: header ? [new TextRun({ text: plainText(c.tokens), bold: true, color: headerText })] : inlineRuns(c.tokens, ctx) })],
+      ...(header ? { shading: { type: ShadingType.CLEAR, fill: headerFill, color: 'auto' } } : zebra ? { shading: { type: ShadingType.CLEAR, fill: hex6(ctx.theme.colors.surface), color: 'auto' } } : {}),
       margins: { top: 60, bottom: 60, left: 100, right: 100 },
+      borders: { top: border, bottom: border, left: border, right: border },
     });
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [new TableRow({ tableHeader: true, children: table.header.map((c) => cell(c, true)) }), ...table.rows.map((row) => new TableRow({ children: row.map((c) => cell(c, false)) }))],
+    rows: [new TableRow({ tableHeader: true, children: table.header.map((c) => cell(c, true, false)) }), ...table.rows.map((row, i) => new TableRow({ children: row.map((c) => cell(c, false, i % 2 === 1)) }))],
   });
+}
+
+function chartTable(spec: ChartSpec, ctx: DocxContext): Table {
+  const rows = spec.labels.map((label, i) => [label, ...spec.series.map((s) => String(s.values[i] ?? ''))]);
+  const token = { header: ['', ...spec.series.map((s) => s.name)].map((text) => ({ text, tokens: [{ type: 'text', raw: text, text }] })), rows: rows.map((r) => r.map((text) => ({ text, tokens: [{ type: 'text', raw: text, text }] }))) } as unknown as Tokens.Table;
+  return tableBlock(token, ctx);
 }
 
 function blockElements(tokens: Token[], ctx: DocxContext, quote = false): Array<Paragraph | Table> {
   const out: Array<Paragraph | Table> = [];
-  const quoteStyle = quote ? { indent: { left: 567 }, border: { left: { style: BorderStyle.SINGLE, size: 12, color: 'BBBBBB', space: 10 } } } : {};
+  const quoteStyle = quote ? { indent: { left: 567 }, border: { left: { style: BorderStyle.SINGLE, size: 18, color: hex6(ctx.theme.colors.accent), space: 10 } } } : {};
   for (const t of tokens) {
     switch (t.type) {
       case 'heading':
-        out.push(new Paragraph({ heading: HEADINGS[Math.min(5, t.depth - 1)], children: inlineRuns(t.tokens) }));
+        out.push(new Paragraph({ heading: HEADINGS[Math.min(5, t.depth - 1)], children: inlineRuns(t.tokens, ctx) }));
         break;
       case 'paragraph':
       case 'text':
-        out.push(new Paragraph({ children: inlineRuns('tokens' in t && t.tokens?.length ? t.tokens : [t], quote ? { italics: true } : {}), ...quoteStyle }));
+        out.push(new Paragraph({ children: inlineRuns('tokens' in t && t.tokens?.length ? t.tokens : [t], ctx, quote ? { italics: true } : {}), ...quoteStyle }));
         break;
       case 'list':
         out.push(...listParagraphs(t as Tokens.List, 0, ctx));
         break;
-      case 'code':
-        for (const line of (t as Tokens.Code).text.split('\n')) {
-          out.push(new Paragraph({ children: [new TextRun({ text: line || ' ', font: 'Consolas', size: 19 })], shading: { type: ShadingType.CLEAR, fill: 'F3F3F3', color: 'auto' }, spacing: { after: 0 } }));
+      case 'code': {
+        const code = t as Tokens.Code;
+        const spec = chartFromCode(code);
+        if (spec) {
+          const png = ctx.charts.get(code.text);
+          if (spec.title) out.push(new Paragraph({ children: [new TextRun({ text: spec.title, bold: true, color: hex6(ctx.theme.colors.text) })], spacing: { before: 160 } }));
+          if (png) out.push(new Paragraph({ children: [new ImageRun({ type: 'png', data: png, transformation: { width: DOCX_CONTENT_WIDTH, height: Math.round(DOCX_CONTENT_WIDTH * 0.56) } })], alignment: AlignmentType.CENTER }));
+          else out.push(chartTable(spec, ctx));
+          out.push(new Paragraph({ children: [] }));
+          break;
+        }
+        for (const line of code.text.split('\n')) {
+          out.push(new Paragraph({ children: [new TextRun({ text: line || ' ', font: 'Consolas', size: 19 })], shading: { type: ShadingType.CLEAR, fill: hex6(ctx.theme.colors.surface), color: 'auto' }, spacing: { after: 0 } }));
         }
         out.push(new Paragraph({ children: [] }));
         break;
+      }
       case 'blockquote':
         out.push(...blockElements((t as Tokens.Blockquote).tokens, ctx, true));
         break;
       case 'table':
-        out.push(tableBlock(t as Tokens.Table), new Paragraph({ children: [] }));
+        out.push(tableBlock(t as Tokens.Table, ctx), new Paragraph({ children: [] }));
         break;
       case 'hr':
-        out.push(new Paragraph({ children: [], border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'BBBBBB', space: 1 } } }));
+        out.push(new Paragraph({ children: [], border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: hex6(ctx.theme.colors.accent), space: 1 } } }));
         break;
       case 'html': {
         const text = decodeEntities((t as Tokens.HTML).text.replace(/<[^>]*>/g, '')).trim();
-        if (text) out.push(new Paragraph({ children: [run(text, {})] }));
+        if (text) out.push(new Paragraph({ children: [run(text, {}, ctx)] }));
         break;
       }
       default:
@@ -163,16 +263,43 @@ function blockElements(tokens: Token[], ctx: DocxContext, quote = false): Array<
   return out;
 }
 
-export async function markdownToDocx(markdown: string, title?: string): Promise<Buffer> {
+export async function markdownToDocx(markdown: string, title?: string, options: DocumentOptions = {}): Promise<Buffer> {
+  const theme = options.theme ?? defaultTheme();
   const tokens = lexer(markdown);
-  const ctx: DocxContext = { listInstance: 0 };
+  const charts = new Map<string, Buffer | null>();
+  walkTokens(tokens, (t) => {
+    if (t.type === 'code' && chartFromCode(t as Tokens.Code)) charts.set((t as Tokens.Code).text, null);
+  });
+  if (svgRasterizer) {
+    for (const code of charts.keys()) {
+      const spec = chartFromCode({ lang: 'chart', text: code })!;
+      charts.set(code, await svgRasterizer(chartSvg(spec, 1200, 672, { theme: { ...theme, colors: { ...theme.colors, background: '#FFFFFF' } } }), 1200, 672));
+    }
+  }
+  const ctx: DocxContext = { listInstance: 0, theme, images: await loadImages(tokens, options), charts };
   const children = blockElements(tokens, ctx);
   const startsWithHeading = tokens.find((t) => t.type !== 'space')?.type === 'heading';
   if (title && !startsWithHeading) children.unshift(new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun(title)] }));
+  const c = theme.colors;
+  const white = contrastRatio(c.background, '#FFFFFF') < 1.08;
+  const heading = (size: number, color: string) => ({ run: { font: theme.fonts.heading, size, bold: true, color: hex6(color) }, paragraph: { spacing: { before: Math.round(size * 9), after: 120 } } });
   const doc = new Document({
     creator: 'Cellar',
     title: title ?? '',
-    styles: { default: { document: { run: { font: 'Calibri', size: 22 }, paragraph: { spacing: { after: 120, line: 276 } } } } },
+    ...(white ? {} : { background: { color: hex6(c.background) } }),
+    styles: {
+      default: {
+        document: { run: { font: theme.fonts.body, size: 22, color: hex6(c.text) }, paragraph: { spacing: { after: 120, line: 288 } } },
+        title: { run: { font: theme.fonts.heading, size: 60, bold: true, color: hex6(c.text) }, paragraph: { spacing: { after: 240 }, border: { bottom: { style: BorderStyle.SINGLE, size: 18, color: hex6(c.accent), space: 8 } } } },
+        heading1: heading(36, c.primary),
+        heading2: heading(28, c.text),
+        heading3: heading(24, c.primary),
+        heading4: heading(22, c.text),
+        heading5: heading(22, c.muted),
+        heading6: heading(20, c.muted),
+        hyperlink: { run: { color: hex6(c.primary), underline: { type: 'single' } } },
+      },
+    },
     numbering: {
       config: [
         {
@@ -245,40 +372,62 @@ export async function createXlsx(sheets: SheetInput[]): Promise<Buffer> {
 /* ───────────────────────── PowerPoint (.pptx) ───────────────────────── */
 
 export interface SlideInput {
-  title: string;
+  title?: string;
   subtitle?: string;
   bullets?: string[];
   notes?: string;
+  /** A layout name (see LAYOUTS); by default the first slide without bullets is a cover and the rest are bullet slides. */
+  layout?: string;
+  kicker?: string;
+  body?: string;
+  /** Path of an image in the working folder. */
+  image?: string;
+  chart?: unknown;
+  quote?: string;
+  author?: string;
+  stats?: Array<{ value: string; label: string }>;
+  columns?: Array<{ title?: string; body?: string; bullets?: string[] }>;
+  items?: Array<{ title: string; body?: string }>;
+  footer?: string;
+  background?: string;
+  /** Extra elements positioned in pixels on a 1920×1080 slide. */
+  elements?: unknown[];
 }
 
-export async function createPptx(slides: SlideInput[], title?: string): Promise<Buffer> {
-  const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_WIDE';
-  pptx.author = 'Cellar';
-  pptx.title = title ?? slides[0]?.title ?? 'Presentation';
-  const font = 'Segoe UI';
-  slides.forEach((s, i) => {
-    const slide = pptx.addSlide();
-    slide.background = { color: 'FFFFFF' };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.16, h: 7.5, fill: { color: 'D97757' }, line: { color: 'D97757' } });
-    const bullets = (s.bullets ?? []).map(String).filter((b) => b.trim());
-    if (i === 0 && bullets.length === 0) {
-      slide.addText(s.title, { x: 0.9, y: 2.3, w: 11.5, h: 1.5, fontSize: 40, bold: true, color: '1F1F1F', fontFace: font, valign: 'bottom' });
-      if (s.subtitle) slide.addText(s.subtitle, { x: 0.9, y: 3.9, w: 11.5, h: 0.9, fontSize: 20, color: '666666', fontFace: font, valign: 'top' });
-    } else {
-      slide.addText(s.title, { x: 0.7, y: 0.4, w: 12, h: 0.9, fontSize: 30, bold: true, color: '1F1F1F', fontFace: font });
-      if (s.subtitle) slide.addText(s.subtitle, { x: 0.7, y: 1.25, w: 12, h: 0.5, fontSize: 16, color: '777777', fontFace: font });
-      if (bullets.length) {
-        slide.addText(
-          bullets.map((text, n) => ({ text, options: { bullet: true, breakLine: n < bullets.length - 1 } })),
-          { x: 0.8, y: s.subtitle ? 1.9 : 1.5, w: 11.8, h: 5.3, fontSize: bullets.length > 7 ? 16 : 20, color: '333333', fontFace: font, valign: 'top', paraSpaceAfter: 8 },
-        );
-      }
+const SLIDE_SIZE = { width: 1920, height: 1080 };
+
+/** Slides → artboards through the Design layouts, then PowerPoint through the Design exporter. */
+export async function createPptx(slides: SlideInput[], title?: string, options: DocumentOptions = {}): Promise<Buffer> {
+  const theme = options.theme ?? defaultTheme();
+  const images = new Map<string, ResolvedImage>();
+  const ids = new Set<string>();
+  const artboards: Artboard[] = [];
+  const notes: string[] = [];
+  for (const [i, slide] of slides.entries()) {
+    const bullets = (slide.bullets ?? []).map(String).filter((b) => b.trim());
+    const fallback: LayoutName = i === 0 && bullets.length === 0 && !slide.chart && !slide.body ? 'title' : slide.chart && !bullets.length ? 'chart' : 'bullets';
+    const layout = layoutName(slide.layout) ?? fallback;
+    let imageSrc: string | undefined;
+    if (slide.image && options.image) {
+      const image = await options.image(slide.image).catch(() => null);
+      if (image) {
+        imageSrc = `asset:${images.size + 1}`;
+        images.set(imageSrc, image);
+      } else notes.push(`Slide ${i + 1}: image "${slide.image}" could not be read.`);
     }
-    if (s.notes) slide.addNotes(s.notes);
+    const content = layoutContent({ ...slide, bullets, image: imageSrc ?? (slide.image ? '' : undefined) } as Record<string, unknown>);
+    const built = buildLayout(layout, content, SLIDE_SIZE, theme, ids);
+    const artboard: Artboard = { id: `a${i + 1}`, name: slide.title || `Slide ${i + 1}`, ...SLIDE_SIZE, background: slide.background ?? built.background ?? 'background', elements: built.elements, ...(slide.notes ? { notes: slide.notes } : {}) };
+    for (const raw of (slide.elements ?? []).slice(0, LIMITS.elements)) {
+      const { element } = normalizeElement(raw, { ...SLIDE_SIZE, theme, ids });
+      if (element) artboard.elements.push(element);
+    }
+    artboards.push(artboard);
+  }
+  return artboardsToPptx(artboards, theme, { title: title ?? slides[0]?.title ?? 'Presentation' }, {
+    image: async (src) => images.get(src) ?? null,
+    rasterize: svgRasterizer ?? undefined,
   });
-  const out = await pptx.write({ outputType: 'nodebuffer' });
-  return Buffer.from(out as Uint8Array);
 }
 
 /* ───────────────────────── PDF (rendered by Chromium in the app) ───────────────────────── */
@@ -295,30 +444,68 @@ export const pdfAvailable = (): boolean => pdfRenderer !== null;
 
 const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-export function markdownToHtmlPage(markdown: string, title?: string): string {
-  const body = parseMarkdown(markdown, { async: false, gfm: true }) as string;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title ?? 'Document')}</title>
-<style>
-  @page { margin: 18mm 16mm; }
-  body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1f1f1f; }
-  h1, h2, h3, h4 { line-height: 1.25; margin: 1.2em 0 0.4em; page-break-after: avoid; }
-  h1 { font-size: 22pt; } h2 { font-size: 16pt; } h3 { font-size: 13pt; }
-  p, ul, ol, table, pre, blockquote { margin: 0.5em 0; }
-  table { border-collapse: collapse; width: 100%; page-break-inside: avoid; }
-  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
-  th { background: #efefef; }
-  code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f2f2f2; padding: 0 3px; border-radius: 3px; }
-  pre { background: #f5f5f5; padding: 8px 10px; border-radius: 4px; white-space: pre-wrap; }
+function themeCss(theme: DesignTheme): string {
+  const c = theme.colors;
+  return `
+  /* Zero page margins let the theme background reach the edges; cloned body padding repeats the margins on every page. */
+  @page { size: A4; margin: 0; }
+  html { background: ${c.background}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: ${fontStack(theme.fonts.body)}; font-size: 11pt; line-height: 1.55; color: ${c.text}; background: ${c.background}; margin: 0; padding: 18mm 16mm; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  h1, h2, h3, h4 { font-family: ${fontStack(theme.fonts.heading)}; line-height: 1.2; margin: 1.3em 0 0.45em; page-break-after: avoid; }
+  h1 { font-size: 24pt; color: ${c.text}; }
+  body > h1:first-child, .doc-title { font-size: 30pt; margin-top: 0; padding-bottom: 10px; border-bottom: 3px solid ${c.accent}; }
+  h2 { font-size: 16pt; color: ${c.primary}; }
+  h3 { font-size: 13pt; color: ${c.text}; }
+  h4 { font-size: 11.5pt; color: ${c.muted}; text-transform: uppercase; letter-spacing: 0.06em; }
+  p, ul, ol, table, pre, blockquote, figure { margin: 0.55em 0; }
+  li::marker { color: ${c.primary}; }
+  table { border-collapse: collapse; width: 100%; page-break-inside: avoid; font-size: 10pt; }
+  th, td { border-bottom: 1px solid ${c.surface}; padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: ${c.primary}; color: ${readableOn(c.primary)}; font-weight: 600; }
+  tr:nth-child(even) td { background: ${c.surface}; }
+  code { font-family: Consolas, monospace; font-size: 9.5pt; background: ${c.surface}; padding: 0 3px; border-radius: 3px; }
+  pre { background: ${c.surface}; padding: 9px 11px; border-radius: 6px; white-space: pre-wrap; }
   pre code { background: none; padding: 0; }
-  blockquote { border-left: 3px solid #ccc; padding-left: 10px; color: #555; }
-  a { color: #b5532f; }
-  img { max-width: 100%; }
-</style></head><body>${title && !/^\s*#\s/.test(markdown) ? `<h1>${escapeHtml(title)}</h1>` : ''}${body}</body></html>`;
+  blockquote { border-left: 4px solid ${c.accent}; padding: 2px 0 2px 12px; color: ${c.muted}; font-style: italic; }
+  hr { border: 0; border-top: 2px solid ${c.accent}; margin: 1.4em 0; }
+  a { color: ${c.primary}; }
+  img { max-width: 100%; border-radius: 4px; }
+  figure { page-break-inside: avoid; text-align: center; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 9pt; color: ${c.muted}; margin-top: 4px; }`;
 }
 
-export async function markdownToPdf(markdown: string, title?: string): Promise<Buffer> {
+export interface ResolvedDocumentAssets {
+  images?: Map<string, ResolvedImage>;
+}
+
+export function markdownToHtmlPage(markdown: string, title?: string, options: DocumentOptions & ResolvedDocumentAssets = {}): string {
+  const theme = options.theme ?? defaultTheme();
+  const marked = new Marked({ gfm: true, async: false });
+  marked.use({
+    renderer: {
+      code(token) {
+        const spec = chartFromCode(token);
+        if (!spec) return false;
+        return `<figure>${chartSvg(spec, 680, 380, { theme })}</figure>`;
+      },
+      image(token) {
+        const image = options.images?.get(token.href);
+        if (!image) return `<span>[${escapeHtml(token.text || 'image')}]</span>`;
+        const alt = escapeXml(token.text ?? '');
+        return `<img src="data:${image.mime};base64,${image.bytes.toString('base64')}" alt="${alt}">`;
+      },
+    },
+  });
+  const body = marked.parse(markdown) as string;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title ?? 'Document')}</title>
+<style>${themeCss(theme)}</style></head><body>${title && !/^\s*#\s/.test(markdown) ? `<h1 class="doc-title">${escapeHtml(title)}</h1>` : ''}${body}</body></html>`;
+}
+
+export async function markdownToPdf(markdown: string, title?: string, options: DocumentOptions = {}): Promise<Buffer> {
   if (!pdfRenderer) throw new Error('PDF export is not available in this environment.');
-  return pdfRenderer(markdownToHtmlPage(markdown, title));
+  const images = await loadImages(lexer(markdown), options);
+  return pdfRenderer(markdownToHtmlPage(markdown, title, { ...options, images }));
 }
 
 /* ───────────────────────── Reading documents ───────────────────────── */

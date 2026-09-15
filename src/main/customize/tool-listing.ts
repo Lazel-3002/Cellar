@@ -6,6 +6,7 @@ import type { ToolInfo, ToolListing, ToolScope } from '@shared/types/customize';
 import type { ModelRef } from '@shared/types/models';
 import { pdfAvailable } from '../agent/documents';
 import { chatBaseTools, codeToolsFor, extraTools, toolsFor, type AgentTool } from '../agent/tools';
+import { DESIGN_TOOLS } from '../design/tools';
 import { chat } from '../chat/orchestrator';
 import { providers } from '../providers/registry';
 import { settings } from '../services/settings';
@@ -22,6 +23,12 @@ const GROUPS: Record<string, string> = {
   create_xlsx: 'Documents',
   create_pptx: 'Documents',
   create_pdf: 'Documents',
+  get_design: 'Design',
+  set_theme: 'Design',
+  create_artboard: 'Design',
+  update_artboard: 'Design',
+  edit_elements: 'Design',
+  delete_artboard: 'Design',
   run_command: 'Commands',
   get_diagnostics: 'Code checks',
   todo_write: 'Planning',
@@ -73,9 +80,9 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
       );
     }
   }
-  const base = scope === 'chat' ? chatBaseTools(app) : scope === 'code' ? codeToolsFor(codeMode, permissionMode, app) : toolsFor(permissionMode, app, { pdf: pdfAvailable() });
+  const base = scope === 'chat' ? chatBaseTools(app) : scope === 'design' ? DESIGN_TOOLS : scope === 'code' ? codeToolsFor(codeMode, permissionMode, app) : toolsFor(permissionMode, app, { pdf: pdfAvailable() });
   const skills = await activeSkills();
-  const extras = await extraTools({ settings: app, skills: skills.length > 0, incognito, readOnly: scope !== 'chat' && permissionMode === 'plan' });
+  const extras = await extraTools({ settings: app, skills: skills.length > 0, incognito, readOnly: scope !== 'chat' && scope !== 'design' && permissionMode === 'plan' });
   const tools = [...base, ...extras].map(describe);
   const connectorPolicies = new Map<string, string>();
   for (const tool of extras) if (tool.category === 'connector') connectorPolicies.set(tool.name, (await tool.approval?.({}, undefined as never)) ? 'ask' : 'allow');

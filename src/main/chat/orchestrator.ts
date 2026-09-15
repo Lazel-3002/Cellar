@@ -1,6 +1,7 @@
 import { branchPath, latestLeaf } from '@shared/message-tree';
 import type { ApprovalDecision, ConversationKind, PermissionMode } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
+import type { DesignStartOptions } from '@shared/types/design';
 import type {
   ChatStreamEvent,
   Conversation,
@@ -14,6 +15,8 @@ import type {
 import { DEFAULT_INFERENCE_PARAMS, type ModelEntry, type ModelRef } from '@shared/types/models';
 import { TaskRunner } from '../agent/runner';
 import { prepareCodeSession } from '../code/session';
+import { prepareDesignSession } from '../design/session';
+import { copyDesign, createDesign, designForConversation } from '../design/store';
 import { connectors } from '../connectors/manager';
 import { assistantContext } from '../customize/context';
 import { activeSkills } from '../customize/skills';
@@ -80,7 +83,7 @@ class ChatOrchestrator {
 
   init(): void {
     run("UPDATE messages SET status = 'stopped' WHERE status = 'streaming'");
-    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code') AND json_extract(task, '$.status') IN ('running', 'waiting')");
+    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code', 'design') AND json_extract(task, '$.status') IN ('running', 'waiting')");
   }
 
   private store(conversationId: string): ChatStore {
@@ -127,13 +130,13 @@ class ChatOrchestrator {
       store = this.store(input.conversationId);
       conversation = store.getConversation(input.conversationId);
     }
-    const kind: ConversationKind = conversation ? conversation.kind : input.code ? 'code' : input.task ? 'task' : 'chat';
+    const kind: ConversationKind = conversation ? conversation.kind : input.design ? 'design' : input.code ? 'code' : input.task ? 'task' : 'chat';
     const isTask = kind !== 'chat';
-    if (isTask && store.incognito) throw new Error(kind === 'code' ? 'Code sessions cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.');
-    if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) throw new Error(`This ${kind === 'code' ? 'session' : 'task'} is still working. Stop it or wait for it to finish first.`);
+    if (isTask && store.incognito) throw new Error(kind === 'code' ? 'Code sessions cannot be incognito.' : kind === 'design' ? 'Designs cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.');
+    if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) throw new Error(`This ${kind === 'code' ? 'session' : kind === 'design' ? 'design' : 'task'} is still working. Stop it or wait for it to finish first.`);
     if (!conversation) {
       const id = newId();
-      const task = input.code ? await prepareCodeSession(id, input.code, content) : input.task ? await this.tasks.prepare(id, input.task) : undefined;
+      const task = input.design ? await prepareDesignSession() : input.code ? await prepareCodeSession(id, input.code, content) : input.task ? await this.tasks.prepare(id, input.task) : undefined;
       const created = Date.now();
       conversation = {
         id,
@@ -150,6 +153,12 @@ class ChatOrchestrator {
         updatedAt: created,
       };
       store.createConversation(conversation);
+      if (input.design && task?.design) createDesign(id, input.design, task.design.designId);
+    }
+    if (kind === 'design' && input.designSelection !== undefined && conversation.task?.design) {
+      const task = { ...conversation.task, design: { ...conversation.task.design, selection: input.designSelection ?? undefined } };
+      store.updateConversation(conversation.id, { task });
+      conversation = { ...conversation, task };
     }
     const now = Date.now();
 
@@ -172,7 +181,7 @@ class ChatOrchestrator {
       currentLeafId: assistant.id,
       model: input.model,
       settings: { ...conversation.settings, thinking: input.thinking },
-      ...(conversation.title ? {} : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : isTask ? 'New task' : 'New chat')) }),
+      ...(conversation.title ? {} : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : kind === 'design' ? 'New design' : isTask ? 'New task' : 'New chat')) }),
     });
     this.notify(conversation.id);
     if (isTask) {
@@ -193,6 +202,42 @@ class ChatOrchestrator {
       this.notify(conversationId);
       this.turnFinished({ conversationId, messageId: assistant.id, status: 'error', error: errorMessage(err) });
     }
+  }
+
+  /** A design with no messages yet (a blank canvas). */
+  async createDesign(options: DesignStartOptions & { title?: string }): Promise<{ conversationId: string; designId: string }> {
+    const id = newId();
+    const task = await prepareDesignSession('done');
+    const now = Date.now();
+    this.sqlite.createConversation({
+      id,
+      kind: 'design',
+      title: options.title?.trim().slice(0, 120) || 'Untitled design',
+      projectId: null,
+      starred: false,
+      currentLeafId: null,
+      settings: {},
+      task,
+      incognito: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const design = createDesign(id, options, task.design!.designId);
+    this.notify(id);
+    return { conversationId: id, designId: design.id };
+  }
+
+  /** A copy of a design's canvas in a new conversation (without the chat). */
+  async duplicateDesign(conversationId: string): Promise<{ conversationId: string }> {
+    const source = designForConversation(conversationId);
+    if (!source) throw new Error('Design not found');
+    const id = newId();
+    const task = await prepareDesignSession('done');
+    const now = Date.now();
+    this.sqlite.createConversation({ id, kind: 'design', title: `${source.title} (copy)`.slice(0, 120), projectId: null, starred: false, currentLeafId: null, settings: {}, task, incognito: false, createdAt: now, updatedAt: now });
+    const copy = copyDesign(source.id, id, task.design!.designId);
+    this.notify(id);
+    return { conversationId: copy.conversationId };
   }
 
   approve(messageId: string, toolCallId: string, decision: ApprovalDecision): void {

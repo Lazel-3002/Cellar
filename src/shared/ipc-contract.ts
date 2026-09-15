@@ -34,6 +34,7 @@ import type {
   SendMessageResult,
   ThinkingLevel,
 } from './types/chat';
+import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary } from './types/design';
 import type { DownloadJob, HfModelSummary, HfRepoDetail, HfSearchQuery, QuantFit, StartDownloadInput } from './types/hub';
 import type {
   LoadConfig,
@@ -276,6 +277,17 @@ export interface IpcInvokeMap {
 
   'projects:indexStatus': Handler<[projectId: string], ProjectIndexStatus>;
   'projects:reindex': Handler<[projectId: string], void>;
+
+  'design:list': Handler<[], DesignSummary[]>;
+  /** The design of a Design conversation. */
+  'design:get': Handler<[conversationId: string], Design>;
+  /** A blank design without a first message; returns its conversation. */
+  'design:create': Handler<[options: DesignStartOptions & { title?: string }], { conversationId: string; designId: string }>;
+  /** Saves an edited design; fails when `baseVersion` is no longer the latest (reload and retry). */
+  'design:save': Handler<[design: Design, baseVersion: number], Design>;
+  'design:duplicate': Handler<[conversationId: string], { conversationId: string }>;
+  /** Asks where to save and writes PNG, PDF or PowerPoint; null when cancelled. */
+  'design:export': Handler<[request: DesignExportRequest], string | null>;
 }
 
 export interface IpcEventMap {
@@ -303,6 +315,7 @@ export interface IpcEventMap {
   'projects:index': ProjectIndexStatus;
   /** Sent to the quick entry window each time it opens. */
   'quick:shown': Record<string, never>;
+  'design:changed': DesignChangedEvent;
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;
@@ -456,6 +469,12 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'voice:transcribe': true,
   'projects:indexStatus': true,
   'projects:reindex': true,
+  'design:list': true,
+  'design:get': true,
+  'design:create': true,
+  'design:save': true,
+  'design:duplicate': true,
+  'design:export': true,
 };
 
 const eventChannelFlags: Record<EventChannel, true> = {
@@ -481,6 +500,7 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'voice:progress': true,
   'projects:index': true,
   'quick:shown': true,
+  'design:changed': true,
 };
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelFlags) as InvokeChannel[];

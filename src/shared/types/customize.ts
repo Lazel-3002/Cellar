@@ -119,7 +119,7 @@ export interface MemoryItem {
   updatedAt: number;
 }
 
-export type ToolScope = 'chat' | 'task' | 'code';
+export type ToolScope = 'chat' | 'task' | 'code' | 'design';
 
 export interface ToolInfo {
   name: string;

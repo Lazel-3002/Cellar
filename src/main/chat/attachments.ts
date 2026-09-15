@@ -152,7 +152,8 @@ export async function cleanupOrphanAttachments(): Promise<void> {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   const orphans = all<{ id: string; path: string | null }>(
     `SELECT a.id, a.path FROM attachments a
-     WHERE a.created_at < ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE instr(m.attachments, a.id) > 0)`,
+     WHERE a.created_at < ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE instr(m.attachments, a.id) > 0)
+       AND NOT EXISTS (SELECT 1 FROM designs d WHERE instr(d.data, a.id) > 0)`,
     cutoff,
   );
   for (const o of orphans) {

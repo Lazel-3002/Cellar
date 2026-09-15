@@ -9,7 +9,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M2 Cowork** | Local agent that works inside a folder you choose | ✅ Done 2026-09-13 |
 | **M3 Code** | Coding agent for repositories | ✅ Done 2026-09-14 |
 | **M4 Customize, Scheduled, Voice** | Skills, MCP connectors, plugins, scheduled tasks, dictation, embeddings RAG | ✅ Done 2026-09-15 |
-| **M5 Design** (optional) | Canvas for mockups and slides, better-designed documents | Next |
+| **M5 Design** | Canvas for mockups and slides, better-designed documents | ✅ Done 2026-09-15 |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -193,7 +193,70 @@ Real software (`scripts/m4-smoke.mjs`, Ollama, throwaway profile):
 - **Scheduled tasks** run only while Cellar is running (in the notification area); there is no wake-from-sleep or Windows Task Scheduler integration. A Cowork run in Ask mode waits for approval while you are away.
 - **Voice:** the CUDA 12 whisper.cpp build predates RTX 50-series support (the CPU build is recommended there); there is no streaming transcription or voice mode for replies.
 - **Diagnostics:** TypeScript files get syntax checks only (type errors need `get_diagnostics`, which runs tsc); no language servers.
-- **Design ideas:** the "AI design engine" note in `docs/Creator Ideas - important things/` (styled documents, charts, themes and layouts in PDF/PPTX/DOCX) moves to M5.
+- **Design ideas:** the "AI design engine" note in `docs/Creator Ideas - important things/` (styled documents, charts, themes and layouts in PDF/PPTX/DOCX) was delivered in M5.
+
+---
+
+## M5 Design — delivered
+
+Design in the sidebar opens a canvas where a local model builds slides, pages, posters, web pages and app screens, and you refine them by hand. It also covers the "AI design engine" note in `docs/Creator Ideas - important things/`: themes (palette, font pairing, backgrounds), charts and images in the document flow, typography control and absolute positioning, for designs and for the documents Cowork writes.
+
+- **Design model** (`src/shared/design/`, `types/design.ts`), shared by the main process and the editor
+  - A design has a format (slides, document, social, poster, web, mobile), a theme and artboards. Artboards hold absolutely positioned elements: text, rectangles, ellipses, lines, images, charts and SVG.
+  - Elements store theme color names (`primary`, `muted`…) and `heading`/`body` fonts, so changing the theme restyles everything. 10 presets use fonts that ship with Windows and Office (`theme.ts`).
+  - `normalize.ts` accepts what models write: aliases (`fontSize`, `backgroundColor`, `left`, `width`…), `"50%"`, `"center"`, weight names, Chart.js-style datasets and missing heights (measured from the text).
+  - Layouts (`layouts.ts`) turn content into positioned elements for 15 layouts (title, section, bullets, two-column, image-left/right, chart, quote, stats, cards, closing, article, hero, app screen, poster, blank). Sizes scale with the artboard. Missing content is left out instead of placeholder copy.
+  - `check.ts` reports text that probably overflows its box, overlapping text, elements off the artboard, unreadably small text and low contrast.
+  - `charts.ts` draws bar, horizontal bar, line, area, pie and donut charts as SVG. `svg.ts` removes scripts, handlers and outside references from model-written SVG.
+- **Design sessions** (`src/main/design/`): conversations of kind `design` with `task.design = { designId, selection }`. They run through the M2 agent loop.
+  - Tools: `get_design`, `set_theme`, `create_artboard` (layout + content, extra elements, or a copy), `update_artboard` (rename, resize with scaling, rebuild), `edit_elements` (partial changes by id, add, delete, reorder), `delete_artboard`. Every change returns the artboard outline and the layout check, so the model can fix problems.
+  - The prompt includes the current design outline, the user's canvas selection ("make this bigger") and attached images as `attachment:<id>` sources.
+  - Designs live in the `designs` table (migration 4) with a version number. Model changes emit `design:changed`, and the editor adopts them. A save from the editor must be based on the latest version, and the editor saves pending edits before sending a message.
+- **Editor** (`pages/DesignPage.tsx`, `components/design/`)
+  - Home: prompt with format chips and a theme picker, a blank canvas, ideas, and the list of designs with live thumbnails.
+  - Canvas: pan (wheel, space or middle drag), zoom at the pointer (Ctrl+wheel), fit (Shift+1, Shift+2), artboards side by side with labels.
+  - Selecting: click or Shift+click, marquee, move with snapping guides to artboard and element edges and centers.
+  - Shaping: 8 resize handles (Shift keeps proportions), line endpoints, double-click or Enter to edit text in place, tools for text, rectangle, ellipse and line (V/H/T/R/O/L).
+  - Editing: arrow nudging, Ctrl+D/C/V/A, Delete, undo/redo (model changes can be undone too), image drop and paste. Text that does not fit its box gets a red outline.
+  - Inspector: position, rotation and opacity, typography, theme or custom colors, fill, border, radius, shadow, image fit, chart type/data (CSV)/values/legend/stacking, alignment, order, lock and duplicate. It also has artboard size presets, background and speaker notes, and the theme presets, colors and fonts.
+  - Layers: hide, lock and select. Chat panel with the selection chip and suggestions. Present mode (F5).
+- **Export** (`export.ts`, `pptx.ts`)
+  - PDF: one page per artboard, at the artboard's size.
+  - PNG: one artboard or all, at 2×. Large images are captured in tiles and stitched.
+  - PowerPoint: editable text boxes with theme fonts, shapes, native charts, images (SVG rasterized) and speaker notes.
+- **Designed documents in Cowork** (`agent/documents.ts`, `tools/plan-docs.ts`)
+  - `create_pdf`, `create_docx` and `create_pptx` take a `theme` (a preset or custom colors and fonts).
+  - PDF and Word: ```chart blocks with JSON become charts (SVG in PDF, PNG in Word, a data table when no renderer is available), and `![caption](path)` embeds images from the working folder (never outside it or from the web). Tables, headings, quotes and rules follow the theme, and PDF backgrounds reach the page edges on every page.
+  - `create_pptx` slides take a layout plus content (kicker, bullets, image, chart, stats, columns, items, quote) and extra elements positioned on a 1920×1080 slide. Slides are built with the Design layouts and PowerPoint exporter.
+- **Also:** `/tools` lists Design tools, search and history show designs, the sidebar stays closed in the editor (Ctrl+B opens it), and design notifications are suppressed while that design is open. Windows no longer registers edit-menu accelerators, which kept Ctrl+Z/C/V from reaching the canvas.
+
+Tests: 198 unit tests (10 new) and 15 Playwright tests (1 new). New unit tests cover:
+- element normalization and partial changes
+- all layouts on slide, A4 and phone sizes staying inside the artboard without overlapping text, and no placeholder copy when content is missing
+- layout checks and artboard scaling
+- charts of every kind, SVG cleaning, PDF page rules, theme customization
+- PowerPoint export with native charts and images
+- a Design session through the agent loop: the theme, two layouts and extra elements, then a follow-up that sees the selection and edits by id, version conflicts, blank and duplicated designs
+- themed PDF HTML with inline charts and images, a themed Word file with pictures and chart data, layout-based slides, and images outside the working folder refused
+
+The new Playwright test drives the whole flow:
+- a scripted model builds two slides
+- the title is selected on the canvas, resized in the inspector, undone, nudged and edited in place
+- a follow-up recolors the selection
+- PDF, PowerPoint and PNG exports are written, and the design appears on the Design page
+
+Real software (throwaway profiles, Ollama qwen3.5:9b):
+- **Pitch deck** (`scripts/design-smoke.mjs`): theme plus 5 slides from layouts in 75 s. One `create_artboard` call failed validation, and the model retried it correctly. The follow-up "make this title shorter and use the accent color" on the selected title took 25 s. PDF (5 pages at 1920×1080 px), PowerPoint (checked by rendering the slides in PowerPoint 2021) and PNG exported in 1.5–3 s.
+- **Landing page** (web format, Ocean theme): hero and feature cards in 76 s, including the model's own spacing fixes after the layout checks. The headline follow-up took 16 s.
+- **Cowork** (`scripts/cowork-smoke.mjs`): from meeting notes, a one-page `status.pdf` in the corporate theme with a styled table and a bar chart, and `sync.pptx` with cover, stats and cards slides.
+
+### Known gaps and follow-ups from M5
+- **Canvas:** no groups, rotation handle (rotation is set in the inspector), gradient editing or rich text within a line beyond **bold** spans. Text boxes do not push other elements when they grow.
+- **Layout estimates:** text heights are estimated before a browser measures them. The canvas outlines real overflow, but the model only sees the estimate.
+- **Models:** small models often write long final summaries despite the instruction. Vision models do not yet see a rendered image of the canvas.
+- **Export:** PowerPoint slides use the first artboard's proportions (others are letterboxed). Gradients export as their first color. No SVG or HTML export. Fonts are Windows/Office fonts, so other systems substitute.
+- **Documents:** Word charts need the app's renderer (in tests they become data tables). Remote images are not downloaded.
+- **Testing:** an e2e chat test can time out picking a model while Ollama is busy unloading a large model. It passes on rerun.
 
 ## M2 Cowork — original goals
 
@@ -253,7 +316,7 @@ A Claude Code-style coding agent for repositories, sharing the M2 agent loop.
 - **Embeddings RAG** for project knowledge: llama.cpp `--embedding` or Ollama `nomic-embed-text`.
 - **Quick entry:** a global hotkey window for fast questions.
 
-## M5 Design (optional) — goals
+## M5 Design — goals
 
 - **Canvas:** multi-artboard canvas for mockups, slides and visual layouts generated by local models, with visual editing of elements and PNG/PDF export.
 - **Better-designed documents**, from the creator note in `docs/Creator Ideas - important things/`:
@@ -340,3 +403,24 @@ Things that are easy to get wrong when continuing:
   - `node --check` reports some errors a line after where they start (for example `function f( {`).
 - **Embeddings:** llama-server embedding requests must fit one physical batch, so embedding servers start with `-b/-ub 4096`. Ollama's `/api/embed` takes an array input and `truncate: true`.
 - **Dictation:** MediaRecorder (webm/opus), then `decodeAudioData`, then an `OfflineAudioContext` at 16 kHz gives mono PCM for WAV without an AudioWorklet (which the CSP would block). The renderer CSP needs `media-src blob:`. whisper-cli prints plain text with `-nt -np`.
+
+## Technical notes learned in M5
+
+- **Window size limit:** on Windows, a `BrowserWindow` never grows past the screen, even hidden, with `enableLargerThanScreen` or with `offscreen: true`. A 3840×2160 capture of a 1920×1080 screen got a quarter of the page.
+  - Cellar captures large PNGs in screen-sized tiles instead. `webContents.insertCSS` shifts and scales the body (it works with `javascript: false`), and the tiles are copied with `toBitmap()` into one buffer for `nativeImage.createFromBitmap`.
+  - The body needs the full page size (`overflow: visible`); `overflow: hidden` on the body clips everything past the first tile.
+  - Offscreen windows throw `UnknownVizError` from `capturePage` after `insertCSS`; hidden normal windows work.
+- **printToPDF:**
+  - With `preferCSSPageSize`, named pages (`@page p0 { size: 1920px 1080px }` plus `page: p0`) give each artboard its own page size.
+  - A non-zero `@page` margin paints white, whatever the root background. Themed documents use zero page margins and body padding with `box-decoration-break: clone`, which repeats the padding on every page.
+- **pptxgenjs 4:**
+  - `rectRadius` is in inches.
+  - `sizing: { type: 'cover', w, h }` only uses the ratio of the image's own `w`/`h`, so pass the natural proportions and the box in `sizing`.
+  - Charts take `chartColors` without `#`.
+  - PowerPoint 2021 renders the result faithfully, and COM automation (`Slide.Export`) is a quick way to check.
+- **docx 9:** `ImageRun` needs `type` (png/jpg/gif/bmp; SVG needs a PNG fallback). Heading styles are overridden through `styles.default.heading1…6`, `title` and `hyperlink`.
+- **marked 18:** renderer overrides receive tokens (`code({ text, lang })`, `image({ href, text })`), and returning `false` falls back to the default renderer.
+- **Pointer capture** retargets `click`/`dblclick` to the capturing element, so the canvas finds what was double-clicked with `document.elementsFromPoint`.
+- **Menus:** registering the `editMenu` role on Windows can keep Ctrl+Z/C/V from reaching page handlers. Chromium handles those keys in text fields without the menu.
+- **Model tolerance:** a strict `kind` in the chart schema rejected a model's `type: "line"`. Optional fields plus normalization after validation work better than enums in tool schemas.
+- **Races with the model:** an edit made less than the save debounce before sending a message was overwritten by the model's next tool change. Flush pending saves before sending, and keep the replaced state on the undo stack.

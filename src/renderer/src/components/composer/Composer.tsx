@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { ConversationKind, PermissionMode } from '@shared/types/agent';
 import type { AttachmentRef, SendMessageResult } from '@shared/types/chat';
 import type { CodeStartOptions } from '@shared/types/code';
+import type { DesignSelection, DesignStartOptions } from '@shared/types/design';
 import type { ToolScope } from '@shared/types/customize';
 import { AttachmentImage } from '@/components/chat/Attachments';
 import { CodeModeMenu, nextCodeMode, type CodeModeValue } from '@/components/code/CodeModeMenu';
@@ -22,7 +23,7 @@ import { ModelPicker } from './ModelPicker';
 import { ToolsDialog, ToolsMenu } from './ToolsMenu';
 
 export interface ComposerProps {
-  variant: 'home' | 'chat' | 'task' | 'code-home' | 'code';
+  variant: 'home' | 'chat' | 'task' | 'code-home' | 'code' | 'design-home' | 'design';
   conversationId?: string;
   projectId?: string | null;
   incognito?: boolean;
@@ -42,6 +43,12 @@ export interface ComposerProps {
    * nothing should be sent, or undefined to send the text unchanged.
    */
   onCommand?: (name: string, rest: string) => Promise<string | null | undefined> | string | null | undefined;
+  /** New design: its format and theme. */
+  designStart?: DesignStartOptions;
+  /** Design follow-ups: what is selected on the canvas. */
+  designSelection?: DesignSelection | null;
+  /** Runs before the message is sent (the design editor saves pending edits so the model sees them). */
+  beforeSend?: () => Promise<void>;
 }
 
 export function PermissionMenu({ value, onChange }: { value: PermissionMode; onChange: (mode: PermissionMode) => void }) {
@@ -96,11 +103,12 @@ function AttachmentChip({ attachment, onRemove }: { attachment: AttachmentRef; o
   );
 }
 
-export function Composer({ variant, conversationId, projectId, incognito, streamingMessageId, permissionMode, placeholder, autoFocus, className, onSent, codeStart, codeMode, onCommand }: ComposerProps) {
+export function Composer({ variant, conversationId, projectId, incognito, streamingMessageId, permissionMode, placeholder, autoFocus, className, onSent, codeStart, codeMode, onCommand, designStart, designSelection, beforeSend }: ComposerProps) {
   const { setDraft, mode, setMode, thinking, openLoadSettings, coworkFolder, coworkSkipped, coworkProjectId } = useUi();
   const coworkMode = variant === 'home' && mode === 'cowork' && !incognito;
   const isCode = variant === 'code-home' || variant === 'code';
-  const draftKey = conversationId ?? (variant === 'code-home' ? 'code-home' : projectId ? `project:${projectId}` : incognito ? 'incognito' : coworkMode ? 'cowork' : 'home');
+  const isDesign = variant === 'design-home' || variant === 'design';
+  const draftKey = conversationId ?? (variant === 'code-home' ? 'code-home' : variant === 'design-home' ? 'design-home' : projectId ? `project:${projectId}` : incognito ? 'incognito' : coworkMode ? 'cowork' : 'home');
   const storedDraft = useUi((s) => s.drafts[draftKey] ?? '');
   const [text, setText] = useState(storedDraft);
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
@@ -151,7 +159,7 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
     if (variant === 'code-home') void invoke('settings:update', { codeMode: value.mode, codeAutoAcceptEdits: value.autoAcceptEdits });
     else if (conversationId) void invoke('code:setMode', conversationId, value.mode, value.autoAcceptEdits).catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
   };
-  const scope: ToolScope = isCode ? 'code' : coworkMode || variant === 'task' ? 'task' : 'chat';
+  const scope: ToolScope = isCode ? 'code' : isDesign ? 'design' : coworkMode || variant === 'task' ? 'task' : 'chat';
   const { data: commands = [] } = useCommands(scope);
   const [toolsOpen, setToolsOpen] = useState(false);
   const navigate = useNavigate();
@@ -252,9 +260,10 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         return clear();
       }
       if (content === text && known && known.source !== 'built-in') content = await invoke('commands:expand', known.name, commandArgs);
+      await beforeSend?.();
       const result = await invoke('chat:send', {
         conversationId,
-        incognito: coworkMode || isCode ? false : incognito,
+        incognito: coworkMode || isCode || isDesign ? false : incognito,
         projectId: coworkMode ? coworkProjectId ?? projectId ?? null : projectId ?? null,
         content,
         attachmentIds: attachments.map((a) => a.id),
@@ -263,11 +272,13 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         ...(coworkMode ? { task: { folder: coworkSkipped ? null : coworkFolder, permissionMode: homeMode } } : {}),
         // /init writes CELLAR.md, so it always starts in Code mode.
         ...(variant === 'code-home' && codeStart ? { code: { ...codeStart, ...newSessionMode, ...(commandName === '/init' ? { mode: 'code' as const } : {}) } } : {}),
+        ...(variant === 'design-home' && designStart ? { design: designStart } : {}),
+        ...(variant === 'design' && designSelection !== undefined ? { designSelection } : {}),
       });
       setText('');
       setDraft(draftKey, '');
       setAttachments([]);
-      onSent?.(result, isCode ? 'code' : coworkMode || variant === 'task' ? 'task' : 'chat');
+      onSent?.(result, isCode ? 'code' : isDesign ? 'design' : coworkMode || variant === 'task' ? 'task' : 'chat');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -382,7 +393,11 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
                     ? 'Describe a coding task, or ask about the code'
                     : variant === 'code'
                       ? 'Reply, or type / for commands'
-                      : 'Reply…')
+                      : variant === 'design-home'
+                        ? 'Describe what to design: a pitch deck, a poster, an app screen…'
+                        : variant === 'design'
+                          ? 'Ask for changes to the design…'
+                          : 'Reply…')
         }
         className="block max-h-[40vh] min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[16px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
       />
@@ -434,7 +449,7 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
             <Spinner className="size-3.5" /> Transcribing…
           </span>
         )}
-        <ModelPicker model={model} preferTools={coworkMode || variant === 'task' || isCode} />
+        <ModelPicker model={model} preferTools={coworkMode || variant === 'task' || isCode || isDesign} />
         {isStreaming ? (
           <Tip label="Stop generating  Esc">
             <button aria-label="Stop" onClick={() => void invoke('chat:stop', streamingMessageId!)} className="no-drag flex size-8 items-center justify-center rounded-lg bg-foreground text-background hover:opacity-90">

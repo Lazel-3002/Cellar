@@ -5,6 +5,7 @@ import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel';
 import { LoadSettingsDialog } from '@/components/models/LoadSettingsDialog';
 import { useAppCommands, useThemeSync } from '@/lib/hooks';
 import { useIpcSync, useSettings } from '@/lib/queries';
+import { useDesignLayout } from '@/stores/design';
 import { useUi } from '@/stores/ui';
 import { CodeSidebar } from './CodeSidebar';
 import { SearchPalette } from './SearchPalette';
@@ -18,17 +19,20 @@ export function AppShell() {
   useThemeSync(settings);
   const sidebarOpen = useUi((s) => s.sidebarOpen);
   const artifactOpen = useUi((s) => !!s.artifact);
-  const isCode = useRouterState({ select: (s) => s.location.pathname.startsWith('/code') });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isCode = pathname.startsWith('/code');
+  const isDesignEditor = pathname.startsWith('/design/');
+  const designSidebar = useDesignLayout((s) => s.sidebar);
 
   return (
     <Tooltip.Provider delayDuration={450}>
       <div className="relative flex h-full w-full overflow-hidden bg-background text-foreground">
         <TitleBar />
-        {sidebarOpen && (isCode ? <CodeSidebar /> : <Sidebar />)}
+        {(isDesignEditor ? designSidebar : sidebarOpen) && (isCode ? <CodeSidebar /> : <Sidebar />)}
         <main className="relative h-full min-w-0 flex-1">
           <Outlet />
         </main>
-        {artifactOpen && !isCode && <ArtifactPanel />}
+        {artifactOpen && !isCode && !pathname.startsWith('/design') && <ArtifactPanel />}
       </div>
       <SearchPalette />
       <LoadSettingsDialog />

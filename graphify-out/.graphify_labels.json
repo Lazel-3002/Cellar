@@ -143,5 +143,15 @@
   "141": "dictation.ts",
   "142": "ArtifactPanel",
   "143": "mcp-server.mjs",
-  "144": "electron-vite"
+  "144": "electron-vite",
+  "145": "package.json",
+  "146": "glob.ts",
+  "147": "hardware.ts",
+  "148": "MonacoEditor.tsx",
+  "149": "memory-estimate.ts",
+  "150": "code-changes.test.ts",
+  "151": "TypedBus",
+  "152": "@fontsource-variable/inter",
+  "153": "@tanstack/react-query",
+  "154": "@vitejs/plugin-react"
 }

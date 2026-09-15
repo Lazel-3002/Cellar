@@ -1,9 +1,13 @@
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname } from 'node:path';
 import { z } from 'zod';
+import { LAYOUT_NAMES } from '@shared/design/layouts';
+import { customizeTheme, defaultTheme, themeById, THEMES } from '@shared/design/theme';
 import type { TodoItem, TodoStatus } from '@shared/types/agent';
+import type { DesignTheme } from '@shared/types/design';
 import { formatBytes } from '../../lib/util';
-import { createPptx as buildPptx, createXlsx as buildXlsx, markdownToDocx, markdownToPdf } from '../documents';
+import { imageDimensions, type ResolvedImage } from '../../design/images';
+import { createPptx as buildPptx, createXlsx as buildXlsx, markdownToDocx, markdownToPdf, type DocumentOptions } from '../documents';
 import { defineTool, ToolError, type ToolContext } from './types';
 
 const STATUS_ALIASES: Record<string, TodoStatus> = {
@@ -113,34 +117,86 @@ async function documentTarget(ctx: ToolContext, rawPath: string, ext: string) {
   return { rel, exists: !!(await stat(abs).catch(() => null)) };
 }
 
+const themeInput = z
+  .union([
+    z.string(),
+    z.looseObject({
+      preset: z.string().optional(),
+      colors: z.looseObject({ background: z.string().optional(), surface: z.string().optional(), text: z.string().optional(), muted: z.string().optional(), primary: z.string().optional(), accent: z.string().optional() }).optional(),
+      fonts: z.object({ heading: z.string().optional(), body: z.string().optional() }).optional(),
+    }),
+  ])
+  .optional()
+  .describe(`Visual style: a preset (${THEMES.map((t) => `${t.id} = ${t.name}`).join(', ')}), or {"preset": "corporate", "colors": {"primary": "#0F766E"}, "fonts": {"heading": "Georgia"}}. Pick one that fits the purpose and mood.`);
+
+/** A theme from a tool argument; unknown presets fall back to the default look. */
+export function documentTheme(value: unknown): DesignTheme {
+  if (typeof value === 'string') return structuredClone(themeById(value) ?? defaultTheme());
+  if (value && typeof value === 'object') {
+    const v = value as { preset?: string; colors?: Record<string, unknown>; fonts?: Record<string, unknown> };
+    return customizeTheme(themeById(v.preset) ?? defaultTheme(), { colors: v.colors, fonts: v.fonts });
+  }
+  return defaultTheme();
+}
+
+const IMAGE_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml' };
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/** Images referenced by documents: files inside the working folder (or data URLs), never web addresses. */
+function documentOptions(ctx: ToolContext, theme: unknown): DocumentOptions {
+  return {
+    theme: documentTheme(theme),
+    image: async (href: string): Promise<ResolvedImage | null> => {
+      const data = /^data:(image\/[\w.+-]+);base64,(.+)$/i.exec(href.trim());
+      if (data) {
+        const bytes = Buffer.from(data[2], 'base64');
+        const size = imageDimensions(bytes);
+        return size ? { mime: data[1].toLowerCase(), bytes, ...size } : null;
+      }
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(href) && !/^file:/i.test(href)) return null;
+      const abs = await ctx.workspace.resolve(decodeURIComponent(href.replace(/^file:\/\/\/?/i, '')));
+      const mime = IMAGE_MIME[extname(abs).toLowerCase()];
+      const info = await stat(abs).catch(() => null);
+      if (!mime || !info?.isFile() || info.size > MAX_IMAGE_BYTES) return null;
+      const bytes = await readFile(abs);
+      const size = mime === 'image/svg+xml' ? { width: 800, height: 600 } : imageDimensions(bytes);
+      return size ? { mime, bytes, ...size } : null;
+    },
+  };
+}
+
+const DOCUMENT_EXTRAS =
+  ' Style it with theme. Charts: a fenced block with language "chart" holding JSON, e.g. ```chart\n{"type": "bar", "title": "Revenue", "labels": ["Q1", "Q2"], "series": [{"name": "2026", "values": [120, 180]}]}\n``` (types: bar, hbar, line, area, pie, donut). Images: ![caption](path/in/working/folder.png).';
+
 const markdownInput = z.object({
   path: z.string().describe('Output file path relative to the working folder.'),
   markdown: z.string().describe('Document content in Markdown.'),
   title: z.string().optional().describe('Document title.'),
+  theme: themeInput,
 });
 
 export const createDocx = defineTool({
   name: 'create_docx',
-  description: 'Create a Word document (.docx) from Markdown. Supports headings, paragraphs, bold and italic text, bulleted and numbered lists, tables, links, quotes and code blocks.',
+  description: `Create a Word document (.docx) from Markdown: headings, paragraphs, bold and italic text, lists, tables, links, quotes and code blocks.${DOCUMENT_EXTRAS}`,
   category: 'edit',
   input: markdownInput,
   async approval(args, ctx) {
     const target = await documentTarget(ctx, args.path, 'docx');
     return { kind: 'document', title: `${target.exists ? 'Replace' : 'Create'} ${target.rel}`, path: target.rel, exists: target.exists, preview: args.markdown.slice(0, 8000) };
   },
-  run: (args, ctx) => writeDocument(ctx, args.path, 'docx', 'create_docx', () => markdownToDocx(args.markdown, args.title)),
+  run: (args, ctx) => writeDocument(ctx, args.path, 'docx', 'create_docx', () => markdownToDocx(args.markdown, args.title, documentOptions(ctx, args.theme))),
 });
 
 export const createPdf = defineTool({
   name: 'create_pdf',
-  description: 'Create a PDF document from Markdown (headings, lists, tables, links, quotes and code blocks).',
+  description: `Create a designed PDF document from Markdown (headings, lists, tables, links, quotes and code blocks).${DOCUMENT_EXTRAS}`,
   category: 'edit',
   input: markdownInput,
   async approval(args, ctx) {
     const target = await documentTarget(ctx, args.path, 'pdf');
     return { kind: 'document', title: `${target.exists ? 'Replace' : 'Create'} ${target.rel}`, path: target.rel, exists: target.exists, preview: args.markdown.slice(0, 8000) };
   },
-  run: (args, ctx) => writeDocument(ctx, args.path, 'pdf', 'create_pdf', () => markdownToPdf(args.markdown, args.title)),
+  run: (args, ctx) => writeDocument(ctx, args.path, 'pdf', 'create_pdf', () => markdownToPdf(args.markdown, args.title, documentOptions(ctx, args.theme))),
 });
 
 const cell = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -180,26 +236,38 @@ export const createXlsx = defineTool({
 
 export const createPptx = defineTool({
   name: 'create_pptx',
-  description: 'Create a PowerPoint presentation (.pptx). Each slide has a title and optional subtitle, bullet points and speaker notes. A first slide without bullets becomes the title slide.',
+  description: `Create a designed PowerPoint presentation (.pptx) with editable text and native charts. Give each slide a layout (${LAYOUT_NAMES.filter((l) => !['article', 'hero', 'app-screen', 'poster'].includes(l)).join(', ')}) and its content; without one, the first slide is a cover and the others are bullet slides. Keep slides short and put detail in notes.`,
   category: 'edit',
   input: z.object({
     path: z.string().describe('Output file path relative to the working folder.'),
     title: z.string().optional().describe('Presentation title.'),
+    theme: themeInput,
     slides: z
       .array(
-        z.object({
-          title: z.string(),
+        z.looseObject({
+          layout: z.string().optional(),
+          title: z.string().optional(),
           subtitle: z.string().optional(),
+          kicker: z.string().optional().describe('Short label above the title'),
           bullets: z.array(z.string()).optional(),
+          body: z.string().optional(),
+          image: z.string().optional().describe('Image file in the working folder'),
+          chart: z.looseObject({ type: z.string().optional().describe('bar, hbar, line, area, pie or donut'), labels: z.array(z.string()), series: z.array(z.object({ name: z.string(), values: z.array(z.union([z.number(), z.string()])) })), title: z.string().optional() }).optional(),
+          quote: z.string().optional(),
+          author: z.string().optional(),
+          stats: z.array(z.object({ value: z.string(), label: z.string() })).optional().describe('stats layout: big numbers'),
+          columns: z.array(z.looseObject({ title: z.string().optional(), bullets: z.array(z.string()).optional(), body: z.string().optional() })).optional(),
+          items: z.array(z.looseObject({ title: z.string(), body: z.string().optional() })).optional().describe('cards layout'),
           notes: z.string().optional().describe('Speaker notes.'),
+          elements: z.array(z.looseObject({ type: z.string() })).optional().describe('Extra shapes/text/images placed absolutely in px on a 1920×1080 slide: {"type": "text", "x": 1500, "y": 960, "w": 300, "text": "Confidential", "size": 22, "color": "muted"}'),
         }),
       )
       .min(1),
   }),
   async approval(args, ctx) {
     const target = await documentTarget(ctx, args.path, 'pptx');
-    const preview = args.slides.map((s, i) => [`${i + 1}. ${s.title}`, ...(s.bullets ?? []).map((b) => `   • ${b}`)].join('\n')).join('\n');
+    const preview = args.slides.map((s, i) => [`${i + 1}. ${s.title ?? s.quote ?? s.layout ?? 'Slide'}${s.layout ? ` (${s.layout})` : ''}`, ...(s.bullets ?? []).map((b) => `   • ${b}`)].join('\n')).join('\n');
     return { kind: 'document', title: `${target.exists ? 'Replace' : 'Create'} ${target.rel}`, path: target.rel, exists: target.exists, preview };
   },
-  run: (args, ctx) => writeDocument(ctx, args.path, 'pptx', 'create_pptx', () => buildPptx(args.slides, args.title)),
+  run: (args, ctx) => writeDocument(ctx, args.path, 'pptx', 'create_pptx', () => buildPptx(args.slides, args.title, documentOptions(ctx, args.theme))),
 });

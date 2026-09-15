@@ -20,7 +20,8 @@ export function installAppMenu(): void {
         { role: 'quit' },
       ],
     },
-    { role: 'editMenu' },
+    // Windows: Chromium handles clipboard and undo keys in text fields itself; registered edit accelerators would keep Ctrl+Z, Ctrl+C and Ctrl+V from reaching the design canvas.
+    ...(process.platform === 'darwin' ? [{ role: 'editMenu' } as MenuItemConstructorOptions] : []),
     {
       label: 'View',
       submenu: [

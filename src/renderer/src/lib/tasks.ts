@@ -12,8 +12,11 @@ import {
   Globe,
   Hand,
   History,
+  LayoutTemplate,
   ListTodo,
   Map as MapIcon,
+  Palette,
+  PenTool,
   Plug,
   Presentation,
   Search,
@@ -36,7 +39,7 @@ export const PERMISSION_MODES: Record<PermissionMode, { label: string; short: st
 };
 
 export const conversationRoute = (kind: ConversationKind) =>
-  kind === 'code' ? ('/code/$conversationId' as const) : kind === 'task' ? ('/task/$conversationId' as const) : ('/chat/$conversationId' as const);
+  kind === 'code' ? ('/code/$conversationId' as const) : kind === 'design' ? ('/design/$conversationId' as const) : kind === 'task' ? ('/task/$conversationId' as const) : ('/chat/$conversationId' as const);
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -97,6 +100,20 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>
       return { icon: Globe, done: 'Read', active: 'Opening', failed: "Couldn't open", target: short(text(args.url).replace(/^https?:\/\/(www\.)?/, ''), 60) };
     case 'todo_write':
       return { icon: ListTodo, done: 'Updated the plan', active: 'Updating the plan', failed: "Couldn't update the plan" };
+    case 'get_design':
+      return { icon: Palette, done: 'Looked at the design', active: 'Looking at the design', failed: "Couldn't read the design", target: text(args.artboard) || undefined };
+    case 'set_theme':
+      return { icon: Palette, done: 'Set the theme', active: 'Setting the theme', failed: "Couldn't set the theme", target: text(args.preset) || undefined };
+    case 'create_artboard':
+      return { icon: LayoutTemplate, done: 'Created', active: 'Creating', failed: "Couldn't create", target: text(args.name) || (text(args.layout) ? `a ${text(args.layout)} artboard` : 'an artboard') };
+    case 'update_artboard':
+      return { icon: LayoutTemplate, done: 'Updated', active: 'Updating', failed: "Couldn't update", target: text(args.artboard) };
+    case 'edit_elements': {
+      const count = ['add', 'update', 'delete'].reduce((n, key) => n + (Array.isArray(args[key]) ? (args[key] as unknown[]).length : 0), 0);
+      return { icon: PenTool, done: 'Edited', active: 'Editing', failed: "Couldn't edit", target: `${count || ''} element${count === 1 ? '' : 's'}`.trim() };
+    }
+    case 'delete_artboard':
+      return { icon: LayoutTemplate, done: 'Deleted', active: 'Deleting', failed: "Couldn't delete", target: text(args.artboard) };
     case 'get_diagnostics':
       return { icon: Stethoscope, done: 'Checked for problems in', active: 'Checking for problems in', failed: "Couldn't check", target: path || 'the project' };
     case 'skill':

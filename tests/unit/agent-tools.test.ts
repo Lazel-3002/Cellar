@@ -182,7 +182,7 @@ describe('documents', () => {
       ['letters/hello.docx', 'create_docx'],
       ['Q3.final.docx', 'create_docx'],
     ]);
-    expect(markdownToHtmlPage('Some *text*', 'Title')).toContain('<h1>Title</h1>');
+    expect(markdownToHtmlPage('Some *text*', 'Title')).toContain('<h1 class="doc-title">Title</h1>');
   });
 });
 

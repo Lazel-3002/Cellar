@@ -28,7 +28,7 @@ export async function startMockServer(): Promise<MockServer> {
   const server: Server = createServer((req, res) => {
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -64,6 +64,33 @@ export async function startMockServer(): Promise<MockServer> {
             send({}, 'tool_calls');
           } else {
             send({ content: 'Fixed `add` in app.js: it subtracted instead of adding.' }, 'stop');
+          }
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-designer' && parsed.tools?.length) {
+          // Scripted designer: theme + cover, then a chart slide; follow-ups recolor the selection.
+          const lastUser = parsed.messages.map((m) => m.role).lastIndexOf('user');
+          const results = parsed.messages.slice(lastUser).filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const system = String(parsed.messages[0]?.content ?? '');
+          const toolCall = (index: number, id: string, name: string, args: string) => {
+            send({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] });
+            for (const piece of args.match(/.{1,24}/gs) ?? []) send({ tool_calls: [{ index, function: { arguments: piece } }] });
+          };
+          const selected = /The user has selected (\S+) on artboard/.exec(system)?.[1];
+          if (selected && results.length === 0) {
+            toolCall(0, 'e1', 'edit_elements', JSON.stringify({ update: [{ id: selected, color: '#D92D20' }] }));
+            send({}, 'tool_calls');
+          } else if (!selected && results.length === 0) {
+            send({ content: 'Setting up your deck.' });
+            toolCall(0, 't1', 'set_theme', JSON.stringify({ preset: 'ocean' }));
+            toolCall(1, 'a1', 'create_artboard', JSON.stringify({ name: 'Cover', layout: 'title', content: { kicker: 'Pitch', title: 'Bean Club', subtitle: 'Coffee, delivered weekly' } }));
+            send({}, 'tool_calls');
+          } else if (!selected && results.length === 2) {
+            toolCall(0, 'a2', 'create_artboard', JSON.stringify({ name: 'Growth', layout: 'chart', content: { title: 'Members per month', bullets: ['Doubling every quarter'], chart: { type: 'line', labels: ['Jan', 'Feb', 'Mar', 'Apr'], series: [{ name: 'Members', values: [120, 180, 260, 410] }] } } }));
+            send({}, 'tool_calls');
+          } else {
+            send({ content: selected ? 'Recolored it.' : 'Made a two-slide deck.' }, 'stop');
           }
           res.end('data: [DONE]\n\n');
           return;

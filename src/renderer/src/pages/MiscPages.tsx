@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { MessageSquare, Palette, Search, Shapes, Star, Trash } from 'lucide-react';
+import { MessageSquare, Search, Shapes, Star, Trash } from 'lucide-react';
 import { ARTIFACT_ICONS, ARTIFACT_LABELS } from '@/components/chat/ArtifactCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/form';
@@ -145,6 +145,7 @@ export function RecentsPage() {
                     {c.starred && <Star className="size-3 shrink-0 fill-current text-muted-foreground" />}
                     {c.kind === 'task' && <Badge tone="outline">Task</Badge>}
                     {c.kind === 'code' && <Badge tone="outline">Code</Badge>}
+                    {c.kind === 'design' && <Badge tone="outline">Design</Badge>}
                     {c.projectName && <Badge>{c.projectName}</Badge>}
                   </div>
                   <div className="text-[12px] text-muted-foreground">Last message {relativeTime(c.updatedAt)}</div>
@@ -153,40 +154,6 @@ export function RecentsPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-const COMING: Record<string, { icon: ReactNode; title: string; milestone: string; description: string; bullets: string[] }> = {
-  design: {
-    icon: <Palette className="size-5" />,
-    title: 'Design',
-    milestone: 'Milestone 5',
-    description: 'A canvas for mockups, slides and visual layouts generated with local models.',
-    bullets: ['Multi-artboard canvas', 'Edit generated designs visually', 'Export to PNG and PDF'],
-  },
-};
-
-export function ComingSoonPage({ feature }: { feature: keyof typeof COMING }) {
-  const info = COMING[feature];
-  return (
-    <div className="flex h-full items-center justify-center px-8 pt-9">
-      <div className="max-w-md text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-selected text-fg-2">{info.icon}</div>
-        <h1 className="mt-4 font-serif text-[30px]">{info.title}</h1>
-        <Badge tone="brand" className="mt-2">
-          Coming in {info.milestone}
-        </Badge>
-        <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">{info.description}</p>
-        <ul className="mt-4 space-y-1.5 text-left text-[13.5px] text-fg-2">
-          {info.bullets.map((b) => (
-            <li key={b} className="flex gap-2">
-              <span className="mt-2 size-1 shrink-0 rounded-full bg-brand" />
-              {b}
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   );

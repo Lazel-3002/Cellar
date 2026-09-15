@@ -1,5 +1,6 @@
 import type { AgentPart, ConversationKind, TaskStartOptions, TaskState, TaskStatus } from './agent';
 import type { CodeMode, CodeStartOptions } from './code';
+import type { DesignSelection, DesignStartOptions } from './design';
 import type { InferenceParams, ModelRef } from './models';
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -119,6 +120,10 @@ export interface SendMessageInput {
   task?: TaskStartOptions;
   /** Starts a Code session (only for new conversations). */
   code?: CodeStartOptions;
+  /** Starts a Design session (only for new conversations). */
+  design?: DesignStartOptions;
+  /** Design sessions: what is selected on the canvas (null clears it). */
+  designSelection?: DesignSelection | null;
   /** Title for a new conversation (no generated title). Set by scheduled runs. */
   title?: string;
 }

@@ -438,3 +438,78 @@ test('a task keeps working in the background and says when it is done', async ()
     rmSync(folder, { recursive: true, force: true });
   }
 });
+
+test('design: a model builds slides on the canvas, the user edits them and exports PDF, PowerPoint and PNG', async () => {
+  const out = mkdtempSync(join(tmpdir(), 'cellar-design-export-'));
+  try {
+    await win.getByRole('link', { name: 'Design', exact: true }).click();
+    await expect(win.getByText('What should we design?')).toBeVisible();
+    await selectModel('mock-designer');
+    await send('A pitch deck for Bean Club');
+    await expect(win.getByTestId('design-editor')).toBeVisible({ timeout: 20_000 });
+    await expect(win.getByTestId('artboard-label')).toHaveCount(2, { timeout: 20_000 });
+    await expect(win.getByTestId('design-chat')).toContainText('Made a two-slide deck.', { timeout: 20_000 });
+    const canvas = win.getByTestId('design-canvas');
+    await expect(canvas.locator('[data-element-type="chart"] svg')).toBeVisible();
+    await expect(canvas.getByText('Bean Club', { exact: true })).toBeVisible();
+
+    // Select the title on the canvas, change its size in the inspector, then undo.
+    const title = canvas.locator('[data-element-type="text"]', { hasText: /^Bean Club$/ });
+    await title.click();
+    await expect(win.getByTestId('selection-box')).toHaveCount(1);
+    const size = win.getByTestId('prop-size');
+    const before = await size.inputValue();
+    await size.fill('150');
+    await size.press('Enter');
+    await expect(title).toHaveCSS('font-size', '150px');
+    await win.getByTestId('design-undo').click();
+    await expect(title).toHaveCSS('font-size', `${before}px`);
+
+    // Move it with the keyboard and edit its text in place.
+    await title.click();
+    const box = (await title.boundingBox())!;
+    await win.keyboard.press('Shift+ArrowRight');
+    await expect.poll(async () => (await title.boundingBox())!.x).toBeGreaterThan(box.x);
+    await title.dblclick();
+    await win.getByTestId('text-editor').fill('Bean Club Co.');
+    await win.keyboard.press('Escape');
+    await expect(canvas.getByText('Bean Club Co.', { exact: true })).toBeVisible();
+
+    // A follow-up with the title selected: the model sees the selection and recolors it.
+    const edited = canvas.locator('[data-element-type="text"]', { hasText: /^Bean Club Co\.$/ });
+    await edited.click();
+    await win.getByTestId('design-chat').getByTestId('composer-input').fill('Make this red');
+    await win.getByTestId('design-chat').getByTestId('composer-send').click();
+    await expect(win.getByTestId('design-chat')).toContainText('Recolored it.', { timeout: 20_000 });
+    await expect(edited).toHaveCSS('color', 'rgb(217, 45, 32)');
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-design.png') });
+
+    // Exports go through the save dialog.
+    const pdf = join(out, 'deck.pdf');
+    const pptx = join(out, 'deck.pptx');
+    const png = join(out, 'cover.png');
+    for (const [label, file] of [['PDF (all artboards)', pdf], ['PowerPoint (.pptx)', pptx], ['PNG (selected artboard)', png]] as const) {
+      await app.evaluate(({ dialog }, target) => {
+        dialog.showSaveDialog = (async () => ({ canceled: false, filePath: target })) as unknown as typeof dialog.showSaveDialog;
+      }, file);
+      await win.getByTestId('design-export').click();
+      await win.getByRole('menuitem', { name: label }).click();
+      await expect.poll(() => existsSync(file), { timeout: 30_000 }).toBe(true);
+    }
+    await expect.poll(() => readFileSync(pdf).subarray(0, 5).toString()).toBe('%PDF-');
+    const pngBytes = readFileSync(png);
+    expect(pngBytes.readUInt32BE(16)).toBeGreaterThan(1000);
+    expect(pngBytes.readUInt32BE(16) / pngBytes.readUInt32BE(20)).toBeCloseTo(16 / 9, 1);
+    expect(readFileSync(pptx).subarray(0, 2).toString()).toBe('PK');
+    const conversationId = (await win.evaluate(() => location.hash)).split('/').pop()!;
+    const saved = await ipc<{ artboards: Array<{ elements: Array<{ type: string; text?: string; color?: string }> }> }>('design:get', conversationId);
+    expect(saved.artboards[0].elements.find((e) => e.text === 'Bean Club Co.')?.color).toBe('#D92D20');
+
+    // The design is listed on the Design page.
+    await win.getByRole('button', { name: 'Toggle sidebar  Ctrl+B' }).click();
+    await win.getByRole('link', { name: 'Design', exact: true }).click();
+    await expect(win.getByTestId('design-list')).toContainText('A pitch deck for Bean Club');
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});

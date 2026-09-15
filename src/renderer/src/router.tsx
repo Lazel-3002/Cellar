@@ -3,10 +3,11 @@ import { AppShell } from './components/shell/AppShell';
 import { ChatPage } from './pages/ChatPage';
 import { CodeHomePage, CodeSessionPage } from './pages/CodePage';
 import { CustomizePage } from './pages/CustomizePage';
+import { DesignEditorPage, DesignHomePage } from './pages/DesignPage';
 import { ScheduledPage } from './pages/ScheduledPage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
-import { ArtifactsPage, ComingSoonPage, RecentsPage } from './pages/MiscPages';
+import { ArtifactsPage, RecentsPage } from './pages/MiscPages';
 import { ModelsPage } from './pages/ModelsPage';
 import { ProjectDetailPage, ProjectsPage } from './pages/ProjectsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -39,7 +40,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/customize/$section', component: CustomizePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/code', component: CodeHomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/code/$conversationId', component: CodeSessionPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/design', component: () => <ComingSoonPage feature="design" /> }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/design', component: DesignHomePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/design/$conversationId', component: DesignEditorPage }),
 ] as const;
 
 const routeTree = rootRoute.addChildren([...routes]);

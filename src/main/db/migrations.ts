@@ -227,4 +227,16 @@ export const migrations: string[] = [
   );
   CREATE INDEX project_vectors_project ON project_vectors(project_id, model);
   `,
+  /* 4: Design canvases */ `
+  CREATE TABLE designs (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+    format TEXT NOT NULL DEFAULT 'custom',
+    data TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX designs_updated ON designs(updated_at DESC);
+  `,
 ];

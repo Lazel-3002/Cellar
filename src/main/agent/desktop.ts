@@ -6,7 +6,8 @@ import { logger } from '../lib/log';
 import { newId } from '../lib/util';
 import { settings } from '../services/settings';
 import { paths } from '../system/paths';
-import { setPdfRenderer } from './documents';
+import { rasterizeSvg } from '../design/export';
+import { setPdfRenderer, setSvgRasterizer } from './documents';
 
 const log = logger('cowork');
 const PDF_PARTITION = 'cellar-pdf';
@@ -21,12 +22,14 @@ export function installPdfRenderer(): void {
     const win = new BrowserWindow({ show: false, width: 900, height: 1200, webPreferences: { sandbox: true, javascript: false, partition: PDF_PARTITION } });
     try {
       await win.loadFile(file);
-      return await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { top: 0.7, bottom: 0.7, left: 0.65, right: 0.65 } });
+      // Page size and margins come from the document's @page rule, so themed backgrounds reach the page edges.
+      return await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', preferCSSPageSize: true, margins: { top: 0, bottom: 0, left: 0, right: 0 } });
     } finally {
       win.destroy();
       await rm(file, { force: true });
     }
   });
+  setSvgRasterizer(rasterizeSvg);
 }
 
 /**

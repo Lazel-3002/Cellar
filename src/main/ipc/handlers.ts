@@ -27,6 +27,7 @@ import { embeddingIndex } from '../rag/embeddings';
 import { detectHardware } from '../system/hardware';
 import { paths } from '../system/paths';
 import { applyTitleBarTheme } from '../window';
+import { registerDesignHandlers } from '../design/ipc';
 import { registerM4Handlers } from './m4-handlers';
 import { handle } from './register';
 
@@ -53,6 +54,8 @@ const sendSchema = z.object({
   thinking,
   task: z.object({ folder: z.string().min(1).nullable(), permissionMode }).optional(),
   code: codeStartSchema.optional(),
+  design: z.object({ format: z.enum(['slides', 'document', 'social', 'poster', 'web', 'mobile', 'custom']), themeId: z.string().max(60) }).optional(),
+  designSelection: z.object({ artboardId: z.string().max(60), elementIds: z.array(z.string().max(60)).max(400) }).nullable().optional(),
 });
 
 const approvalSchema = z.object({ action: z.enum(['allow', 'allow-all', 'deny']), feedback: z.string().max(4000).optional() });
@@ -310,4 +313,5 @@ export function registerIpcHandlers(): void {
   registerPreviewHandlers();
   registerSideChatHandlers();
   registerM4Handlers();
+  registerDesignHandlers();
 }

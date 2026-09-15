@@ -6,6 +6,7 @@ import { Tip } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useAppInfo } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { useDesignLayout } from '@/stores/design';
 import { useUi } from '@/stores/ui';
 
 function AppMenu() {
@@ -58,8 +59,14 @@ export function TitleBar() {
   const router = useRouter();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { sidebarOpen, toggleSidebar, setSearchOpen, incognito, setIncognito } = useUi();
+  const { sidebarOpen: mainSidebar, toggleSidebar: toggleMainSidebar, setSearchOpen, incognito, setIncognito } = useUi();
   const isCode = pathname.startsWith('/code');
+  const isDesignEditor = pathname.startsWith('/design/');
+  const designSidebar = useDesignLayout((s) => s.sidebar);
+  const setDesignSidebar = useDesignLayout((s) => s.setSidebar);
+  // The design editor keeps the sidebar closed unless it is opened there, so the canvas gets the room.
+  const sidebarOpen = isDesignEditor ? designSidebar : mainSidebar;
+  const toggleSidebar = isDesignEditor ? () => setDesignSidebar(!designSidebar) : toggleMainSidebar;
   const mac = window.cellar.platform === 'darwin';
 
   const toggleIncognito = () => {
@@ -89,7 +96,7 @@ export function TitleBar() {
             <button
               aria-label="Chat and Cowork"
               onClick={() => void navigate({ to: '/' })}
-              className={cn('flex h-[26px] w-[34px] items-center justify-center rounded-lg border text-muted-foreground', !isCode ? 'border-seg-border bg-selected text-foreground' : 'border-transparent hover:text-foreground')}
+              className={cn('flex h-[26px] w-[34px] items-center justify-center rounded-lg border text-muted-foreground', !isCode && !pathname.startsWith('/design') ? 'border-seg-border bg-selected text-foreground' : 'border-transparent hover:text-foreground')}
             >
               <MessagesSquare className="size-4" strokeWidth={1.75} />
             </button>

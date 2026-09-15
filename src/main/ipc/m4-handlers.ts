@@ -16,7 +16,7 @@ import { paths } from '../system/paths';
 import { voice } from '../voice/whisper';
 import { handle } from './register';
 
-const scope = z.enum(['chat', 'task', 'code']);
+const scope = z.enum(['chat', 'task', 'code', 'design']);
 const modelRef = z.object({ providerId: z.string().min(1), modelId: z.string().min(1) });
 const policy = z.enum(['allow', 'ask', 'off']);
 const stringRecord = z.record(z.string(), z.string());
@@ -53,7 +53,7 @@ function focusedWindow(): BrowserWindow | undefined {
 
 export function registerM4Handlers(): void {
   handle('app:background', async () => ({ quickEntryActive: quickEntryShortcutActive(), claudeDesktopConfig: existsSync(paths().claudeDesktopConfig), claudeSkills: await claudeSkillsAvailable() }));
-  handle('app:openConversation', (conversationId, kind) => openConversation(z.string().min(1).parse(conversationId), z.enum(['chat', 'task', 'code']).parse(kind)));
+  handle('app:openConversation', (conversationId, kind) => openConversation(z.string().min(1).parse(conversationId), z.enum(['chat', 'task', 'code', 'design']).parse(kind)));
   handle('app:hideQuickEntry', () => hideQuickEntry());
   handle('system:pickPath', async (kind) => {
     const win = focusedWindow();
