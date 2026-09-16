@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { calculate, measureOf } from '../../src/shared/math/calc';
-import { formatExact, simplifySqrt } from '../../src/shared/math/exact';
+import { exactZero, formatExact, simplifySqrt } from '../../src/shared/math/exact';
 import { normalizeExpression, specialTrig } from '../../src/shared/math/expr';
 import { buildFigure } from '../../src/shared/math/figure';
 import { mathToPlain, renderMath } from '../../src/shared/math/mathtext';
@@ -43,6 +43,17 @@ describe('calculator', () => {
     expect(answerOf('2/4 + 1/4')).toBe('3/4');
   });
 
+  it('keeps sums of different radicals exact instead of falling to a decimal', () => {
+    expect(answerOf('sqrt(2) + sqrt(3)')).toBe('√2 + √3');
+    expect(answerOf('2 - sqrt(5)')).toBe('2 - √5');
+    expect(answerOf('sqrt(8) + sqrt(2)')).toBe('3√2'); // 2√2 + √2 merges into one term
+    expect(answerOf('(sqrt(2) + sqrt(3))^2')).toBe('5 + 2√6'); // cross term √2·√3 = √6
+    expect(answerOf('1/(sqrt(2) + sqrt(3))')).toBe('-√2 + √3'); // rationalized via the conjugate (terms sort by radicand)
+    expect(answerOf('(sqrt(2) + sqrt(3)) - sqrt(3)')).toBe('√2');
+    // Three distinct radicals can't be rationalized in this family; decimal is the honest answer.
+    expect(answerOf('1/(sqrt(2) + sqrt(3) + sqrt(5))')).toMatch(/^0\./);
+  });
+
   it('knows the exact values at the angles school problems use', () => {
     expect(answerOf('cos(30)')).toBe('√3/2');
     expect(answerOf('sin 30')).toBe('1/2');
@@ -50,7 +61,7 @@ describe('calculator', () => {
     expect(answerOf('cot(30)')).toBe('√3');
     expect(answerOf('sin(45)')).toBe('√2/2');
     expect(answerOf('cos(120)')).toBe('-1/2');
-    expect(specialTrig('sin', 180)).toEqual({ c: { n: 0n, d: 1n }, r: 1n });
+    expect(specialTrig('sin', 180)).toEqual(exactZero);
     expect(formatExact(specialTrig('tan', 45)!)).toBe('1');
   });
 

@@ -5,6 +5,7 @@
  */
 import {
   approxRational,
+  asRational,
   exact,
   exactAdd,
   exactDiv,
@@ -22,6 +23,7 @@ import {
   rat,
   ratNumber,
   type Exact,
+  type Rational,
 } from './exact';
 
 export class MathError extends Error {
@@ -668,8 +670,9 @@ export function evaluateExact(node: Node, ctx: EvalContext): Exact | null {
     }
     case 'fact': {
       const a = evaluateExact(node.a, ctx);
-      if (!a || a.r !== 1n || !isInteger(a.c)) return null;
-      const n = Number(a.c.n);
+      const ra = a && asRational(a);
+      if (!ra || !isInteger(ra)) return null;
+      const n = Number(ra.n);
       return n >= 0 && n <= 20 ? exactFromNumber(factorial(n)) : null;
     }
     case 'bin': {
@@ -685,8 +688,10 @@ export function evaluateExact(node: Node, ctx: EvalContext): Exact | null {
           return exactMul(a, b);
         case '/':
           return exactDiv(a, b);
-        case '^':
-          return b.r === 1n && isInteger(b.c) ? exactPow(a, Number(b.c.n)) : null;
+        case '^': {
+          const rb = asRational(b);
+          return rb && isInteger(rb) ? exactPow(a, Number(rb.n)) : null;
+        }
         default:
           return null;
       }
@@ -705,8 +710,10 @@ export function evaluateExact(node: Node, ctx: EvalContext): Exact | null {
           return values.reduce((best, value) => (exactNumber(value) < exactNumber(best) ? value : best));
         case 'max':
           return values.reduce((best, value) => (exactNumber(value) > exactNumber(best) ? value : best));
-        case 'pow':
-          return y.r === 1n && isInteger(y.c) ? exactPow(x, Number(y.c.n)) : null;
+        case 'pow': {
+          const ry = asRational(y);
+          return ry && isInteger(ry) ? exactPow(x, Number(ry.n)) : null;
+        }
         case 'hypot': {
           let total = exactInt(0);
           for (const value of values) {
@@ -721,8 +728,9 @@ export function evaluateExact(node: Node, ctx: EvalContext): Exact | null {
         case 'cos':
         case 'tan':
         case 'cot': {
-          if (x.r !== 1n) return null;
-          const degrees = ctx.angle === 'deg' ? ratNumber(x.c) : (ratNumber(x.c) * 180) / Math.PI;
+          const rx = asRational(x);
+          if (!rx) return null;
+          const degrees = ctx.angle === 'deg' ? ratNumber(rx) : (ratNumber(rx) * 180) / Math.PI;
           return specialTrig(node.name, Math.abs(degrees - Math.round(degrees)) < 1e-9 ? Math.round(degrees) : NaN);
         }
         case 'gcd':
@@ -736,8 +744,9 @@ export function evaluateExact(node: Node, ctx: EvalContext): Exact | null {
         case 'fact':
         case 'ncr':
         case 'npr': {
-          if (values.some((value) => value.r !== 1n)) return null;
-          const numbers = values.map((value) => ratNumber(value.c));
+          const rationals = values.map((value) => asRational(value));
+          if (rationals.some((value) => !value)) return null;
+          const numbers = (rationals as Rational[]).map(ratNumber);
           const result = evaluateNode({ t: 'call', name: node.name, args: numbers.map((value) => ({ t: 'num', value, text: String(value) })) }, ctx);
           return exactFromNumber(result);
         }

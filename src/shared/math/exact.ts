@@ -1,8 +1,9 @@
 /**
- * Exact arithmetic for school maths: every value is `c · √r` with `c` a rational and `r` a positive
- * square-free integer (`r = 1` is a plain fraction). That covers what shows up in a notebook —
- * 17/13, √3, 2√3, √3/2, 4/3 — and returns null as soon as a step leaves the family, so callers
- * fall back to decimals instead of printing something wrong.
+ * Exact arithmetic for school maths: every value is a sum of terms `c · √r`, one per distinct
+ * square-free radicand `r` (`r = 1` is the plain-rational part). That covers everything that shows
+ * up in a notebook — 17/13, √3, 2√3, √3/2, and now sums like √2 + √3 or 2 - √5 too — and returns
+ * null as soon as an operation would leave the family (e.g. dividing by a 3-term irrational sum),
+ * so callers fall back to decimals instead of printing something wrong.
  */
 
 export interface Rational {
@@ -12,10 +13,15 @@ export interface Rational {
   d: bigint;
 }
 
-export interface Exact {
+/** One `c · √r` term of an Exact sum. */
+export interface ExactTerm {
   c: Rational;
-  /** Radicand: 1 for a plain rational. */
   r: bigint;
+}
+
+/** A sum of terms, one per distinct square-free radicand; sorted by `r`, no zero coefficients. Empty = 0. */
+export interface Exact {
+  terms: ExactTerm[];
 }
 
 const abs = (v: bigint) => (v < 0n ? -v : v);
@@ -113,12 +119,30 @@ export function simplifySqrt(k: bigint): { k: bigint; r: bigint } {
   return { k: outside, r: inside };
 }
 
-export const exact = (c: Rational, r: bigint = 1n): Exact => ({ c, r });
+/** Merges same-radicand terms, drops zero coefficients, and sorts by radicand. */
+function normalizeTerms(terms: ExactTerm[]): ExactTerm[] {
+  const byRadicand = new Map<string, ExactTerm>();
+  for (const term of terms) {
+    if (isZero(term.c)) continue;
+    const key = term.r.toString();
+    const existing = byRadicand.get(key);
+    byRadicand.set(key, existing ? { c: ratAdd(existing.c, term.c), r: term.r } : term);
+  }
+  return [...byRadicand.values()]
+    .filter((term) => !isZero(term.c))
+    .sort((a, b) => (a.r < b.r ? -1 : a.r > b.r ? 1 : 0));
+}
+
+/** A single `c · √r` term as an Exact (the common case: a plain fraction or one radical). */
+export const exact = (c: Rational, r: bigint = 1n): Exact => ({ terms: normalizeTerms([{ c, r }]) });
 export const exactInt = (n: bigint | number) => exact(rat(n));
-export const exactZero = exact(ZERO);
-export const isRational = (e: Exact) => e.r === 1n;
-export const exactIsZero = (e: Exact) => isZero(e.c);
-export const exactNumber = (e: Exact) => ratNumber(e.c) * Math.sqrt(Number(e.r));
+export const exactZero: Exact = { terms: [] };
+export const exactIsZero = (e: Exact) => e.terms.length === 0;
+/** True for the plain-rational case: no terms (zero) or exactly one term with radicand 1. */
+export const isRational = (e: Exact) => e.terms.length === 0 || (e.terms.length === 1 && e.terms[0].r === 1n);
+/** The rational value, only when `e` has no irrational terms at all. */
+export const asRational = (e: Exact): Rational | null => (e.terms.length === 0 ? ZERO : e.terms.length === 1 && e.terms[0].r === 1n ? e.terms[0].c : null);
+export const exactNumber = (e: Exact): number => e.terms.reduce((sum, t) => sum + ratNumber(t.c) * Math.sqrt(Number(t.r)), 0);
 
 /** A decimal or integer literal as an exact rational (long decimals stay inexact). */
 export function exactFromNumber(x: number): Exact | null {
@@ -131,31 +155,43 @@ export function exactFromNumber(x: number): Exact | null {
   return exact(rat(BigInt(text.replace('.', '')), 10n ** BigInt(decimals)));
 }
 
-export function exactAdd(a: Exact, b: Exact): Exact | null {
-  if (exactIsZero(a)) return b;
-  if (exactIsZero(b)) return a;
-  if (a.r !== b.r) return null;
-  return exact(ratAdd(a.c, b.c), a.r);
-}
+export const exactAdd = (a: Exact, b: Exact): Exact => ({ terms: normalizeTerms([...a.terms, ...b.terms]) });
+export const exactNeg = (a: Exact): Exact => ({ terms: a.terms.map((t) => ({ c: ratNeg(t.c), r: t.r })) });
+export const exactSub = (a: Exact, b: Exact): Exact => exactAdd(a, exactNeg(b));
 
-export const exactNeg = (a: Exact) => exact(ratNeg(a.c), a.r);
-export const exactSub = (a: Exact, b: Exact) => exactAdd(a, exactNeg(b));
-
+/** Every cross term `ca√ra · cb√rb = ca·cb · √(ra·rb)`, simplified and merged back into a sum. */
 export function exactMul(a: Exact, b: Exact): Exact {
-  const product = ratMul(a.c, b.c);
-  if (a.r === 1n) return exact(product, b.r);
-  if (b.r === 1n) return exact(product, a.r);
-  if (a.r === b.r) return exact(ratMul(product, rat(a.r)), 1n);
-  const { k, r } = simplifySqrt(a.r * b.r);
-  return exact(ratMul(product, rat(k)), r);
+  const out: ExactTerm[] = [];
+  for (const ta of a.terms) {
+    for (const tb of b.terms) {
+      const { k, r } = simplifySqrt(ta.r * tb.r);
+      out.push({ c: ratMul(ratMul(ta.c, tb.c), rat(k)), r });
+    }
+  }
+  return { terms: normalizeTerms(out) };
 }
 
-/** 1 / (c√r) = √r / (c·r), so the radical never stays in a denominator. */
+/**
+ * 1/(c√r) = √r/(c·r) for a single term. For two terms p + q, rationalize by the conjugate:
+ * 1/(p+q) = (p-q) / (p²-q²), and p²-q² is always rational (each term squares to a rational).
+ * Three or more terms would need nested conjugates — out of scope, so null (falls back to decimal).
+ */
 export function exactInverse(a: Exact): Exact | null {
   if (exactIsZero(a)) return null;
-  if (a.r === 1n) return exact(rat(a.c.d, a.c.n));
-  const denominator = ratMul(a.c, rat(a.r));
-  return exact(rat(denominator.d, denominator.n), a.r);
+  if (a.terms.length === 1) {
+    const [t] = a.terms;
+    if (t.r === 1n) return exact(rat(t.c.d, t.c.n));
+    const denominator = ratMul(t.c, rat(t.r));
+    return exact(rat(denominator.d, denominator.n), t.r);
+  }
+  if (a.terms.length === 2) {
+    const [p, q] = a.terms;
+    const conjugate: Exact = { terms: [p, { c: ratNeg(q.c), r: q.r }] };
+    const denominator = asRational(exactMul(a, conjugate));
+    if (!denominator || isZero(denominator)) return null;
+    return exactMul(conjugate, exact(rat(denominator.d, denominator.n)));
+  }
+  return null;
 }
 
 export function exactDiv(a: Exact, b: Exact): Exact | null {
@@ -175,13 +211,15 @@ export function exactPow(a: Exact, e: number): Exact | null {
   return out;
 }
 
+/** Only a plain rational has an exact square root in this family (a general sum almost never denests). */
 export function exactSqrt(a: Exact): Exact | null {
-  if (a.r !== 1n) return null;
-  if (a.c.n < 0n) return null;
-  if (isZero(a.c)) return exactZero;
+  const q = asRational(a);
+  if (!q) return null;
+  if (q.n < 0n) return null;
+  if (isZero(q)) return exactZero;
   // √(p/q) = √(p·q) / q
-  const { k, r } = simplifySqrt(a.c.n * a.c.d);
-  return exact(rat(k, a.c.d), r);
+  const { k, r } = simplifySqrt(q.n * q.d);
+  return exact(rat(k, q.d), r);
 }
 
 export function formatRational(q: Rational): string {
@@ -189,12 +227,22 @@ export function formatRational(q: Rational): string {
   return `${q.n}/${q.d}`;
 }
 
-/** "2√3", "√3/2", "-17/13" — the shape a fraction bar or radical sign is built from later. */
+function formatTerm(t: ExactTerm): string {
+  const magnitude = { n: abs(t.c.n), d: t.c.d };
+  if (t.r === 1n) return formatRational(magnitude);
+  const root = `√${t.r}`;
+  const top = magnitude.n === 1n ? root : `${magnitude.n}${root}`;
+  return magnitude.d === 1n ? top : `${top}/${magnitude.d}`;
+}
+
+/** "2√3", "√3/2", "-17/13", "√2 + √3", "2 - √5" — the shape a fraction bar or radical sign is built from later. */
 export function formatExact(e: Exact): string {
-  if (e.r === 1n) return formatRational(e.c);
-  const sign = e.c.n < 0n ? '-' : '';
-  const num = abs(e.c.n);
-  const root = `√${e.r}`;
-  const top = num === 1n ? root : `${num}${root}`;
-  return e.c.d === 1n ? `${sign}${top}` : `${sign}${top}/${e.c.d}`;
+  if (e.terms.length === 0) return '0';
+  return e.terms
+    .map((t, i) => {
+      const sign = t.c.n < 0n ? '-' : i === 0 ? '' : '+';
+      const body = formatTerm(t);
+      return i === 0 ? `${sign}${body}` : ` ${sign} ${body}`;
+    })
+    .join('');
 }

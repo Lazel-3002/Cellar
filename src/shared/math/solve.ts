@@ -3,6 +3,7 @@
  * model never has to do the arithmetic itself — it asks for the steps and puts them on the board.
  */
 import {
+  exact,
   exactAdd,
   exactDiv,
   exactInt,
@@ -13,6 +14,7 @@ import {
   exactSub,
   formatExact,
   approxRational,
+  isRational,
   isZero,
   rat,
   ratNumber,
@@ -160,12 +162,12 @@ function quadraticFrom(found: { a: Rational; b: Rational; c: Rational }, variabl
   const steps: SolveStep[] = [{ math: original }];
   if (`${normalized} = 0` !== original.replace(/\s+/g, ' ')) steps.push({ math: `${normalized} = 0`, reason: 'bring everything to one side' });
 
-  const ea = { c: a, r: 1n } as Exact;
-  const eb = { c: b, r: 1n } as Exact;
-  const ec = { c: c, r: 1n } as Exact;
+  const ea = exact(a);
+  const eb = exact(b);
+  const ec = exact(c);
   const bSquared = exactPow(eb, 2)!;
   const fourAc = exactMul(exactMul(exactInt(4), ea), ec);
-  const discriminant = exactSub(bSquared, fourAc)!;
+  const discriminant = exactSub(bSquared, fourAc);
   const discriminantValue = exactNumber(discriminant);
   steps.push({ math: `Δ = b^2 - 4ac = ${showRational(b)}^2 - 4·${showRational(a)}·${showRational(c)} = ${formatExact(discriminant)}`, reason: 'the discriminant decides how many real roots there are' });
 
@@ -190,8 +192,7 @@ function quadraticFrom(found: { a: Rational; b: Rational; c: Rational }, variabl
   const exactRoot = (sign: 1 | -1) => {
     if (!rootOfDiscriminant) return null;
     const signed = sign === 1 ? rootOfDiscriminant : exactMul(exactInt(-1), rootOfDiscriminant);
-    const sum = exactAdd(minusB, signed);
-    return sum ? exactDiv(sum, twoA) : null;
+    return exactDiv(exactAdd(minusB, signed), twoA);
   };
   const first = show(exactRoot(1), numeric(1));
   const second = show(exactRoot(-1), numeric(-1));
@@ -283,7 +284,7 @@ export function solvePythagoras(input: PythagorasInput): Solution {
       title: `Find ${names.c} with the Pythagorean theorem`,
       steps,
       result: `${names.c} = ${answer}`,
-      note: root && root.r === 1n ? undefined : `≈ ${formatDecimal(Math.sqrt(sumValue), 4)}`,
+      note: root && isRational(root) ? undefined : `≈ ${formatDecimal(Math.sqrt(sumValue), 4)}`,
     };
   }
 
@@ -309,7 +310,7 @@ export function solvePythagoras(input: PythagorasInput): Solution {
     title: `Find ${label} with the Pythagorean theorem`,
     steps,
     result: `${label} = ${answer}`,
-    note: root && root.r === 1n ? undefined : `≈ ${formatDecimal(Math.sqrt(differenceValue), 4)}`,
+    note: root && isRational(root) ? undefined : `≈ ${formatDecimal(Math.sqrt(differenceValue), 4)}`,
   };
 }
 
