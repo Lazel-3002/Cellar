@@ -32,6 +32,8 @@ export interface CellarPaths {
   /** Claude Desktop's config and Claude Code's skills, for importing. */
   claudeDesktopConfig: string;
   claudeSkills: string;
+  /** Snapshot of enabled scheduled tasks, rewritten whenever they change; survives Cellar being fully quit. */
+  scheduledRegistry: string;
 }
 
 let current: CellarPaths | null = null;
@@ -67,6 +69,7 @@ export function initPaths(userData: string, artifactRuntimeDir: string): CellarP
     boards: join(cellarHome, 'boards'),
     claudeDesktopConfig: join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json'),
     claudeSkills: join(home, '.claude', 'skills'),
+    scheduledRegistry: join(cellarHome, 'scheduled_tasks.json'),
   };
   for (const dir of [current.logs, current.attachments, current.cellarHome, current.runtimes, current.tmp]) {
     mkdirSync(dir, { recursive: true });

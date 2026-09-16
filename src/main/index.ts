@@ -20,7 +20,9 @@ import { handleArtifactProtocol, handleAttachmentProtocol, registerArtifactSchem
 import { handleVizProtocol } from './protocol/viz-protocol';
 import { providers } from './providers/registry';
 import { runtimes } from './runtimes/llamacpp-runtimes';
+import { configure as configureOsScheduler } from './scheduled/os-scheduler';
 import { scheduler } from './scheduled/scheduler';
+import { settings } from './services/settings';
 import { updater } from './services/updater';
 import { initPaths, paths } from './system/paths';
 import { detectHardware } from './system/hardware';
@@ -33,6 +35,9 @@ registerPreviewScheme();
 app.setAppUserModelId('ai.cellar.desktop');
 // Lets tests and portable setups keep chats and settings in a separate folder.
 if (process.env.CELLAR_USER_DATA) app.setPath('userData', process.env.CELLAR_USER_DATA);
+
+/** Cellar was relaunched by its own OS-level wake job (schtasks/launchd/cron) for a due scheduled task, not opened by the user. */
+const scheduledWake = process.argv.includes('--scheduled-wake');
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -50,14 +55,17 @@ if (!app.requestSingleInstanceLock()) {
     return mainWindow;
   };
 
-  app.on('second-instance', () => {
-    if (app.isReady()) showMainWindow();
+  app.on('second-instance', (_event, argv) => {
+    // Another instance was launched only to ping the OS wake job; this (already-running) instance
+    // owns scheduling and just ticked or is about to, so don't steal focus for it.
+    if (app.isReady() && !argv.includes('--scheduled-wake')) showMainWindow();
   });
 
   app.whenReady().then(() => {
     const runtimeDir = app.isPackaged ? join(process.resourcesPath, 'artifact-runtime') : join(app.getAppPath(), 'resources', 'artifact-runtime');
     initPaths(app.getPath('userData'), runtimeDir);
     initLogFile(paths().logs);
+    configureOsScheduler({ isPackaged: app.isPackaged, appPath: app.getAppPath() });
     setSecretCodec({
       available: () => safeStorage.isEncryptionAvailable(),
       encrypt: (plain) => safeStorage.encryptString(plain),
@@ -79,7 +87,9 @@ if (!app.requestSingleInstanceLock()) {
     installPdfRenderer();
     installTaskNotifications(() => mainWindow);
 
-    openMainWindow();
+    // A scheduled-wake relaunch runs the due task quietly in the tray instead of popping a window
+    // the user didn't ask for; anything else (a normal launch, or background mode being off) opens as usual.
+    if (!scheduledWake || !settings.get().runInBackground) openMainWindow();
     installBackground({ getMainWindow: () => mainWindow, createMainWindow: openMainWindow });
 
     // Warm caches in the background so the first screens render instantly.

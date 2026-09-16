@@ -146,6 +146,7 @@ Customize (skills, connectors, plugins, commands, memory), tools in Chat, Schedu
   - Model and project are per task. Each run gets its own titled conversation.
   - A 20-second timer fires due tasks. A run missed while Cellar was closed happens once at startup, marked as a missed run. "Run now" is also available.
   - Run history links to each run. Notifications fire when a scheduled chat finishes or a run cannot start.
+  - `scheduled/os-scheduler.ts` mirrors enabled tasks into `~/.cellar/scheduled_tasks.json` and keeps one OS-level wake job (Task Scheduler / launchd / cron) pointed at the earliest one, so it relaunches Cellar — quietly, in the tray, via `--scheduled-wake` — even if the app was fully quit.
 - **Background and quick entry** (`app/background.ts`)
   - A notification-area icon (Open, New chat, Quick entry, Scheduled, Quit). With "Keep running in the notification area" on, closing the window hides it.
   - The global shortcut (default Alt+Shift+Space, changeable) opens a small always-on-top window. Enter sends the message, and the conversation opens in the main window.
@@ -191,8 +192,8 @@ Real software (`scripts/m4-smoke.mjs`, Ollama, throwaway profile):
 ### Known gaps and follow-ups from M4
 - **Connectors:** no OAuth sign-in for remote servers (use headers with a token); MCP resources, prompts and sampling are not used; image results from tools are described as text, not shown to vision models.
 - **Plugins:** hooks and agents in Claude Code plugins are ignored; there is no marketplace browser (install from a git URL instead).
-- **Chat tools** need native tool calling; models on the text protocol chat without tools. DuckDuckGo and Brave can still rate-limit bursts; SearXNG remains the robust choice.
-- **Scheduled tasks** run only while Cellar is running (in the notification area); there is no wake-from-sleep or Windows Task Scheduler integration. A Cowork run in Ask mode waits for approval while you are away.
+- **Chat tools** need native tool calling; models on the text protocol chat without tools. DuckDuckGo and Brave now retry with backoff and back off harder on HTTP 429 (see `agent/tools/web.ts`), but a sustained block still falls through to the error message; SearXNG remains the most robust choice for heavy use.
+- **Scheduled tasks** now sync a single OS-level wake job (Task Scheduler with `WakeToRun` on Windows, launchd on macOS, cron on Linux — `scheduled/os-scheduler.ts`) and a `~/.cellar/scheduled_tasks.json` registry, so a due task relaunches Cellar even if it was fully quit. Actual wake-from-hardware-sleep still depends on the OS/hardware honoring that (e.g. Windows power settings allowing wake timers); a Cowork run in Ask mode still waits for approval while you are away.
 - **Voice:** the CUDA 12 whisper.cpp build predates RTX 50-series support (the CPU build is recommended there); there is no streaming transcription or voice mode for replies.
 - **Diagnostics:** TypeScript files get syntax checks only (type errors need `get_diagnostics`, which runs tsc); no language servers.
 - **Design ideas:** the "AI design engine" note in `docs/Creator Ideas - important things/` (styled documents, charts, themes and layouts in PDF/PPTX/DOCX) was delivered in M5.

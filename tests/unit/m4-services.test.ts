@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -7,8 +7,11 @@ import type { ModelEntry } from '../../src/shared/types/models';
 import type { ProviderStatus } from '../../src/shared/types/providers';
 
 process.env.CELLAR_HOME = join(tmpdir(), `cellar-m4-home-${process.pid}`);
+// The scheduler now syncs an OS-level wake job (Task Scheduler/launchd/cron) on every change; opt out
+// so the suite never creates or deletes a real scheduled task on the machine running it.
+process.env.CELLAR_NO_OS_SCHEDULE = '1';
 
-const { initPaths } = await import('../../src/main/system/paths');
+const { initPaths, paths } = await import('../../src/main/system/paths');
 const { closeDatabase, openDatabase, run } = await import('../../src/main/db/client');
 const { settings } = await import('../../src/main/services/settings');
 const { providers } = await import('../../src/main/providers/registry');
@@ -159,6 +162,18 @@ describe('scheduled tasks', () => {
     scheduler.init();
     const task = scheduler.save({ name: 'Morning', prompt: 'Say hello', kind: 'chat', cron: '0 9 * * *', model: { providerId: 'fake', modelId: 'chatty' }, folder: null, permissionMode: 'auto-edits', allowCommands: false, projectId: null, enabled: true });
     expect(task.nextRunAt).toBeGreaterThan(Date.now());
+
+    // save() rewrites ~/.cellar/scheduled_tasks.json in the background (CELLAR_NO_OS_SCHEDULE keeps
+    // the actual OS wake job a no-op in tests); wait for that write to land.
+    const registry = await (async () => {
+      for (let i = 0; i < 100; i++) {
+        const parsed = await readFile(paths().scheduledRegistry, 'utf8').then(JSON.parse).catch(() => null);
+        if (parsed?.tasks?.some((t: { id: string }) => t.id === task.id)) return parsed;
+        await sleep(20);
+      }
+      throw new Error('scheduled task registry was never written');
+    })();
+    expect(registry.tasks).toContainEqual(expect.objectContaining({ id: task.id, name: 'Morning', cron: '0 9 * * *' }));
 
     // Pretend the last check was two days ago: the missed 09:00 run happens once.
     run('UPDATE scheduled_tasks SET last_fire_at = ? WHERE id = ?', Date.now() - 2 * 24 * 3600_000, task.id);

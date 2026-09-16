@@ -1,8 +1,12 @@
 /**
  * Scheduled tasks: prompts that run on a cron schedule as a chat or a Cowork task, with local models.
  * A timer checks every 20 seconds while Cellar runs (in the tray when the window is closed). A run that
- * was missed while Cellar was closed happens once when it starts again.
+ * was missed while Cellar was closed happens once when it starts again, and a single OS-level wake job
+ * (Task Scheduler / launchd / cron, see os-scheduler.ts) relaunches Cellar for the next due task even
+ * if it was fully quit or the machine was asleep, so tasks aren't only caught up whenever someone next
+ * opens the app.
  */
+import { readFile, writeFile } from 'node:fs/promises';
 import type { PermissionMode } from '@shared/types/agent';
 import type { ModelEntry, ModelRef } from '@shared/types/models';
 import type { ScheduledRun, ScheduledRunStatus, ScheduledTask, ScheduledTaskInput } from '@shared/types/scheduled';
@@ -13,7 +17,9 @@ import { logger } from '../lib/log';
 import { errorMessage, newId, safeJsonParse } from '../lib/util';
 import { providers } from '../providers/registry';
 import { settings } from '../services/settings';
+import { paths } from '../system/paths';
 import { nextFire, parseCron } from './cron';
+import { syncWakeJob } from './os-scheduler';
 
 const log = logger('scheduled');
 const TICK_MS = 20_000;
@@ -100,6 +106,28 @@ class Scheduler {
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref();
     setTimeout(() => void this.tick(), 5000).unref();
+    void this.resyncOsWakeJob();
+  }
+
+  /**
+   * Rewrites ~/.cellar/scheduled_tasks.json from the (authoritative) SQLite table and points the
+   * single OS wake job at the earliest enabled, non-expired task. Called on startup and whenever a
+   * task is created, edited, enabled/disabled, deleted, or fires.
+   */
+  private async resyncOsWakeJob(): Promise<void> {
+    const registryPath = paths().scheduledRegistry;
+    const previous = await readFile(registryPath, 'utf8')
+      .then((text) => safeJsonParse<{ tasks: unknown[] }>(text, { tasks: [] }).tasks.length)
+      .catch(() => 0);
+    const enabled = this.list().filter((t) => t.enabled);
+    const registry = {
+      updatedAt: Date.now(),
+      tasks: enabled.map((t) => ({ id: t.id, name: t.name, cron: t.cron, kind: t.kind, nextRunAt: t.nextRunAt ?? null })),
+    };
+    await writeFile(registryPath, JSON.stringify(registry, null, 2), 'utf8').catch((err) => log.warn('could not write scheduled task registry', err));
+    if (previous !== registry.tasks.length) log.info(`scheduled task registry: ${previous} -> ${registry.tasks.length} enabled task(s)`);
+    const nextRunAt = registry.tasks.reduce<number | null>((min, t) => (t.nextRunAt !== null && (min === null || t.nextRunAt < min) ? t.nextRunAt : min), null);
+    await syncWakeJob(nextRunAt);
   }
 
   dispose(): void {
@@ -171,6 +199,7 @@ class Scheduler {
       );
     }
     this.changed();
+    void this.resyncOsWakeJob();
     return this.get(id!);
   }
 
@@ -179,21 +208,27 @@ class Scheduler {
     // Turning a task back on starts its schedule from now, so it does not fire for the time it was off.
     run('UPDATE scheduled_tasks SET enabled = ?, updated_at = ?, last_fire_at = CASE WHEN ? = 1 AND enabled = 0 THEN ? ELSE last_fire_at END WHERE id = ?', enabled ? 1 : 0, Date.now(), enabled ? 1 : 0, Date.now(), task.id);
     this.changed();
+    void this.resyncOsWakeJob();
     return this.get(id);
   }
 
   delete(id: string): void {
     run('DELETE FROM scheduled_tasks WHERE id = ?', id);
     this.changed();
+    void this.resyncOsWakeJob();
   }
 
   async tick(now = Date.now()): Promise<void> {
+    let fired = false;
     for (const row of all<TaskRow>('SELECT * FROM scheduled_tasks WHERE enabled = 1')) {
       const due = nextFire(row.cron, row.last_fire_at ?? row.created_at);
       if (due === null || due > now || this.firing.has(row.id)) continue;
       run('UPDATE scheduled_tasks SET last_fire_at = ? WHERE id = ?', now, row.id);
+      fired = true;
       await this.fire(toTask(row), now - due > CATCH_UP_AFTER_MS ? 'catch-up' : 'schedule').catch((err) => log.error('scheduled run failed', row.name, errorMessage(err)));
     }
+    // A fired task's last_fire_at moved, which changes when it (and so the OS wake job) is next due.
+    if (fired) void this.resyncOsWakeJob();
   }
 
   private async pickModel(task: ScheduledTask): Promise<ModelEntry> {
