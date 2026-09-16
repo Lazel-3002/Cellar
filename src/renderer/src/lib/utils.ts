@@ -64,3 +64,16 @@ export function greetingFor(name: string, date = new Date()): string {
 export async function copyText(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
+
+/** utf8-safe base64, for smuggling arbitrary text through an HTML attribute. */
+export function toBase64(text: string): string {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export function fromBase64(base64: string): string {
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}

@@ -470,6 +470,8 @@ class ChatOrchestrator {
       projectKnowledge: knowledge,
       customSystemPrompt: conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt,
       artifacts: app.artifacts && supportsArtifactInstructions(entry),
+      inlineVisualizations: app.inlineVisualizations && supportsArtifactInstructions(entry),
+      inlineImages: app.inlineImages,
       extraSections: customize.sections,
     });
     return { messages: out, system };

@@ -20,6 +20,7 @@ import { providers } from '../providers/registry';
 import { OpenAIServerProvider } from '../providers/openai-server';
 import { runtimes } from '../runtimes/llamacpp-runtimes';
 import { artifactsForConversation, getArtifact, listArtifacts } from '../services/artifacts';
+import { searchImage } from '../services/image-search';
 import * as models from '../services/models';
 import { addProjectFiles, createProject, deleteProject, listProjects, projectDetail, removeProjectFile, updateProject } from '../services/projects';
 import { settings } from '../services/settings';
@@ -309,6 +310,8 @@ export function registerIpcHandlers(): void {
     await writeFile(result.filePath, artifact.content, 'utf8');
     return result.filePath;
   });
+
+  handle('images:search', (query) => searchImage(query));
 
   registerCodeHandlers();
   registerChangesHandlers();

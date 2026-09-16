@@ -1,11 +1,11 @@
 # Graph Report - Cellar  (2026-09-16)
 
 ## Corpus Check
-- 262 files · ~268,466 words
+- 262 files · ~268,818 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3095 nodes · 7408 edges · 174 communities (140 shown, 34 thin omitted)
+- 3095 nodes · 7408 edges · 173 communities (139 shown, 34 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 121 edges (avg confidence: 0.71)
 - Token cost: 0 input · 0 output
 
@@ -177,7 +177,6 @@
 - shared/artifacts.ts
 - Renderer
 - registerTerminalHandlers
-- clsx
 - @fontsource-variable/source-serif-4
 - @streamdown/mermaid
 - @tailwindcss/browser
@@ -211,7 +210,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (174 total, 34 thin omitted)
+## Communities (173 total, 34 thin omitted)
 
 ### Community 0 - "hf-api.ts"
 Cohesion: 0.23
@@ -309,13 +308,9 @@ Nodes (23): ANSI, ESC, killTree(), runCommand, runShell(), ShellOptions, ShellRe
 Cohesion: 0.09
 Nodes (8): ACCENTS, LANGUAGES, SECTIONS, SettingsPage(), SHORTCUTS, VARIANT_LABEL, Voice(), WHISPER_BUILDS
 
-### Community 24 - "types/models.ts"
-Cohesion: 0.26
-Nodes (10): pdfAvailable(), chatBaseTools(), CODE_TOOLS, codeToolsFor(), extraTools(), toolsFor(), AgentTool, describe() (+2 more)
-
 ### Community 25 - "provider-configs.ts"
-Cohesion: 0.10
-Nodes (32): connectorTool(), connectorToolName(), connectorTools(), diagnosticsTool, forgetTool, objectSchema(), readChatTool, readSkillFileTool (+24 more)
+Cohesion: 0.08
+Nodes (41): pdfAvailable(), connectorTool(), connectorToolName(), connectorTools(), diagnosticsTool, forgetTool, objectSchema(), readChatTool (+33 more)
 
 ### Community 26 - "hub.ts"
 Cohesion: 0.08
@@ -359,7 +354,7 @@ Nodes (3): Input, SelectOption, Textarea
 
 ### Community 36 - "devDependencies"
 Cohesion: 0.07
-Nodes (29): cmdk, electron, monaco-editor, devDependencies, cmdk, electron, monaco-editor, @playwright/test (+21 more)
+Nodes (29): clsx, cmdk, electron, @fontsource-variable/inter, devDependencies, clsx, cmdk, electron (+21 more)
 
 ### Community 37 - "chat-smoke.mjs"
 Cohesion: 0.22
@@ -514,8 +509,8 @@ Cohesion: 0.19
 Nodes (13): DesignCard(), DesignEditorPage(), DesignHeader(), DesignHomePage(), errorText(), exportDesign(), FORMAT_ICONS, IDEAS (+5 more)
 
 ### Community 94 - "agent-core.test.ts"
-Cohesion: 0.21
-Nodes (20): absoluteUrl(), decodeEntities(), htmlToText(), NAMED_ENTITIES, PageText, parseBraveHtml(), parseDuckDuckGoHtml(), parseSearxngJson() (+12 more)
+Cohesion: 0.19
+Nodes (21): absoluteUrl(), decodeEntities(), htmlToText(), NAMED_ENTITIES, PageText, parseBraveHtml(), parseDuckDuckGoHtml(), parseSearxngJson() (+13 more)
 
 ### Community 95 - "Cellar roadmap"
 Cohesion: 0.06

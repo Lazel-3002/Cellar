@@ -24,6 +24,8 @@ function defaults(): StoredSettings {
     showGenerationStats: true,
     autoTitle: true,
     artifacts: true,
+    inlineVisualizations: false,
+    inlineImages: false,
     defaultModel: null,
     defaultContextLength: 16384,
     jitLoad: true,
@@ -118,6 +120,8 @@ class SettingsService {
     if (patch.showGenerationStats !== undefined) set('showGenerationStats', !!patch.showGenerationStats);
     if (patch.autoTitle !== undefined) set('autoTitle', !!patch.autoTitle);
     if (patch.artifacts !== undefined) set('artifacts', !!patch.artifacts);
+    if (patch.inlineVisualizations !== undefined) set('inlineVisualizations', !!patch.inlineVisualizations);
+    if (patch.inlineImages !== undefined) set('inlineImages', !!patch.inlineImages);
     if (patch.defaultModel !== undefined) set('defaultModel', patch.defaultModel);
     if (patch.defaultContextLength !== undefined) set('defaultContextLength', clamp(patch.defaultContextLength, 512, 2_000_000));
     if (patch.jitLoad !== undefined) set('jitLoad', !!patch.jitLoad);

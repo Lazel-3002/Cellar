@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789549161.9954283,
-    "ast_hash": "552e9529d900e980740f8de5e21b7042",
+    "mtime": 1789549984.709255,
+    "ast_hash": "c97f86e7c135cf94839529677d04e1d3",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -1300,8 +1300,8 @@
     "semantic_hash": ""
   },
   "src/shared/math/figure.ts": {
-    "mtime": 1789493655.8179877,
-    "ast_hash": "23afa042366b15c68b91d68e1d380b60",
+    "mtime": 1789549850.3924122,
+    "ast_hash": "69fc39ada39e8745996f83c2b711c6bb",
     "semantic_hash": ""
   },
   "src/shared/math/mathtext.ts": {
@@ -1340,8 +1340,8 @@
     "semantic_hash": ""
   },
   "tests/unit/math.test.ts": {
-    "mtime": 1789549440.8818176,
-    "ast_hash": "607020937ca73457f54ffc55b8c4d147",
+    "mtime": 1789549863.1546776,
+    "ast_hash": "2faf31ca52fbcc63be008037843a418f",
     "semantic_hash": ""
   },
   "docs/Creator Ideas - important things/Desgin needs to havee web search and should have a folder so it can browse and dowland.png": {

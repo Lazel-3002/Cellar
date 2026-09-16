@@ -212,6 +212,8 @@ export interface IpcInvokeMap {
   'artifacts:forConversation': Handler<[conversationId: string], Artifact[]>;
   'artifacts:saveAs': Handler<[id: string], string | null>;
 
+  'images:search': Handler<[query: string], { url: string; width?: number; height?: number } | null>;
+
   'app:background': Handler<[], BackgroundStatus>;
   /** Quick entry: show the main window on a conversation. */
   'app:openConversation': Handler<[conversationId: string, kind: ConversationKind], void>;
@@ -438,6 +440,7 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'artifacts:get': true,
   'artifacts:forConversation': true,
   'artifacts:saveAs': true,
+  'images:search': true,
   'app:background': true,
   'app:openConversation': true,
   'app:hideQuickEntry': true,

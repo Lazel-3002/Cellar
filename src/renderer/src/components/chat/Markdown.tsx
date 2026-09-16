@@ -4,10 +4,14 @@ import { createMathPlugin } from '@streamdown/math';
 import { createMermaidPlugin } from '@streamdown/mermaid';
 import { Streamdown, type Components } from 'streamdown';
 import { parseArtifacts } from '@shared/artifacts';
+import { withImageTags } from '@shared/inline-images';
 import type { ArtifactType } from '@shared/types/chat';
+import { parseVizBlocks } from '@shared/viz';
 import { invoke } from '@/lib/ipc';
-import { cn } from '@/lib/utils';
+import { cn, toBase64 } from '@/lib/utils';
 import { ArtifactCard } from './ArtifactCard';
+import { InlineImage } from './InlineImage';
+import { InlineViz } from './InlineViz';
 
 const plugins = {
   code: createCodePlugin({ themes: ['github-light', 'github-dark-default'] }),
@@ -31,6 +35,25 @@ export function withArtifactCards(markdown: string): string {
   return out + markdown.slice(cursor);
 }
 
+/** Replace `html viz` code fences with a placeholder element that renders as an inline sandboxed iframe. */
+export function withVizBlocks(markdown: string): string {
+  const blocks = parseVizBlocks(markdown);
+  if (blocks.length === 0) return markdown;
+  let out = '';
+  let cursor = 0;
+  for (const b of blocks) {
+    out += markdown.slice(cursor, b.start);
+    out += `\n\n<inline-viz content="${toBase64(b.content)}" open="${b.open}"></inline-viz>\n\n`;
+    cursor = b.end;
+  }
+  return out + markdown.slice(cursor);
+}
+
+/** Replace the first two `[[image: query]]` tags with a placeholder element; drop the rest. */
+export function withInlineImages(markdown: string, streaming: boolean): string {
+  return withImageTags(markdown, (query) => `<inline-image query="${escapeAttr(query)}"></inline-image>`, { max: 2, streaming });
+}
+
 interface MarkdownProps {
   content: string;
   streaming?: boolean;
@@ -40,7 +63,10 @@ interface MarkdownProps {
 }
 
 export const Markdown = memo(function Markdown({ content, streaming, conversationId, className, artifacts = true }: MarkdownProps) {
-  const source = useMemo(() => (artifacts ? withArtifactCards(content) : content), [content, artifacts]);
+  const source = useMemo(() => {
+    if (!artifacts) return content;
+    return withInlineImages(withVizBlocks(withArtifactCards(content)), !!streaming);
+  }, [content, artifacts, streaming]);
   const components = useMemo(() => {
     const Card: ComponentType<Record<string, unknown>> = (props) => (
       <ArtifactCard
@@ -51,6 +77,8 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
         open={props.open === 'true' || props.open === true}
       />
     );
+    const Viz: ComponentType<Record<string, unknown>> = (props) => <InlineViz content={String(props.content ?? '')} open={props.open === 'true' || props.open === true} />;
+    const Image: ComponentType<Record<string, unknown>> = (props) => <InlineImage query={String(props.query ?? '')} />;
     const Anchor = ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
         href={href ?? '#'}
@@ -62,7 +90,7 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
         {children}
       </a>
     );
-    return { 'artifact-card': Card, a: Anchor } as Components;
+    return { 'artifact-card': Card, 'inline-viz': Viz, 'inline-image': Image, a: Anchor } as Components;
   }, [conversationId]);
 
   return (
@@ -74,7 +102,7 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
       plugins={plugins}
       shikiTheme={['github-light', 'github-dark-default']}
       controls={{ table: true, code: true, mermaid: { download: true, copy: true, fullscreen: true, panZoom: true } }}
-      allowedTags={{ 'artifact-card': ['identifier', 'title', 'kind', 'open'] }}
+      allowedTags={{ 'artifact-card': ['identifier', 'title', 'kind', 'open'], 'inline-viz': ['content', 'open'], 'inline-image': ['query'] }}
       components={components}
       linkSafety={{ enabled: false }}
       lineNumbers={false}

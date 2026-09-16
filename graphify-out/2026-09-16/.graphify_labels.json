@@ -167,7 +167,6 @@
   "165": "shared/artifacts.ts",
   "166": "Renderer",
   "167": "registerTerminalHandlers",
-  "168": "clsx",
   "169": "@fontsource-variable/source-serif-4",
   "170": "@streamdown/mermaid",
   "171": "@tailwindcss/browser",

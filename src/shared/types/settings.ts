@@ -18,6 +18,10 @@ export interface AppSettings {
   autoTitle: boolean;
   /** Ask models to put substantial HTML/SVG/React/diagram output into artifacts. */
   artifacts: boolean;
+  /** Let models render a self-contained HTML chart/diagram/widget inline in the chat. */
+  inlineVisualizations: boolean;
+  /** Let models request an inline photo with a [[image: query]] tag (DuckDuckGo image search). */
+  inlineImages: boolean;
   defaultModel: ModelRef | null;
   defaultContextLength: number;
   jitLoad: boolean;

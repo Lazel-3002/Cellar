@@ -11,6 +11,10 @@ export interface SystemPromptInput {
   projectKnowledge?: string;
   customSystemPrompt?: string;
   artifacts: boolean;
+  /** May render a self-contained HTML chart/diagram/widget inline in the chat. */
+  inlineVisualizations?: boolean;
+  /** May request an inline photo with a [[image: query]] tag. */
+  inlineImages?: boolean;
   /** Names of the tools the model can call in this chat (none: a plain chat). */
   toolNames?: string[];
   /** Memory, skills and connector instructions. */
@@ -53,6 +57,17 @@ export const ARTIFACT_INSTRUCTIONS = `When you create substantial, self-containe
 
 Use html (a complete page; inline CSS and JS), svg, jsx (one React component with a default export; Tailwind classes are available), mermaid, or markdown (fence markdown artifacts with four backticks). Keep short snippets and explanations as normal Markdown. To update an artifact, output it again in full with the same title.`;
 
+export const VIZ_INSTRUCTIONS = `You may render a self-contained interactive visualization — a chart, diagram, or small widget — directly in the chat when it would genuinely help the user understand something better than text alone would. Put it in a fenced code block whose info string is exactly \`html viz\`, for example:
+
+\`\`\`html viz
+<!doctype html>
+<html>...
+\`\`\`
+
+Write a complete, self-contained HTML document (inline CSS and JS). You may load a library from https://cdnjs.cloudflare.com or https://cdn.jsdelivr.net/npm/ if it genuinely helps (e.g. a charting library) — no other network access is available to it. Only do this when a visual genuinely adds value; plain Markdown text is still the default for everything else.`;
+
+export const INLINE_IMAGE_INSTRUCTIONS = `When a genuinely visual subject would benefit from a picture (a place, an object, an animal, a work of art, etc.), you may request one inline by writing \`[[image: short search query]]\` alone on its own line. Use this sparingly — at most 1-2 per reply — and only when a picture adds real value; never for abstract or non-visual topics.`;
+
 export function buildSystemPrompt(input: SystemPromptInput): string {
   const now = input.now ?? new Date();
   const date = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -72,6 +87,8 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
   if (input.toolNames?.length) parts.push(chatToolGuidance(input.toolNames));
   for (const section of input.extraSections ?? []) if (section.trim()) parts.push(section.trim());
   if (input.artifacts) parts.push(ARTIFACT_INSTRUCTIONS);
+  if (input.inlineVisualizations) parts.push(VIZ_INSTRUCTIONS);
+  if (input.inlineImages) parts.push(INLINE_IMAGE_INSTRUCTIONS);
   if (input.customSystemPrompt?.trim()) parts.push(input.customSystemPrompt.trim());
   if (input.textProtocol) parts.push(input.textProtocol);
   return parts.join('\n\n');

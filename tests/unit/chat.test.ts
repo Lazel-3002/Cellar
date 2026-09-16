@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseArtifacts, parseInfoString } from '../../src/shared/artifacts';
+import { parseImageTags, withImageTags } from '../../src/shared/inline-images';
 import { branchPath, latestLeaf, siblingsOf } from '../../src/shared/message-tree';
 import type { Message } from '../../src/shared/types/chat';
+import { parseVizBlocks } from '../../src/shared/viz';
 import { fitToContext, truncateMiddle } from '../../src/main/chat/context-window';
 import { buildSystemPrompt, cleanTitle, fallbackTitle, parseParamsBillions, supportsArtifactInstructions } from '../../src/main/chat/prompts';
 import type { ProviderMessage } from '../../src/main/providers/types';
@@ -135,6 +137,38 @@ describe('artifacts', () => {
   });
 });
 
+describe('inline visualizations', () => {
+  it('extracts closed and still-streaming html viz blocks, ignoring other fences', () => {
+    const text = ['```html viz', '<h1>Chart</h1>', '```', '```html artifact title="Page"', '<div></div>', '```', '```html viz', '<div>partial'].join('\n');
+    const blocks = parseVizBlocks(text);
+    expect(blocks.map((b) => b.open)).toEqual([false, true]);
+    expect(blocks[0].content).toBe('<h1>Chart</h1>');
+    expect(blocks[1].content).toBe('<div>partial');
+  });
+
+  it('ignores plain html code blocks without the viz marker', () => {
+    expect(parseVizBlocks('```html\n<div></div>\n```')).toEqual([]);
+  });
+});
+
+describe('inline images', () => {
+  it('parses [[image: query]] tags, tolerating case and spacing', () => {
+    const tags = parseImageTags('See [[Image:  a red panda ]] and [[image:eiffel tower]].');
+    expect(tags.map((t) => t.query)).toEqual(['a red panda', 'eiffel tower']);
+  });
+
+  it('renders only the first `max` tags and drops the rest', () => {
+    const out = withImageTags('[[image: a]] [[image: b]] [[image: c]]', (q) => `<img data-q="${q}">`, { max: 2, streaming: false });
+    expect(out).toBe('<img data-q="a"><img data-q="b">');
+  });
+
+  it('strips a trailing broken tag once the message is final, but not while still streaming', () => {
+    const partial = 'Look at this [[image: half open';
+    expect(withImageTags(partial, (q) => q, { max: 2, streaming: true })).toBe(partial);
+    expect(withImageTags(partial, (q) => q, { max: 2, streaming: false })).toBe('Look at this ');
+  });
+});
+
 describe('prompts', () => {
   it('builds a system prompt with preferences and project context', () => {
     const prompt = buildSystemPrompt({
@@ -163,6 +197,15 @@ describe('prompts', () => {
     expect(supportsArtifactInstructions({})).toBe(true);
     const prompt = buildSystemPrompt({ modelName: 'Tiny', userName: '', preferences: '', artifacts: false });
     expect(prompt).not.toContain('artifact title=');
+  });
+
+  it('only includes inline visualization / image instructions when their toggles are on', () => {
+    const off = buildSystemPrompt({ modelName: 'M', userName: '', preferences: '', artifacts: false });
+    expect(off).not.toContain('html viz');
+    expect(off).not.toContain('[[image:');
+    const on = buildSystemPrompt({ modelName: 'M', userName: '', preferences: '', artifacts: false, inlineVisualizations: true, inlineImages: true });
+    expect(on).toContain('html viz');
+    expect(on).toContain('[[image:');
   });
 
   it('cleans generated titles and builds fallbacks', () => {

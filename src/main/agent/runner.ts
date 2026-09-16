@@ -416,6 +416,8 @@ export class TaskRunner {
             projectKnowledge: knowledge,
             customSystemPrompt,
             artifacts: app.artifacts && supportsArtifactInstructions(entry),
+            inlineVisualizations: app.inlineVisualizations && supportsArtifactInstructions(entry),
+            inlineImages: app.inlineImages,
             toolNames: tools.map((t) => t.name),
             extraSections: customize.sections,
             textProtocol,

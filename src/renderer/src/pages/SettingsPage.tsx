@@ -82,11 +82,19 @@ function General() {
         <Field label="Show generation stats" description="Tokens per second, token counts and time to first token under each reply.">
           <Switch checked={s.showGenerationStats} onCheckedChange={(v) => update.mutate({ showGenerationStats: v })} />
         </Field>
+      </Card>
+      <Card title="Capabilities" description="What models are told they may do in chat, and how it's shown.">
         <Field label="Artifacts" description="Ask models to put web pages, SVGs, React components, diagrams and long documents in a side panel. Skipped automatically for models under 3B parameters.">
           <Switch checked={s.artifacts} onCheckedChange={(v) => update.mutate({ artifacts: v })} />
         </Field>
         <Field label="Web search in chats" description="Models with native tool calling can search the web and read pages while they answer. Search queries go to the provider set in Cowork settings.">
           <Switch checked={s.chatWebSearch} onCheckedChange={(v) => update.mutate({ chatWebSearch: v })} />
+        </Field>
+        <Field label="Inline visualizations" description="Let models render charts, diagrams and small interactive widgets as sandboxed HTML directly in the chat, instead of describing them in text only. Skipped automatically for models under 3B parameters.">
+          <Switch checked={s.inlineVisualizations} onCheckedChange={(v) => update.mutate({ inlineVisualizations: v })} />
+        </Field>
+        <Field label="Inline images" description="Let models search for and insert a relevant photo inline (up to 2 per reply) when a picture genuinely helps. Uses DuckDuckGo image search — no API key needed.">
+          <Switch checked={s.inlineImages} onCheckedChange={(v) => update.mutate({ inlineImages: v })} />
         </Field>
       </Card>
       <DesktopCard />
