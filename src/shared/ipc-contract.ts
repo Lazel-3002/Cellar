@@ -287,7 +287,8 @@ export interface IpcInvokeMap {
   'voice:downloadModel': Handler<[id: string], void>;
   'voice:deleteModel': Handler<[id: string], void>;
   /** 16 kHz mono 16-bit WAV. */
-  'voice:transcribe': Handler<[wav: Uint8Array, language?: string], TranscriptionResult>;
+  /** partial=true trades accuracy for speed (greedy decoding) for a live preview while still recording. */
+  'voice:transcribe': Handler<[wav: Uint8Array, language?: string, partial?: boolean], TranscriptionResult>;
 
   'projects:indexStatus': Handler<[projectId: string], ProjectIndexStatus>;
   'projects:reindex': Handler<[projectId: string], void>;

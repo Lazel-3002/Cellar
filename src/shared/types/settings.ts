@@ -78,6 +78,10 @@ export interface AppSettings {
   embeddingModel: ModelRef | null;
   /** Automatic background update checks (every few hours). "Check for updates" in Settings always runs regardless. */
   autoUpdateCheck: boolean;
+  /** Read finished assistant replies aloud with the browser's built-in speech synthesis. */
+  voiceReplies: boolean;
+  /** SpeechSynthesisVoice.name; '' uses the system default voice. */
+  voiceReplyVoice: string;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

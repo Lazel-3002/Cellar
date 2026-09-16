@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { cpus, freemem, release, totalmem, type as osType } from 'node:os';
 import { promisify } from 'node:util';
 import type { GpuInfo, HardwareInfo, RuntimeVariant } from '@shared/types/system';
+import type { WhisperVariant } from '@shared/types/voice';
 import { logger } from '../lib/log';
 
 const exec = promisify(execFile);
@@ -110,6 +111,22 @@ export function recommendedVariant(hw: HardwareInfo): RuntimeVariant {
   }
   if (gpu.vendor === 'amd' || gpu.vendor === 'intel') return 'vulkan';
   return 'cpu';
+}
+
+/**
+ * Pick the whisper.cpp build that best matches the primary GPU. Unlike llama.cpp, whisper.cpp's
+ * official Windows x64 releases only ship a CUDA 12.4 build (no x64 CUDA 13 asset exists yet — only
+ * an arm64 one), and that build's compiled kernels stop at compute capability 9.0. On a Blackwell
+ * GPU (RTX 50 series, compute 10.0+/12.0) it still runs — the driver falls back to slow PTX JIT —
+ * but measured on an RTX 5060 that made a 2s clip take ~34s (vs ~0.5s on the CPU build), a ~70x
+ * regression that makes "GPU-accelerated" dictation worse than no GPU at all. Recommend CPU there
+ * until whisper.cpp ships Blackwell SASS or a CUDA 13 x64 build (recheck VARIANT_ASSETS in voice/whisper.ts).
+ */
+export function recommendedWhisperVariant(hw: HardwareInfo): WhisperVariant {
+  const gpu = hw.gpus[0];
+  if (!gpu || gpu.vendor !== 'nvidia') return 'cpu';
+  const cap = Number(gpu.computeCapability ?? '0');
+  return cap > 0 && cap < 10 ? 'cuda-12' : 'cpu';
 }
 
 /** VRAM budget for fit badges: total VRAM minus what the desktop typically holds. */

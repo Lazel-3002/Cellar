@@ -64,6 +64,8 @@ function defaults(): StoredSettings {
     voiceLanguage: 'auto',
     embeddingModel: null,
     autoUpdateCheck: true,
+    voiceReplies: false,
+    voiceReplyVoice: '',
   };
 }
 
@@ -160,6 +162,8 @@ class SettingsService {
     if (patch.voiceLanguage !== undefined && /^(auto|[a-z]{2,3})$/.test(patch.voiceLanguage)) set('voiceLanguage', patch.voiceLanguage);
     if (patch.embeddingModel !== undefined) set('embeddingModel', patch.embeddingModel && patch.embeddingModel.providerId && patch.embeddingModel.modelId ? { providerId: patch.embeddingModel.providerId, modelId: patch.embeddingModel.modelId } : null);
     if (patch.autoUpdateCheck !== undefined) set('autoUpdateCheck', !!patch.autoUpdateCheck);
+    if (patch.voiceReplies !== undefined) set('voiceReplies', !!patch.voiceReplies);
+    if (patch.voiceReplyVoice !== undefined) set('voiceReplyVoice', patch.voiceReplyVoice.trim().slice(0, 200));
 
     if (changes.length) {
       transaction(() => {

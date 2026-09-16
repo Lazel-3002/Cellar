@@ -28,6 +28,8 @@ export interface VoiceStatus {
   language: string;
   /** A runtime and the chosen model are both installed. */
   ready: boolean;
+  /** Best build for the detected GPU (falls back to CPU on hardware whisper.cpp's CUDA build doesn't cover, e.g. RTX 50 series). */
+  recommendedVariant: WhisperVariant;
 }
 
 export interface VoiceProgress {

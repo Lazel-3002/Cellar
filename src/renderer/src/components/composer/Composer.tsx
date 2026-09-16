@@ -450,10 +450,17 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         {variant === 'code' && codeMode && <CodeModeMenu value={codeMode} onChange={setCodeModeValue} />}
         <div className="flex-1" />
         {dictation.state === 'recording' && (
-          <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground tabular-nums" data-testid="dictation-recording">
-            <span className="size-2 rounded-full bg-danger" style={{ opacity: 0.35 + dictation.level * 0.65, transform: `scale(${1 + dictation.level * 0.6})` }} />
-            {Math.floor(dictation.elapsed / 60)}:{String(dictation.elapsed % 60).padStart(2, '0')}
-            <button className="ml-1 text-[12px] hover:text-foreground" onClick={dictation.cancel}>
+          <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground tabular-nums" data-testid="dictation-recording">
+            <span className="size-2 shrink-0 rounded-full bg-danger" style={{ opacity: 0.35 + dictation.level * 0.65, transform: `scale(${1 + dictation.level * 0.6})` }} />
+            <span className="shrink-0">
+              {Math.floor(dictation.elapsed / 60)}:{String(dictation.elapsed % 60).padStart(2, '0')}
+            </span>
+            {dictation.partial && (
+              <span className="max-w-[220px] truncate text-fg-2" title={dictation.partial} data-testid="dictation-partial">
+                {dictation.partial}
+              </span>
+            )}
+            <button className="ml-1 shrink-0 text-[12px] hover:text-foreground" onClick={dictation.cancel}>
               Cancel
             </button>
           </span>

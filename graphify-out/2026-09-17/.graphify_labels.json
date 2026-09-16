@@ -146,6 +146,7 @@
   "144": "electron-vite",
   "145": "package.json",
   "146": "glob.ts",
+  "147": "images.ts",
   "148": "MonacoEditor.tsx",
   "149": "quants.ts",
   "150": "code-changes.test.ts",
@@ -163,5 +164,9 @@
   "162": "Sketch.tsx",
   "163": "agent-core.test.ts",
   "164": "@vitejs/plugin-react",
-  "166": "Renderer"
+  "165": "fetchWithTimeout",
+  "166": "Renderer",
+  "167": "network.test.ts",
+  "168": "ArtifactPanel",
+  "169": "sucrase"
 }

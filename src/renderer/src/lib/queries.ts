@@ -7,6 +7,7 @@ import type { ModelRef } from '@shared/types/models';
 import type { AppSettings, AppSettingsPatch } from '@shared/types/settings';
 import { useStreams } from '../stores/streams';
 import { invoke, onEvent } from './ipc';
+import { speakReply } from './tts';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -107,7 +108,13 @@ export function useIpcSync(): void {
 
   useEffect(() => {
     const offs = [
-      onEvent('chat:stream', (event) => applyStream(event)),
+      onEvent('chat:stream', (event) => {
+        applyStream(event);
+        if (event.status === 'complete') {
+          const current = qc.getQueryData<AppSettings>(keys.settings);
+          if (current?.voiceReplies) speakReply(event.messageId, event.content, current.voiceReplyVoice);
+        }
+      }),
       onEvent('chat:changed', ({ conversationId }) => {
         void qc.invalidateQueries({ queryKey: ['conversations'] });
         if (conversationId) {

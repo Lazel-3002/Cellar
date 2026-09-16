@@ -124,9 +124,9 @@ export function registerM4Handlers(): void {
   });
   handle('voice:downloadModel', (id) => voice.downloadModel(id));
   handle('voice:deleteModel', (id) => voice.deleteModel(id));
-  handle('voice:transcribe', (wav, language) => {
+  handle('voice:transcribe', (wav, language, partial) => {
     if (!(wav instanceof Uint8Array) || wav.byteLength > 200 * 1024 * 1024) throw new Error('The recording could not be read.');
-    return voice.transcribe(wav, language ? z.string().regex(/^(auto|[a-z]{2,3})$/).parse(language) : undefined);
+    return voice.transcribe(wav, language ? z.string().regex(/^(auto|[a-z]{2,3})$/).parse(language) : undefined, !!partial);
   });
 
   handle('projects:indexStatus', (projectId) => embeddingIndex.status(projectId));

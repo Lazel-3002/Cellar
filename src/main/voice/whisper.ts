@@ -14,6 +14,7 @@ import { bus } from '../lib/events';
 import { logger } from '../lib/log';
 import { errorMessage, fetchWithTimeout, newId, safeJsonParse, throttle } from '../lib/util';
 import { settings } from '../services/settings';
+import { detectHardware, recommendedWhisperVariant } from '../system/hardware';
 import { paths } from '../system/paths';
 
 const log = logger('voice');
@@ -75,7 +76,8 @@ class VoiceService {
     const app = settings.get();
     const models = WHISPER_MODELS.map((m) => ({ ...m, installed: existsSync(join(modelsDir(), m.id)) }));
     const model = app.voiceModel;
-    return { runtime, models, model, language: app.voiceLanguage, ready: !!runtime && existsSync(join(modelsDir(), model)) };
+    const recommendedVariant = recommendedWhisperVariant(await detectHardware());
+    return { runtime, models, model, language: app.voiceLanguage, ready: !!runtime && existsSync(join(modelsDir(), model)), recommendedVariant };
   }
 
   async installRuntime(variant: WhisperVariant): Promise<WhisperRuntime> {
@@ -153,8 +155,13 @@ class VoiceService {
     await rm(join(modelsDir(), id), { force: true });
   }
 
-  /** Transcribe 16 kHz mono 16-bit WAV bytes. */
-  async transcribe(wav: Uint8Array, language?: string): Promise<TranscriptionResult> {
+  /**
+   * Transcribe 16 kHz mono 16-bit WAV bytes. `partial` is used for the live preview while the mic
+   * is still recording: greedy decoding (beam/best-of 1) instead of the default beam search trades
+   * some accuracy for speed and steadier latency on repeated calls against a growing clip. The
+   * final call on stop always uses full quality regardless of what the preview showed.
+   */
+  async transcribe(wav: Uint8Array, language?: string, partial = false): Promise<TranscriptionResult> {
     const status = await this.status();
     if (!status.runtime) throw new Error('Voice dictation needs whisper.cpp. Install it in Settings → Voice.');
     const modelPath = join(modelsDir(), status.model);
@@ -165,13 +172,14 @@ class VoiceService {
     const lang = language ?? status.language;
     const multilingual = WHISPER_MODELS.find((m) => m.id === status.model)?.multilingual ?? true;
     const args = ['-m', modelPath, '-f', file, '-nt', '-np', '-l', multilingual ? lang || 'auto' : 'en', '-t', String(Math.max(2, Math.min(8, availableParallelism() - 1)))];
+    if (partial) args.push('-bs', '1', '-bo', '1');
     const started = Date.now();
     try {
       const output = await new Promise<string>((resolve, reject) => {
         const child = spawn(status.runtime!.cliPath, args, { cwd: status.runtime!.dir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         const out: Buffer[] = [];
         const err: Buffer[] = [];
-        const timer = setTimeout(() => child.kill(), 5 * 60_000);
+        const timer = setTimeout(() => child.kill(), partial ? 15_000 : 5 * 60_000);
         child.stdout.on('data', (c: Buffer) => out.push(c));
         child.stderr.on('data', (c: Buffer) => err.push(c));
         child.on('error', (e) => {

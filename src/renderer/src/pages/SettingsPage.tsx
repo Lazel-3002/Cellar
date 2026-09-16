@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, FolderOpen, Plus, RefreshCw, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProviderConfig, ProviderStatus } from '@shared/types/providers';
+import type { AppSettings } from '@shared/types/settings';
 import type { RuntimeInstallProgress, RuntimeVariant } from '@shared/types/system';
 import type { VoiceProgress, WhisperVariant } from '@shared/types/voice';
 import { CellarMark } from '@/components/brand/Logo';
@@ -28,6 +29,7 @@ import {
   useUpdateState,
   useVoice,
 } from '@/lib/queries';
+import { useSpeechVoices } from '@/lib/tts';
 import { cn, formatBytes } from '@/lib/utils';
 
 const SECTIONS = [
@@ -214,7 +216,7 @@ function Voice() {
   };
   return (
     <>
-      <Card title="Voice dictation" description="The mic button in the composer turns speech into text on this computer with whisper.cpp. Nothing is sent anywhere.">
+      <Card title="Voice dictation" description="The mic button in the composer turns speech into text on this computer with whisper.cpp. Nothing is sent anywhere. A live, rougher preview appears while you're still talking; the text inserted once you stop is always the full-quality pass.">
         <Field label="Status">
           {voice.ready ? <Badge tone="success">Ready</Badge> : <Badge tone="warning">{voice.runtime ? 'Download a voice model' : 'Install whisper.cpp'}</Badge>}
         </Field>
@@ -222,6 +224,7 @@ function Voice() {
           <Select value={s.voiceLanguage} onChange={(voiceLanguage) => update.mutate({ voiceLanguage })} options={LANGUAGES} className="w-52" />
         </Field>
       </Card>
+      <SpokenReplies s={s} update={update} />
       <Card title="whisper.cpp" description={voice.runtime ? `Installed: ${voice.runtime.variant.toUpperCase()} build ${voice.runtime.tag}` : 'Official Windows builds from ggml-org/whisper.cpp on GitHub.'}>
         {WHISPER_BUILDS.map((b) => (
           <div key={b.variant} className="py-3">
@@ -229,12 +232,12 @@ function Voice() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-[13.5px]">
                   {b.label}
-                  {b.variant === 'cpu' && <Badge tone="brand">Recommended</Badge>}
+                  {voice.recommendedVariant === b.variant && <Badge tone="brand">Recommended for your GPU</Badge>}
                   {voice.runtime?.variant === b.variant && <Badge tone="success">Installed</Badge>}
                 </div>
                 <div className="text-[12px] text-muted-foreground">{b.description}</div>
               </div>
-              <Button size="sm" variant={voice.runtime ? 'outline' : b.variant === 'cpu' ? 'primary' : 'outline'} disabled={busy(`runtime:${b.variant}`)} onClick={() => void run(() => invoke('voice:installRuntime', b.variant), 'whisper.cpp installed')}>
+              <Button size="sm" variant={voice.runtime ? 'outline' : voice.recommendedVariant === b.variant ? 'primary' : 'outline'} disabled={busy(`runtime:${b.variant}`)} onClick={() => void run(() => invoke('voice:installRuntime', b.variant), 'whisper.cpp installed')}>
                 {voice.runtime?.variant === b.variant ? 'Reinstall' : 'Install'}
               </Button>
             </div>
@@ -282,8 +285,29 @@ function Voice() {
 const WHISPER_BUILDS: Array<{ variant: WhisperVariant; label: string; description: string }> = [
   { variant: 'cpu', label: 'CPU', description: 'About 9 MB. Fast enough for dictation with the Tiny, Base and Small models.' },
   { variant: 'blas', label: 'CPU with OpenBLAS', description: 'About 21 MB. Faster on long recordings.' },
-  { variant: 'cuda-12', label: 'NVIDIA CUDA 12', description: 'About 675 MB including the CUDA runtime. For NVIDIA GPUs up to the RTX 40 series.' },
+  {
+    variant: 'cuda-12',
+    label: 'NVIDIA CUDA 12',
+    description: 'About 675 MB including the CUDA runtime. For NVIDIA GPUs up to the RTX 40 series — on an RTX 50 series card this build falls back to slow JIT compilation and ends up slower than the CPU build.',
+  },
 ];
+
+function SpokenReplies({ s, update }: { s: AppSettings; update: ReturnType<typeof useUpdateSettings> }) {
+  const voices = useSpeechVoices();
+  const options: Array<{ value: string; label: string }> = [{ value: '', label: 'System default' }, ...voices.map((v) => ({ value: v.name, label: `${v.name} (${v.lang})` }))];
+  return (
+    <Card title="Spoken replies" description="Cellar reads finished replies aloud with your operating system's built-in voices — offline, no download, nothing sent anywhere.">
+      <Field label="Read replies aloud">
+        <Switch checked={s.voiceReplies} onCheckedChange={(voiceReplies) => update.mutate({ voiceReplies })} />
+      </Field>
+      {s.voiceReplies && (
+        <Field label="Voice" description={voices.length === 0 ? 'No system voices were found.' : undefined}>
+          <Select value={s.voiceReplyVoice} onChange={(voiceReplyVoice) => update.mutate({ voiceReplyVoice })} options={options} className="w-64" disabled={voices.length === 0} />
+        </Field>
+      )}
+    </Card>
+  );
+}
 
 const ACCENTS = ['#D97757', '#C2410C', '#B45309', '#65A30D', '#0D9488', '#2563EB', '#7C3AED', '#DB2777'];
 

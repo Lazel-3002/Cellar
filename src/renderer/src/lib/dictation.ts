@@ -48,11 +48,20 @@ async function toSpeechWav(blob: Blob): Promise<Uint8Array> {
 
 export type DictationState = 'idle' | 'recording' | 'transcribing';
 
-/** Record from the microphone, then transcribe with whisper.cpp in the main process. */
+/** How often to re-transcribe the recording so far for a live preview while the mic is still open. */
+const PARTIAL_INTERVAL_MS = 2500;
+
+/**
+ * Record from the microphone, then transcribe with whisper.cpp in the main process. While
+ * recording, the clip-so-far is also re-transcribed every couple of seconds with greedy decoding
+ * (fast but rougher) for a live "partial" preview; the final stop always re-transcribes the whole
+ * clip with full quality, so the preview never determines the actual inserted text.
+ */
 export function useDictation(onText: (text: string) => void, onError: (message: string) => void) {
   const [state, setState] = useState<DictationState>('idle');
   const [level, setLevel] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [partial, setPartial] = useState('');
   const recorder = useRef<MediaRecorder | null>(null);
   const cleanup = useRef<(() => void) | null>(null);
   const cancelled = useRef(false);
@@ -78,8 +87,23 @@ export function useDictation(onText: (text: string) => void, onError: (message: 
         setLevel(Math.min(1, peak / 64));
         setElapsed(Math.floor((Date.now() - started) / 1000));
       }, 100);
+      let previewing = false;
+      const preview = setInterval(async () => {
+        if (previewing || chunks.length === 0) return;
+        previewing = true;
+        try {
+          const wav = await toSpeechWav(new Blob(chunks.slice(), { type: media.mimeType }));
+          const { text } = await invoke('voice:transcribe', wav, undefined, true);
+          if (recorder.current === media && !cancelled.current) setPartial(text);
+        } catch {
+          // A failed preview just skips this tick; the final transcription on stop still runs full quality.
+        } finally {
+          previewing = false;
+        }
+      }, PARTIAL_INTERVAL_MS);
       cleanup.current = () => {
         clearInterval(meter);
+        clearInterval(preview);
         stream.getTracks().forEach((t) => t.stop());
         void audio.close();
         cleanup.current = null;
@@ -89,6 +113,7 @@ export function useDictation(onText: (text: string) => void, onError: (message: 
       media.onstop = async () => {
         cleanup.current?.();
         setLevel(0);
+        setPartial('');
         if (cancelled.current || chunks.length === 0) {
           setState('idle');
           return;
@@ -108,6 +133,7 @@ export function useDictation(onText: (text: string) => void, onError: (message: 
       recorder.current = media;
       media.start(250);
       setElapsed(0);
+      setPartial('');
       setState('recording');
     } catch (err) {
       cleanup.current?.();
@@ -125,5 +151,5 @@ export function useDictation(onText: (text: string) => void, onError: (message: 
     if (recorder.current?.state === 'recording') recorder.current.stop();
   }, []);
 
-  return { state, level, elapsed, start, stop, cancel };
+  return { state, level, elapsed, partial, start, stop, cancel };
 }
