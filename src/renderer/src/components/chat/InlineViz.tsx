@@ -56,25 +56,32 @@ export function InlineViz({ content, open }: { content: string; open: boolean })
   const showCode = tab === 'code' || failed;
 
   return (
-    <div className="not-prose my-3 w-full max-w-2xl overflow-hidden rounded-xl border border-composer-border bg-background">
-      <div className="flex h-9 items-center gap-2 border-b border-divider bg-composer px-2.5">
-        {failed && <TriangleAlert className="size-3.5 shrink-0 text-warning" />}
-        <span className="flex-1 truncate text-[12px] text-muted-foreground">{failed ? "Couldn't render — showing the code" : 'Visualization'}</span>
-        {!failed && (
-          <Segmented size="sm" value={tab} onChange={setTab} options={[{ value: 'preview', label: 'Preview' }, { value: 'code', label: 'Code' }]} />
-        )}
-        {!showCode && (
+    <div className="not-prose group/viz relative my-3 w-full max-w-2xl overflow-hidden rounded-xl border border-composer-border bg-background">
+      {failed ? (
+        <div className="flex items-center gap-1.5 border-b border-divider bg-composer px-2.5 py-1.5 text-[11.5px] text-muted-foreground">
+          <TriangleAlert className="size-3.5 shrink-0 text-warning" />
+          <span className="flex-1">Couldn't render — showing the code</span>
           <IconButton
-            label="Reload"
+            label="Retry"
             onClick={() => {
               setFailed(false);
+              setTab('preview');
               setReloadKey((k) => k + 1);
             }}
           >
             <RotateCw className="size-3.5" />
           </IconButton>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="pointer-events-none absolute top-2 right-2 z-10 flex items-center gap-1 rounded-lg border border-composer-border bg-background/90 p-1 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover/viz:pointer-events-auto group-hover/viz:opacity-100">
+          <Segmented size="sm" value={tab} onChange={setTab} options={[{ value: 'preview', label: 'Preview' }, { value: 'code', label: 'Code' }]} />
+          {tab === 'preview' && (
+            <IconButton label="Reload" onClick={() => setReloadKey((k) => k + 1)}>
+              <RotateCw className="size-3.5" />
+            </IconButton>
+          )}
+        </div>
+      )}
       {showCode ? (
         <pre className="max-h-96 overflow-auto p-3 text-[12px] leading-relaxed whitespace-pre-wrap">
           <code>{html}</code>

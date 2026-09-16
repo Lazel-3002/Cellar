@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1789582570.436869,
-    "ast_hash": "c0165ff44b6e5398da754a556e2aee4d",
+    "mtime": 1789583140.1185577,
+    "ast_hash": "37f672bf4f4c550c9a51ef80f44a09d9",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789582582.9154408,
-    "ast_hash": "295f4c3a892fdf0646bdf97edc9927a5",
+    "mtime": 1789583147.9072106,
+    "ast_hash": "c142ee4c39b47f8c35cbc97f7c3aa3bb",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -1360,8 +1360,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/chat/InlineViz.tsx": {
-    "mtime": 1789582272.2535002,
-    "ast_hash": "bc948a2f934c08c3885f0b0614bf9d40",
+    "mtime": 1789582928.9170759,
+    "ast_hash": "1f17e752b8af04f6b038ec7f73e2239c",
     "semantic_hash": ""
   },
   "src/shared/inline-images.ts": {
