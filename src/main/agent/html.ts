@@ -98,12 +98,30 @@ export interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  /** Which engine produced this result. Set by the caller in web.ts, not by these parsers. */
+  source?: string;
+}
+
+/**
+ * Snippet text near a result, tolerant of HTML a response cut off mid-tag: falls back to the
+ * next result block or a length cap instead of requiring a matching closing tag.
+ */
+function snippetNear(html: string, from: number, boundary: number): string {
+  const idx = html.indexOf('class="result__snippet"', from);
+  if (idx === -1 || idx >= boundary) return '';
+  const tagStart = html.lastIndexOf('<', idx);
+  const openEnd = html.indexOf('>', idx);
+  if (tagStart === -1 || openEnd === -1) return '';
+  // Look for the tag's own close (e.g. "</a"), not the first "</" — content can nest <b>/<span> etc.
+  const tagName = html.slice(tagStart + 1, idx).match(/^([a-zA-Z]+)/)?.[1] ?? 'a';
+  const candidates = [html.indexOf(`</${tagName}`, openEnd), html.indexOf('<div class="result', openEnd), boundary].filter((i) => i !== -1 && i > openEnd);
+  const end = Math.min(openEnd + 2000, candidates.length ? Math.min(...candidates) : openEnd + 2000);
+  return stripTags(html.slice(openEnd + 1, end));
 }
 
 /** Results from html.duckduckgo.com (the lite endpoint rejects automated requests). */
 export function parseDuckDuckGoHtml(html: string): SearchResult[] {
   const anchors = [...html.matchAll(/<a\b([^>]*class="result__a"[^>]*)>([\s\S]*?)<\/a>/g)];
-  const snippets = [...html.matchAll(/<(?:a|div|td)\b[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div|td)>/g)];
   const results: SearchResult[] = [];
   anchors.forEach((match, i) => {
     const start = match.index ?? 0;
@@ -119,8 +137,7 @@ export function parseDuckDuckGoHtml(html: string): SearchResult[] {
     }
     // Sponsored results point back at duckduckgo.com/y.js.
     if (!/^https?:\/\//i.test(url) || /duckduckgo\.com\/y\.js/.test(url) || !title) return;
-    const snippet = snippets.find((s) => (s.index ?? 0) > start && (s.index ?? 0) < end);
-    results.push({ title, url, snippet: snippet ? stripTags(snippet[1]) : '' });
+    results.push({ title, url, snippet: snippetNear(html, start, end) });
   });
   return results;
 }
@@ -137,7 +154,9 @@ export function parseBraveHtml(html: string): SearchResult[] {
     // Class names must start with the word: "result-content" and "site-name-content" are other elements.
     const titleTag = block.match(/<div\b[^>]*class="title\b[^"]*"[^>]*?(?:title="([^"]*)")?[^>]*>([\s\S]*?)<\/div>/);
     const title = decodeEntities(titleTag?.[1] ?? '') || stripTags(titleTag?.[2] ?? '');
-    const content = block.match(/<div\b[^>]*class="content\b[^"]*"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    // A well-formed page closes "content" on the next </div>; a truncated or nested-div response
+    // can lack that close, so fall back to a length-capped raw grab rather than an empty snippet.
+    const content = block.match(/<div\b[^>]*class="content\b[^"]*"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? block.match(/<div\b[^>]*class="content\b[^"]*"[^>]*>([\s\S]{0,800})/)?.[1] ?? '';
     const snippet = stripTags(content.replace(/<span\b[^>]*class="[^"]*t-secondary[^"]*"[^>]*>[\s\S]*?<\/span>/, ''));
     if (title && !results.some((r) => r.url === url)) results.push({ title, url, snippet });
   }

@@ -154,6 +154,13 @@ describe('web helpers', () => {
     expect(parseSearxngJson({ results: [{ title: 'A', url: 'https://a.dev', content: 'snip' }, { url: 'javascript:alert(1)' }] })).toEqual([{ title: 'A', url: 'https://a.dev', snippet: 'snip' }]);
   });
 
+  it('recovers a snippet from DuckDuckGo HTML truncated mid-tag', () => {
+    // A response cut short by the network: the last result's snippet never gets a closing tag.
+    const html = `<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com">Example</a>
+      <a class="result__snippet" href="//duckduckgo.com/l/?uddg=x">Partial answer that never clos`;
+    expect(parseDuckDuckGoHtml(html)).toEqual([{ title: 'Example', url: 'https://example.com', snippet: 'Partial answer that never clos' }]);
+  });
+
   it('recognises private hosts and URLs in text', () => {
     for (const host of ['localhost', '127.0.0.1', '10.1.2.3', '192.168.1.10', '172.20.0.1', '169.254.1.1', '::1', 'fd00::1', 'printer.local']) expect(isPrivateHost(host), host).toBe(true);
     for (const host of ['example.com', '8.8.8.8', '172.32.0.1']) expect(isPrivateHost(host), host).toBe(false);

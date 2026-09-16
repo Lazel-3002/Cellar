@@ -36,6 +36,8 @@ export interface TaskSource {
   title?: string;
   kind: 'search' | 'fetch';
   query?: string;
+  /** Search engine that produced this result (e.g. 'duckduckgo', 'brave', 'searxng'), when kind is 'search'. */
+  provider?: string;
   at: number;
 }
 

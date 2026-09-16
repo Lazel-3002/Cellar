@@ -1,12 +1,96 @@
 import { isIP } from 'node:net';
 import { z } from 'zod';
 import { extractPdfText } from '../../chat/attachments';
-import { fetchWithTimeout } from '../../lib/util';
+import { fetchWithTimeout, sleep } from '../../lib/util';
 import { htmlToText, parseBraveHtml, parseDuckDuckGoHtml, parseSearxngJson, type SearchResult } from '../html';
 import { clip, defineTool, ToolError, type ToolContext } from './types';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36';
 const MAX_DOWNLOAD = 10 * 1024 * 1024;
+
+/** 1s, 2s, 4s: three retries for transient network errors and 5xx before giving up. */
+const SEARCH_BACKOFF_MS = [1000, 2000, 4000];
+/** A 429 means "slow down", not "broken" — wait longer than a plain retry, honoring Retry-After if the server sent one. */
+const RATE_LIMIT_DELAY_MS = 8000;
+const SEARCH_CACHE_TTL_MS = 60 * 60 * 1000;
+
+const searchCache = new Map<string, { at: number; results: SearchResult[] }>();
+
+const SOURCE_LABELS: Record<string, string> = { duckduckgo: 'DuckDuckGo', brave: 'Brave Search', searxng: 'SearXNG' };
+
+function retryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(header);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
+}
+
+function withSource(results: SearchResult[], source: string): SearchResult[] {
+  return results.map((r) => ({ ...r, source }));
+}
+
+interface FetchRetryingOptions {
+  signal: AbortSignal;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  /** Used in the error message and to log which provider was retried. */
+  label: string;
+  /**
+   * Some providers answer HTTP 200 with a page that actually means "blocked" (DuckDuckGo's
+   * anomaly/challenge page). Return a retry reason to treat that response as retryable too.
+   */
+  shouldRetryBody?: (text: string, res: Response) => string | null;
+}
+
+/** Fetches with exponential backoff for network errors and 5xx, and a longer wait on HTTP 429. */
+async function fetchRetrying(url: string, opts: FetchRetryingOptions): Promise<{ res: Response; text: string }> {
+  const { signal, headers, timeoutMs = 15_000, label, shouldRetryBody } = opts;
+  let lastReason = `${label} is temporarily unavailable.`;
+  for (let attempt = 0; attempt <= SEARCH_BACKOFF_MS.length; attempt++) {
+    const isLastAttempt = attempt === SEARCH_BACKOFF_MS.length;
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(url, { headers, timeoutMs, signal });
+    } catch (err) {
+      if (signal.aborted || isLastAttempt) throw err;
+      await sleep(SEARCH_BACKOFF_MS[attempt], signal);
+      continue;
+    }
+    if (res.status === 429) {
+      lastReason = `${label} is rate-limiting automated requests.`;
+      if (isLastAttempt) break;
+      await sleep(retryAfterMs(res.headers.get('retry-after')) ?? RATE_LIMIT_DELAY_MS, signal);
+      continue;
+    }
+    if (res.status >= 500) {
+      lastReason = `${label} returned HTTP ${res.status}.`;
+      if (isLastAttempt) break;
+      await sleep(SEARCH_BACKOFF_MS[attempt], signal);
+      continue;
+    }
+    const text = await res.text();
+    const blocked = res.ok ? shouldRetryBody?.(text, res) : null;
+    if (blocked) {
+      lastReason = blocked;
+      if (isLastAttempt) break;
+      await sleep(SEARCH_BACKOFF_MS[attempt], signal);
+      continue;
+    }
+    return { res, text };
+  }
+  throw new ToolError(`${lastReason} Wait a minute and try again, or set up SearXNG in Settings → Cowork.`);
+}
+
+/** Coalesces repeat queries within an hour so we don't re-scrape the same search. */
+async function cachedSearch(provider: string, query: string, run: () => Promise<SearchResult[]>): Promise<SearchResult[]> {
+  const key = `${provider}:${query.trim().toLowerCase()}`;
+  const hit = searchCache.get(key);
+  if (hit && Date.now() - hit.at < SEARCH_CACHE_TTL_MS) return hit.results;
+  const results = await run();
+  if (results.length) searchCache.set(key, { at: Date.now(), results });
+  return results;
+}
 
 /** One retry for connection resets and similar blips; HTTP errors and cancellation are not retried. */
 async function fetchOnceMore(url: string, init: Parameters<typeof fetchWithTimeout>[1] & { signal: AbortSignal }): Promise<Response> {
@@ -58,28 +142,24 @@ export function isPrivateHost(hostname: string): boolean {
 }
 
 async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<SearchResult[]> {
-  const res = await fetchOnceMore(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-    headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
-    timeoutMs: 15_000,
+  const { res, text } = await fetchRetrying(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
     signal,
+    headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
+    label: 'DuckDuckGo',
+    shouldRetryBody: (html, r) => (r.status === 202 || /anomaly|challenge-form/i.test(html.slice(0, 5000)) ? 'DuckDuckGo is temporarily refusing automated searches.' : null),
   });
-  const html = await res.text();
-  if (res.status === 202 || /anomaly|challenge-form/i.test(html.slice(0, 5000))) {
-    throw new ToolError('DuckDuckGo is temporarily refusing automated searches. Wait a minute and try again, or set up SearXNG in Settings → Cowork.');
-  }
   if (!res.ok) throw new ToolError(`DuckDuckGo returned HTTP ${res.status}.`);
-  return parseDuckDuckGoHtml(html);
+  return withSource(parseDuckDuckGoHtml(text), 'duckduckgo');
 }
 
 async function searchBrave(query: string, signal: AbortSignal): Promise<SearchResult[]> {
-  const res = await fetchOnceMore(`https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`, {
-    headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
-    timeoutMs: 15_000,
+  const { res, text } = await fetchRetrying(`https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`, {
     signal,
+    headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
+    label: 'Brave Search',
   });
-  if (res.status === 429) throw new ToolError('Brave Search is limiting automated searches. Wait a minute and try again, or set up SearXNG in Settings → Cowork.');
   if (!res.ok) throw new ToolError(`Brave Search returned HTTP ${res.status}.`);
-  return parseBraveHtml(await res.text());
+  return withSource(parseBraveHtml(text), 'brave');
 }
 
 /** DuckDuckGo first; when it refuses or finds nothing, Brave Search. */
@@ -103,10 +183,14 @@ async function searchWithFallback(query: string, signal: AbortSignal): Promise<S
 
 async function searchSearxng(base: string, query: string, signal: AbortSignal): Promise<SearchResult[]> {
   if (!base) throw new ToolError('SearXNG is selected but no server URL is set. Add it in Settings → Cowork.');
-  const res = await fetchOnceMore(`${base.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}&format=json`, { headers: { Accept: 'application/json' }, timeoutMs: 15_000, signal });
+  const { res, text } = await fetchRetrying(`${base.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}&format=json`, {
+    signal,
+    headers: { Accept: 'application/json' },
+    label: 'SearXNG',
+  });
   if (res.status === 403) throw new ToolError('The SearXNG server does not allow JSON results. Add "json" to search.formats in its settings.yml.');
   if (!res.ok) throw new ToolError(`SearXNG returned HTTP ${res.status}.`);
-  return parseSearxngJson(await res.json());
+  return withSource(parseSearxngJson(JSON.parse(text)), 'searxng');
 }
 
 export const webSearch = defineTool({
@@ -119,21 +203,22 @@ export const webSearch = defineTool({
   }),
   async run(args, ctx) {
     const provider = ctx.settings.webSearchProvider;
-    const found =
+    const found = await cachedSearch(provider, args.query, () =>
       provider === 'searxng'
-        ? await searchSearxng(ctx.settings.searxngUrl, args.query, ctx.signal)
+        ? searchSearxng(ctx.settings.searxngUrl, args.query, ctx.signal)
         : provider === 'brave'
-          ? await searchBrave(args.query, ctx.signal)
-          : await searchWithFallback(args.query, ctx.signal);
+          ? searchBrave(args.query, ctx.signal)
+          : searchWithFallback(args.query, ctx.signal),
+    );
     const results = found.slice(0, args.max_results ?? 6);
     if (results.length === 0) return `No results for "${args.query}".`;
     for (const r of results) {
       const url = canonicalUrl(r.url);
       if (!url) continue;
       ctx.knownUrls.add(url);
-      ctx.recordSource({ url, title: r.title, kind: 'search', query: args.query });
+      ctx.recordSource({ url, title: r.title, kind: 'search', query: args.query, provider: r.source });
     }
-    return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n');
+    return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}\n   Source: ${SOURCE_LABELS[r.source ?? ''] ?? r.source ?? provider}`).join('\n');
   },
 });
 

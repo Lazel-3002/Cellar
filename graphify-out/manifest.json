@@ -615,8 +615,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/html.ts": {
-    "mtime": 1789425444.7688217,
-    "ast_hash": "fe854512f500bdb18dd5d25925e4425e",
+    "mtime": 1789598532.5266478,
+    "ast_hash": "04a03c6a60bf44d55582b2e794acccb9",
     "semantic_hash": ""
   },
   "src/main/agent/prompt.ts": {
@@ -660,8 +660,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/tools/web.ts": {
-    "mtime": 1789425398.2587829,
-    "ast_hash": "f9c46c7de45efc80d323d7f43607fc96",
+    "mtime": 1789598468.780478,
+    "ast_hash": "412ffd005786b006775dfb96c5ada820",
     "semantic_hash": ""
   },
   "src/main/agent/workspace.ts": {
@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/task/TaskSidePanel.tsx": {
-    "mtime": 1789328129.8764532,
-    "ast_hash": "532d0bc433614058dacdde721eeddc05",
+    "mtime": 1789598486.0959992,
+    "ast_hash": "861e7ca6c422bd4d864ccf2afcc7cdd8",
     "semantic_hash": ""
   },
   "src/renderer/src/components/task/ToolStep.tsx": {
@@ -695,13 +695,13 @@
     "semantic_hash": ""
   },
   "src/shared/types/agent.ts": {
-    "mtime": 1789493750.0373707,
-    "ast_hash": "9a42b8a14b3e8b3945ed6fadc35cda41",
+    "mtime": 1789598473.0956612,
+    "ast_hash": "b2964aaf3f9fd0564b110cba58d16417",
     "semantic_hash": ""
   },
   "tests/unit/agent-core.test.ts": {
-    "mtime": 1789327005.6593895,
-    "ast_hash": "adc7d18bc91e681da7682a68ebaa1f3b",
+    "mtime": 1789598570.5633135,
+    "ast_hash": "4ed00c3a65baa6a4db57cf0176771fbf",
     "semantic_hash": ""
   },
   "tests/unit/agent-runner.test.ts": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789598096.3572474,
-    "ast_hash": "63860e82c3f74219650b0c3a2aac0396",
+    "mtime": 1789598597.8276348,
+    "ast_hash": "6539d6b8974115f192a1b82e8b13dc1d",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {

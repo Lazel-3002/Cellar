@@ -21,6 +21,9 @@ function Section({ title, count, children }: { title: string; count?: string; ch
 
 const run = (p: Promise<unknown>) => void p.catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
 
+const SOURCE_LABELS: Record<string, string> = { duckduckgo: 'DuckDuckGo', brave: 'Brave Search', searxng: 'SearXNG' };
+const searchLabel = (provider?: string) => (provider ? (SOURCE_LABELS[provider] ?? provider) : 'Search result');
+
 export function TaskSidePanel({ conversationId, task, running }: { conversationId: string; task: TaskState; running: boolean }) {
   const done = task.todos.filter((t) => t.status === 'completed').length;
   const files = [...task.files].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -116,7 +119,7 @@ export function TaskSidePanel({ conversationId, task, running }: { conversationI
                   {source.kind === 'fetch' ? <Globe className="size-4 shrink-0 text-muted-foreground" /> : <Search className="size-4 shrink-0 text-faint" />}
                   <button className="min-w-0 flex-1 text-left" onClick={() => run(invoke('system:openExternal', source.url))} title={source.url}>
                     <span className={cn('block truncate text-[13px]', source.kind === 'fetch' ? 'text-foreground' : 'text-fg-2')}>{source.title || hostOf(source.url)}</span>
-                    <span className="block truncate text-[11.5px] text-muted-foreground">{source.kind === 'search' ? `Search result · ${hostOf(source.url)}` : hostOf(source.url)}</span>
+                    <span className="block truncate text-[11.5px] text-muted-foreground">{source.kind === 'search' ? `${searchLabel(source.provider)} · ${hostOf(source.url)}` : hostOf(source.url)}</span>
                   </button>
                   <Tip label="Copy link">
                     <button className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" onClick={() => run(copyText(source.url))}>
