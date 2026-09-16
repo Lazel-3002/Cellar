@@ -12,7 +12,22 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, NumberInput, Segmented, Select, Switch, Textarea } from '@/components/ui/form';
 import { Badge, Kbd, Progress, Spinner } from '@/components/ui/misc';
 import { invoke, onEvent } from '@/lib/ipc';
-import { keys, useAppInfo, useBackground, useHardware, useModels, useProviderConfigs, useProviders, useRuntimes, useSettings, useUpdateSettings, useVoice } from '@/lib/queries';
+import {
+  keys,
+  useAppInfo,
+  useBackground,
+  useCheckForUpdates,
+  useHardware,
+  useInstallUpdate,
+  useModels,
+  useProviderConfigs,
+  useProviders,
+  useRuntimes,
+  useSettings,
+  useUpdateSettings,
+  useUpdateState,
+  useVoice,
+} from '@/lib/queries';
 import { cn, formatBytes } from '@/lib/utils';
 
 const SECTIONS = [
@@ -882,23 +897,76 @@ const SHORTCUTS: Array<[string, string]> = [
   ['Zoom in / out / reset', 'Ctrl+= / Ctrl+- / Ctrl+0'],
 ];
 
+function UpdateStatus() {
+  const { data: info } = useAppInfo();
+  const { data: update } = useUpdateState();
+  const check = useCheckForUpdates();
+  const install = useInstallUpdate();
+  const settings = useSettings();
+  const updateSettings = useUpdateSettings();
+
+  if (info?.isDev) {
+    return <p className="text-[12.5px] text-muted-foreground">Auto-update only runs in packaged builds.</p>;
+  }
+
+  const stage = update?.stage ?? 'idle';
+  const busy = stage === 'checking' || check.isPending;
+
+  return (
+    <div className="space-y-3">
+      <Field label="Check for updates automatically" description="Every few hours, in the background. Manual checks below always run either way.">
+        <Switch checked={settings.data?.autoUpdateCheck ?? true} onCheckedChange={(v) => updateSettings.mutate({ autoUpdateCheck: v })} />
+      </Field>
+      <div className="flex items-center gap-3">
+        <Button variant="secondary" size="sm" disabled={busy || stage === 'downloading'} onClick={() => check.mutate()}>
+          {busy ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />}
+          Check for updates
+        </Button>
+        {stage === 'downloaded' && (
+          <Button size="sm" onClick={() => install.mutate()}>
+            Restart to update to {update?.version}
+          </Button>
+        )}
+      </div>
+      {stage === 'downloading' && (
+        <div className="space-y-1.5">
+          <Progress value={update?.total ? ((update.transferred ?? 0) / update.total) * 100 : 0} />
+          <div className="text-[12px] text-muted-foreground">
+            Downloading {update?.version ? `version ${update.version}` : 'update'}
+            {update?.total ? ` · ${formatBytes(update.transferred ?? 0)} / ${formatBytes(update.total)}` : ''}
+          </div>
+        </div>
+      )}
+      {stage === 'not-available' && <p className="text-[12.5px] text-muted-foreground">You're up to date{update?.checkedAt ? ` · checked ${new Date(update.checkedAt).toLocaleTimeString()}` : ''}.</p>}
+      {stage === 'error' && <p className="text-[12.5px] text-red-500">Update check failed: {update?.error}</p>}
+    </div>
+  );
+}
+
 function About() {
   const { data: info } = useAppInfo();
   return (
-    <Card>
-      <div className="flex items-center gap-4 py-5">
-        <CellarMark className="size-12" />
-        <div>
-          <div className="font-serif text-[24px]">Cellar</div>
-          <div className="text-[13px] text-muted-foreground">
-            Version {info?.version} · Milestone 4 {info?.isDev ? '· development build' : ''}
+    <>
+      <Card>
+        <div className="flex items-center gap-4 py-5">
+          <CellarMark className="size-12" />
+          <div>
+            <div className="font-serif text-[24px]">Cellar</div>
+            <div className="text-[13px] text-muted-foreground">
+              Version {info?.version} {info?.isDev ? '· development build' : ''}
+            </div>
           </div>
         </div>
-      </div>
-      <p className="py-4 text-[13.5px] leading-relaxed text-muted-foreground">
-        A Claude Desktop-style home for local models. Chat, Cowork and Code run on llama.cpp, Ollama, LM Studio, Unsloth Studio or any OpenAI-compatible server, with skills, connectors, plugins, memory, scheduled tasks and voice dictation. Design is planned for the next milestone.
-      </p>
-    </Card>
+        <p className="py-4 text-[13.5px] leading-relaxed text-muted-foreground">
+          A Claude Desktop-style home for local models. Chat, Cowork and Code run on llama.cpp, Ollama, LM Studio, Unsloth Studio or any OpenAI-compatible server, with skills, connectors, plugins, memory, scheduled tasks and voice dictation.
+        </p>
+      </Card>
+      <Card title="Updates">
+        <div className="py-3">
+          <UpdateStatus />
+        </div>
+      </Card>
+    </>
   );
 }
 

@@ -67,6 +67,7 @@ import type { CronPreview, ScheduledRun, ScheduledTask, ScheduledTaskInput } fro
 import type { AppSettings, AppSettingsPatch } from './types/settings';
 import type { HardwareInfo, RuntimeInfo, RuntimeInstallProgress, RuntimeRelease, RuntimeVariant } from './types/system';
 import type { TranscriptionResult, VoiceProgress, VoiceStatus, WhisperVariant } from './types/voice';
+import type { AppUpdateState } from './types/update';
 
 export type Platform = 'win32' | 'darwin' | 'linux' | 'aix' | 'android' | 'freebsd' | 'haiku' | 'openbsd' | 'sunos' | 'cygwin' | 'netbsd';
 
@@ -219,6 +220,12 @@ export interface IpcInvokeMap {
   'viz:saveAs': Handler<[fileName: string, base64: string], string | null>;
 
   'app:background': Handler<[], BackgroundStatus>;
+
+  'update:state': Handler<[], AppUpdateState>;
+  /** Manually re-checks even when an automatic check ran recently. */
+  'update:check': Handler<[], AppUpdateState>;
+  /** Quits and installs a downloaded update; no-op if nothing was downloaded. */
+  'update:install': Handler<[], void>;
   /** Quick entry: show the main window on a conversation. */
   'app:openConversation': Handler<[conversationId: string, kind: ConversationKind], void>;
   'app:hideQuickEntry': Handler<[], void>;
@@ -341,6 +348,7 @@ export interface IpcEventMap {
   'quick:shown': Record<string, never>;
   'design:changed': DesignChangedEvent;
   'math:changed': MathChangedEvent;
+  'update:changed': AppUpdateState;
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;
@@ -448,6 +456,9 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'viz:register': true,
   'viz:saveAs': true,
   'app:background': true,
+  'update:state': true,
+  'update:check': true,
+  'update:install': true,
   'app:openConversation': true,
   'app:hideQuickEntry': true,
   'system:pickPath': true,
@@ -539,6 +550,7 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'quick:shown': true,
   'design:changed': true,
   'math:changed': true,
+  'update:changed': true,
 };
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelFlags) as InvokeChannel[];

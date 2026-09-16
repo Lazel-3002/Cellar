@@ -45,6 +45,7 @@ export const keys = {
   scheduledRuns: (taskId?: string) => ['scheduled-runs', taskId ?? 'all'] as const,
   voice: ['voice'] as const,
   background: ['background'] as const,
+  update: ['update'] as const,
 };
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => invoke('settings:get'), staleTime: Infinity });
@@ -85,6 +86,19 @@ export const useScheduled = () => useQuery({ queryKey: keys.scheduled, queryFn: 
 export const useScheduledRuns = (taskId?: string) => useQuery({ queryKey: keys.scheduledRuns(taskId), queryFn: () => invoke('scheduled:runs', taskId) });
 export const useVoice = () => useQuery({ queryKey: keys.voice, queryFn: () => invoke('voice:status'), staleTime: 60_000 });
 export const useBackground = () => useQuery({ queryKey: keys.background, queryFn: () => invoke('app:background'), staleTime: 10_000 });
+export const useUpdateState = () => useQuery({ queryKey: keys.update, queryFn: () => invoke('update:state'), staleTime: Infinity });
+
+export function useCheckForUpdates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => invoke('update:check'),
+    onSuccess: (next) => qc.setQueryData(keys.update, next),
+  });
+}
+
+export function useInstallUpdate() {
+  return useMutation({ mutationFn: () => invoke('update:install') });
+}
 
 /** Subscribes to main-process events once and keeps the query cache in sync. */
 export function useIpcSync(): void {
@@ -132,6 +146,7 @@ export function useIpcSync(): void {
         void qc.invalidateQueries({ queryKey: keys.scheduled });
         void qc.invalidateQueries({ queryKey: ['scheduled-runs'] });
       }),
+      onEvent('update:changed', (state) => qc.setQueryData(keys.update, state)),
     ];
     void invoke('chat:activeStreams').then((streams) => streams.forEach(applyStream));
     return () => offs.forEach((off) => off());

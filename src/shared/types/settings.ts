@@ -76,6 +76,8 @@ export interface AppSettings {
   voiceLanguage: string;
   /** Embedding model for project knowledge search; null keeps keyword search only. */
   embeddingModel: ModelRef | null;
+  /** Automatic background update checks (every few hours). "Check for updates" in Settings always runs regardless. */
+  autoUpdateCheck: boolean;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

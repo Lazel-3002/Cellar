@@ -3,6 +3,13 @@ productName: Cellar
 directories:
   buildResources: build
   output: release/${version}
+# electron-updater checks/downloads updates from here at runtime (GitHub Releases, no API key
+# needed for a public repo). Publishing a release still requires `GH_TOKEN` in the environment
+# that runs `electron-builder --publish always`; that's a CI/release-process secret, not this file.
+publish:
+  provider: github
+  owner: Lazel-3002
+  repo: Cellar
 files:
   - out/**
   - package.json
@@ -28,10 +35,16 @@ win:
     - target: nsis
       arch: [x64]
   executableName: Cellar
+  # TODO(release): sign the build once a code-signing certificate is purchased from a CA, then
+  # set `signtoolOptions` (or `certificateFile`/`certificateSubjectName`) here and flip this to
+  # true so an unsigned build fails the release instead of shipping silently unsigned.
+  forceCodeSigning: false
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-Setup-${version}.${ext}
   shortcutName: Cellar
   createDesktopShortcut: true
+  # electron-updater's NSIS differential-update flow needs this even for unsigned builds.
+  differentialPackage: true
 npmRebuild: false

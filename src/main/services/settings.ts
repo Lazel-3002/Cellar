@@ -63,6 +63,7 @@ function defaults(): StoredSettings {
     voiceModel: 'ggml-base.bin',
     voiceLanguage: 'auto',
     embeddingModel: null,
+    autoUpdateCheck: true,
   };
 }
 
@@ -158,6 +159,7 @@ class SettingsService {
     if (patch.voiceModel !== undefined && /^ggml-[\w.-]+\.bin$/.test(patch.voiceModel)) set('voiceModel', patch.voiceModel);
     if (patch.voiceLanguage !== undefined && /^(auto|[a-z]{2,3})$/.test(patch.voiceLanguage)) set('voiceLanguage', patch.voiceLanguage);
     if (patch.embeddingModel !== undefined) set('embeddingModel', patch.embeddingModel && patch.embeddingModel.providerId && patch.embeddingModel.modelId ? { providerId: patch.embeddingModel.providerId, modelId: patch.embeddingModel.modelId } : null);
+    if (patch.autoUpdateCheck !== undefined) set('autoUpdateCheck', !!patch.autoUpdateCheck);
 
     if (changes.length) {
       transaction(() => {

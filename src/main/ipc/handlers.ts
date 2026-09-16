@@ -25,6 +25,7 @@ import { registerVizDocument } from '../protocol/viz-protocol';
 import * as models from '../services/models';
 import { addProjectFiles, createProject, deleteProject, listProjects, projectDetail, removeProjectFile, updateProject } from '../services/projects';
 import { settings } from '../services/settings';
+import { updater } from '../services/updater';
 import { embeddingIndex } from '../rag/embeddings';
 import { detectHardware } from '../system/hardware';
 import { paths } from '../system/paths';
@@ -169,6 +170,10 @@ export function registerIpcHandlers(): void {
     }
     return next;
   });
+
+  handle('update:state', () => updater.state());
+  handle('update:check', () => updater.checkNow());
+  handle('update:install', () => updater.install());
 
   handle('runtimes:list', (refresh) => runtimes.list(refresh));
   handle('runtimes:latestRelease', () => runtimes.latestRelease());

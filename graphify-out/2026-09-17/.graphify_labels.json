@@ -163,6 +163,6 @@
   "161": "MathPage.tsx",
   "162": "Sketch.tsx",
   "163": "agent-core.test.ts",
-  "164": "@vitejs/plugin-react",
-  "166": "Renderer"
+  "166": "Renderer",
+  "173": "zustand"
 }

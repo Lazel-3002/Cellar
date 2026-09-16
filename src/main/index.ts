@@ -21,6 +21,7 @@ import { handleVizProtocol } from './protocol/viz-protocol';
 import { providers } from './providers/registry';
 import { runtimes } from './runtimes/llamacpp-runtimes';
 import { scheduler } from './scheduled/scheduler';
+import { updater } from './services/updater';
 import { initPaths, paths } from './system/paths';
 import { detectHardware } from './system/hardware';
 import { createMainWindow, isAppUrl } from './window';
@@ -88,6 +89,7 @@ if (!app.requestSingleInstanceLock()) {
     void cleanupOrphanAttachments().catch(() => undefined);
     connectors.init(app.getVersion());
     scheduler.init();
+    updater.init();
   });
 
   app.on('window-all-closed', () => {
@@ -105,6 +107,7 @@ if (!app.requestSingleInstanceLock()) {
     stopAllSideChats();
     terminals.disposeAll();
     scheduler.dispose();
+    updater.dispose();
     void Promise.all([providers.dispose(), connectors.dispose()])
       .catch((err) => log.error('dispose failed', err))
       .finally(() => {

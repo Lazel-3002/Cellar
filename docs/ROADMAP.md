@@ -33,7 +33,7 @@ Verified on the dev machine (RTX 5060 8 GB):
 - **React artifacts** can import only `react`, `react-dom` and `lucide-react` (no recharts or shadcn yet).
 - **Mic button** is a disabled placeholder (M4).
 - **Placeholders:** Scheduled, Customize, Code and Design pages are "coming soon" screens.
-- **Release:** no auto-update and no code signing.
+- **Release:** auto-update via `electron-updater` + GitHub Releases (background check, download, "restart to update"); still no code signing — see TODOs in `electron-builder.yml` and `src/main/services/updater.ts`.
 
 ---
 
