@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import type { ThinkingLevel } from '@shared/types/chat';
@@ -36,6 +36,22 @@ export function useThemeSync(settings: AppSettings | undefined): void {
     root.style.setProperty('--titlebar-reserve', window.cellar.platform === 'darwin' ? '0px' : '140px');
     void invoke('window:setTheme', theme);
   }, [settings?.theme, settings?.accent, settings?.chatFont, systemDark, settings]);
+}
+
+/** A callback ref and the live width of whatever it is attached to (for drawings sized in pixels). */
+export function useElementWidth<T extends HTMLElement>(): [(node: T | null) => void, number] {
+  const [width, setWidth] = useState(0);
+  const observer = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  const ref = useCallback((node: T | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!node) return;
+    setWidth(node.clientWidth);
+    observer.current = new ResizeObserver(() => setWidth(node.clientWidth));
+    observer.current.observe(node);
+  }, []);
+  return [ref, width];
 }
 
 /** Handle accelerator commands coming from the (hidden) native menu. */

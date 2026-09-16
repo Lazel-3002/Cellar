@@ -90,7 +90,7 @@ function General() {
         <Field label="Web search in chats" description="Models with native tool calling can search the web and read pages while they answer. Search queries go to the provider set in Cowork settings.">
           <Switch checked={s.chatWebSearch} onCheckedChange={(v) => update.mutate({ chatWebSearch: v })} />
         </Field>
-        <Field label="Inline visualizations" description="Let models render charts, diagrams and small interactive widgets as sandboxed HTML directly in the chat, instead of describing them in text only. Skipped automatically for models under 3B parameters.">
+        <Field label="Inline visualizations" description="Let models draw charts, diagrams and small interactive widgets straight into the conversation, themed to match it. Charts and diagrams are drawn by Cellar; anything interactive runs sandboxed. Skipped automatically for models under 3B parameters.">
           <Switch checked={s.inlineVisualizations} onCheckedChange={(v) => update.mutate({ inlineVisualizations: v })} />
         </Field>
         <Field label="Inline images" description="Let models search for and insert a relevant photo inline (up to 2 per reply) when a picture genuinely helps. Uses DuckDuckGo image search — no API key needed.">

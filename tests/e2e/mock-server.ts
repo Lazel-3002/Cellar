@@ -15,6 +15,86 @@ export interface MockServer {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * A reply exercising all three inline visualization blocks. Everything is self-contained, so the
+ * test never depends on a CDN; `viz cdn` swaps in a real Chart.js fragment for manual checks.
+ */
+const VIZ_REPLY = [
+  "Here's how your weeks have gone:",
+  '',
+  '```chart',
+  JSON.stringify({
+    type: 'bar',
+    stacked: true,
+    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+    series: [
+      { name: 'Chess engine', values: [5, 3, 7, 4] },
+      { name: 'Roblox games', values: [8, 10, 6, 9] },
+      { name: 'Other', values: [2, 3, 1, 4] },
+    ],
+  }),
+  '```',
+  '',
+  'And this is what minimax search looks like under the hood:',
+  '',
+  '```svg viz',
+  '<svg viewBox="0 0 680 230" xmlns="http://www.w3.org/2000/svg"><title>Minimax search tree</title>',
+  '<line x1="340" y1="48" x2="170" y2="104" stroke="#898781" stroke-width="1.5"/>',
+  '<line x1="340" y1="48" x2="340" y2="104" stroke="#898781" stroke-width="1.5"/>',
+  '<line x1="340" y1="48" x2="510" y2="104" stroke="#898781" stroke-width="1.5"/>',
+  '<rect x="280" y="20" width="120" height="30" rx="6" fill="#5b4bd6"/>',
+  '<text x="340" y="40" text-anchor="middle" font-size="13" fill="#ffffff">You (max)</text>',
+  '<rect x="110" y="104" width="120" height="30" rx="6" fill="#0f7a5a"/>',
+  '<rect x="280" y="104" width="120" height="30" rx="6" fill="#0f7a5a"/>',
+  '<rect x="450" y="104" width="120" height="30" rx="6" fill="#0f7a5a"/>',
+  '<text x="170" y="124" text-anchor="middle" font-size="13" fill="#ffffff">Opponent</text>',
+  '<text x="340" y="124" text-anchor="middle" font-size="13" fill="#ffffff">Opponent</text>',
+  '<text x="510" y="124" text-anchor="middle" font-size="13" fill="#ffffff">Opponent</text>',
+  '<text x="340" y="190" text-anchor="middle" font-size="12" fill="currentColor">Each side picks the branch best for itself</text>',
+  '</svg>',
+  '```',
+  '',
+  'Drag the sliders to see compounding:',
+  '',
+  '```html viz',
+  '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">',
+  '<label style="font-size:13px;color:var(--text-secondary);min-width:60px">Years</label>',
+  '<input id="years" type="range" min="1" max="30" value="10" style="flex:1">',
+  '<span id="years-out" style="min-width:24px;font-weight:500">10</span></div>',
+  '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">',
+  '<span style="font-size:13px;color:var(--text-secondary)">$1,000 grows to</span>',
+  '<span id="out" style="font-size:22px;font-weight:600">$1,967</span></div>',
+  '<div style="height:180px"><canvas id="c" style="width:100%;height:180px"></canvas></div>',
+  '<script>',
+  'var el=document.getElementById("years"),out=document.getElementById("out"),yo=document.getElementById("years-out");',
+  'var cv=document.getElementById("c"),ctx=cv.getContext("2d");',
+  'function draw(){var n=+el.value,pts=[],i;for(i=0;i<=n;i++)pts.push(1000*Math.pow(1.07,i));',
+  'yo.textContent=n;out.textContent="$"+Math.round(pts[n]).toLocaleString("en-US");',
+  'var w=cv.clientWidth,h=180,dpr=devicePixelRatio||1;cv.width=w*dpr;cv.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);',
+  'ctx.clearRect(0,0,w,h);var max=pts[n];ctx.beginPath();',
+  'for(i=0;i<=n;i++){var x=(i/n)*(w-4)+2,y=h-4-(pts[i]/max)*(h-16);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}',
+  'ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue("--chart-1").trim()||"#2a78d6";',
+  'ctx.lineWidth=2;ctx.stroke()}',
+  'el.addEventListener("input",draw);draw();',
+  '</script>',
+  '```',
+  '',
+  'Same trick works for any "what if I change X" question.',
+].join('\n');
+
+const VIZ_CDN_REPLY = [
+  "A pie chart, drawn by Chart.js from the CDN:",
+  '',
+  '```html viz',
+  '<div style="position:relative;width:100%;height:260px"><canvas id="pie1"></canvas></div>',
+  '<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>',
+  '<script>new Chart(document.getElementById("pie1"),{type:"pie",data:{labels:["Coding","Gaming","Sleep","Other"],',
+  'datasets:[{data:[40,25,20,15]}]},options:{responsive:true,maintainAspectRatio:false}});</script>',
+  '```',
+  '',
+  'That is Chart.js with no options beyond the data.',
+].join('\n');
+
 function lastUserText(req: MockRequest): string {
   const last = [...req.messages].reverse().find((m) => m.role === 'user');
   if (!last) return '';
@@ -166,7 +246,15 @@ export async function startMockServer(): Promise<MockServer> {
           await sleep(50);
         }
         let reply = `Echo: ${prompt}`;
-        if (/artifact/i.test(prompt)) {
+        // A prompt that is itself a fenced block comes back verbatim, so a test can feed the
+        // renderer any exact markup (checked first: such a block usually contains the keywords below).
+        if (/^\s*(```|~~~)/.test(prompt)) {
+          reply = prompt.trim();
+        } else if (/\bviz cdn\b/i.test(prompt)) {
+          reply = VIZ_CDN_REPLY;
+        } else if (/\bviz\b/i.test(prompt)) {
+          reply = VIZ_REPLY;
+        } else if (/artifact/i.test(prompt)) {
           reply = 'Here is your page:\n\n```html artifact title="Mock page"\n<!doctype html><html><body><h1 id="hello">Hello from an artifact</h1></body></html>\n```\n\nEnjoy.';
         }
         const slow = /slow/i.test(prompt);

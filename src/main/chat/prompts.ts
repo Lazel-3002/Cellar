@@ -57,14 +57,21 @@ export const ARTIFACT_INSTRUCTIONS = `When you create substantial, self-containe
 
 Use html (a complete page; inline CSS and JS), svg, jsx (one React component with a default export; Tailwind classes are available), mermaid, or markdown (fence markdown artifacts with four backticks). Keep short snippets and explanations as normal Markdown. To update an artifact, output it again in full with the same title.`;
 
-export const VIZ_INSTRUCTIONS = `You may render a self-contained interactive visualization — a chart, diagram, or small widget — directly in the chat when it would genuinely help the user understand something better than text alone would. Put it in a fenced code block whose info string is exactly \`html viz\`, for example:
+export const VIZ_INSTRUCTIONS = `You can put a visual straight into your reply, inline with the text. Three fenced blocks render as visuals instead of as code; everything else stays normal Markdown.
 
-\`\`\`html viz
-<!doctype html>
-<html>...
+**Data → a \`chart\` block.** Prefer this for any ordinary chart: you describe the data and Cellar draws it, themed to match the chat.
+
+\`\`\`chart
+{"type":"bar","title":"Hours per week","labels":["Week 1","Week 2","Week 3"],"series":[{"name":"Chess engine","values":[5,3,7]},{"name":"Roblox","values":[8,10,6]}]}
 \`\`\`
 
-Write a complete, self-contained HTML document (inline CSS and JS). You may load a library from https://cdnjs.cloudflare.com or https://cdn.jsdelivr.net/npm/ if it genuinely helps (e.g. a charting library) — no other network access is available to it. Only do this when a visual genuinely adds value; plain Markdown text is still the default for everything else.`;
+\`type\` is bar, hbar, line, area, pie or donut. Optional: \`"stacked": true\`, \`"unit": "%"\`, \`"values": true\` to print each number, \`"legend": false\`.
+
+**A diagram or drawing → an \`svg viz\` block.** Use it for trees, flows, timelines, geometry, labelled schematics and generative art. Write a plain \`<svg>\` with a \`viewBox\` about 680 wide and no width/height, so it scales to the message. Use presentation attributes (\`fill\`, \`stroke\`, \`font-size\`) — \`<style>\` and scripts are stripped. Leave the background transparent, use \`currentColor\` for text so it follows the theme, and give it a \`<title>\`.
+
+**Something the user can operate → an \`html viz\` block.** An HTML fragment (no \`<html>\` or \`<body>\`) with inline \`<style>\` and \`<script>\`, for sliders, toggles and live recalculation. You may load one library from https://cdnjs.cloudflare.com or https://cdn.jsdelivr.net/npm/ (Chart.js is already themed for you); there is no other network access. Keep the background transparent and use the CSS variables \`--text-primary\`, \`--text-secondary\`, \`--border\` and \`--accent\`. Put a \`<canvas>\` inside a wrapper with an explicit height.
+
+They render with no frame or border around them, so keep them clean and let the surrounding text do the explaining. Use one only when a visual genuinely helps — plain Markdown is still the default.`;
 
 export const INLINE_IMAGE_INSTRUCTIONS = `When a genuinely visual subject would benefit from a picture (a place, an object, an animal, a work of art, etc.), you may request one inline by writing \`[[image: short search query]]\` alone on its own line. Use this sparingly — at most 1-2 per reply — and only when a picture adds real value; never for abstract or non-visual topics.`;
 

@@ -180,6 +180,51 @@ test('artifacts render in the sandboxed side panel', async () => {
   await expect(win.getByText('Mock page').first()).toBeVisible();
 });
 
+test('inline visualizations render seamlessly in the message: a chart, an SVG and a live frame', async () => {
+  await goHome();
+  await selectModel('mock-echo');
+  await send('Show me a viz of my week');
+  await expect(lastAssistant()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+  const message = lastAssistant();
+
+  // The chart block is drawn by Cellar itself: a themed SVG with one rect per stacked segment.
+  const chart = message.locator('[data-viz="chart"] svg:not(.lucide)');
+  await expect(chart).toBeVisible();
+  expect(await chart.locator('rect').count()).toBeGreaterThanOrEqual(12);
+
+  // The SVG block is mounted in the message DOM (not an iframe), so its text is real page text.
+  const drawing = message.locator('[data-viz="svg"] svg:not(.lucide)');
+  await expect(drawing).toBeVisible();
+  await expect(drawing.locator('text', { hasText: 'You (max)' })).toBeVisible();
+
+  // Nothing is boxed: no visualization draws a border of its own.
+  for (const kind of ['chart', 'svg', 'html']) {
+    const border = await message.locator(`[data-viz="${kind}"]`).evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(border).toBe('0px');
+  }
+
+  // The html block runs in the sandboxed frame, and the frame is exactly as tall as its content.
+  const frame = message.frameLocator('iframe[title="Inline visualization"]');
+  await expect(frame.locator('#out')).toHaveText('$1,967', { timeout: 20_000 });
+  const iframe = message.locator('iframe[title="Inline visualization"]');
+  await iframe.scrollIntoViewIfNeeded();
+  await expect
+    .poll(async () => (await iframe.boundingBox())?.height ?? 0, { timeout: 15_000 })
+    .toBeGreaterThan(240);
+  const [outer, inner] = await Promise.all([
+    iframe.boundingBox().then((b) => Math.round(b?.height ?? 0)),
+    frame.locator('body').evaluate((el) => el.scrollHeight),
+  ]);
+  expect(Math.abs(outer - inner)).toBeLessThanOrEqual(6);
+
+  // It is live: moving the slider recomputes the number inside the frame.
+  await frame.locator('#years').fill('30');
+  await expect(frame.locator('#out')).toHaveText('$7,612', { timeout: 10_000 });
+
+  await expect(iframe).toHaveCSS('opacity', '1');
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-inline-viz.png'), fullPage: true });
+});
+
 test('search finds earlier chats', async () => {
   await goHome();
   await win.getByRole('button', { name: /^Search/ }).click();

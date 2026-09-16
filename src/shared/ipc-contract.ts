@@ -215,6 +215,8 @@ export interface IpcInvokeMap {
   'images:search': Handler<[query: string], { url: string; width?: number; height?: number } | null>;
   /** Registers a fully-built inline-visualization document, returning a `cellar-viz://render/<id>` URL to load it. */
   'viz:register': Handler<[html: string], string>;
+  /** Saves an exported visualization (base64 PNG or SVG) wherever the user picks. */
+  'viz:saveAs': Handler<[fileName: string, base64: string], string | null>;
 
   'app:background': Handler<[], BackgroundStatus>;
   /** Quick entry: show the main window on a conversation. */
@@ -444,6 +446,7 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'artifacts:saveAs': true,
   'images:search': true,
   'viz:register': true,
+  'viz:saveAs': true,
   'app:background': true,
   'app:openConversation': true,
   'app:hideQuickEntry': true,

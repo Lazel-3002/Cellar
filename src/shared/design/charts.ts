@@ -92,6 +92,14 @@ export interface ChartRenderOptions {
   color?: string;
   /** Font name. */
   font?: string;
+  /** Series colors, overriding the ones derived from the theme (the chat uses its own palette). */
+  palette?: string[];
+  /** Font stack used verbatim, for callers that already have one (the chat's own font). */
+  fontStack?: string;
+  /** Legend above the plot, left-aligned, instead of centered underneath it. */
+  legendOnTop?: boolean;
+  /** Color of the category labels along the axis (default: the same as the other labels). */
+  axisColor?: string;
 }
 
 function truncate(text: string, maxChars: number): string {
@@ -106,8 +114,9 @@ export function chartSvg(spec: ChartSpec, width: number, height: number, options
   const h = Math.max(40, height);
   const text = resolveColor(options.color, theme, 'text');
   const muted = resolveColor(undefined, theme, 'muted');
-  const font = escapeXml(fontStack(options.font ?? theme.fonts.body));
-  const palette = chartPalette(theme.colors);
+  const axis = options.axisColor ? resolveColor(options.axisColor, theme, 'muted') : text;
+  const font = escapeXml(options.fontStack ?? fontStack(options.font ?? theme.fonts.body));
+  const palette = options.palette?.length ? options.palette : chartPalette(theme.colors);
   const colorOf = (i: number) => (spec.series[i]?.color ? resolveColor(spec.series[i].color, theme, 'primary') : palette[i % palette.length]);
   const label = clamp(Math.min(w, h) * 0.04, 9, 30);
   const out: string[] = [];
@@ -137,18 +146,21 @@ export function chartSvg(spec: ChartSpec, width: number, height: number, options
       rowWidth += widths[i];
     });
     const shown = rows.slice(0, 3);
-    bottom -= shown.length * rowHeight;
+    const block = shown.length * rowHeight;
+    const startY = options.legendOnTop ? top : bottom - block;
+    if (options.legendOnTop) top += block + label * 0.4;
+    else bottom -= block + label * 0.4;
     shown.forEach((row, ri) => {
       const total = row.reduce((sum, item) => sum + item.width, 0);
-      let x = (w - total) / 2;
-      const y = bottom + ri * rowHeight + rowHeight * 0.75;
+      // A legend on top reads as a key for what follows, so it lines up with the left edge.
+      let x = options.legendOnTop ? 0 : (w - total) / 2;
+      const y = startY + ri * rowHeight + rowHeight * 0.75;
       for (const item of row) {
         out.push(`<rect x="${r1(x)}" y="${r1(y - label * 0.8)}" width="${r1(label)}" height="${r1(label)}" rx="${r1(label * 0.2)}" fill="${item.color}"/>`);
         out.push(`<text x="${r1(x + label * 1.4)}" y="${r1(y)}" font-size="${r1(label)}" fill="${text}">${escapeXml(truncate(item.name, 24))}</text>`);
         x += item.width;
       }
     });
-    bottom -= label * 0.4;
   }
 
   if (circular) {
@@ -227,7 +239,7 @@ export function chartSvg(spec: ChartSpec, width: number, height: number, options
     const band = (plotBottom - top) / Math.max(1, n);
     spec.labels.forEach((name, i) => {
       const cy = top + band * (i + 0.5);
-      out.push(`<text x="${r1(left - label * 0.5)}" y="${r1(cy + label * 0.35)}" text-anchor="end" font-size="${r1(label)}" fill="${text}">${escapeXml(truncate(name, 18))}</text>`);
+      out.push(`<text x="${r1(left - label * 0.5)}" y="${r1(cy + label * 0.35)}" text-anchor="end" font-size="${r1(label)}" fill="${axis}">${escapeXml(truncate(name, 18))}</text>`);
       const inner = band * 0.72;
       let stackPos = 0;
       let stackNeg = 0;
@@ -264,7 +276,7 @@ export function chartSvg(spec: ChartSpec, width: number, height: number, options
   spec.labels.forEach((name, i) => {
     if (i % labelStep !== 0) return;
     const cx = spec.kind === 'bar' ? left + band * (i + 0.5) : left + (n > 1 ? (i / (n - 1)) * (right - left) : (right - left) / 2);
-    out.push(`<text x="${r1(cx)}" y="${r1(plotBottom + label * 1.4)}" text-anchor="middle" font-size="${r1(label)}" fill="${text}">${escapeXml(truncate(name, maxLabelChars * labelStep))}</text>`);
+    out.push(`<text x="${r1(cx)}" y="${r1(plotBottom + label * 1.4)}" text-anchor="middle" font-size="${r1(label)}" fill="${axis}">${escapeXml(truncate(name, maxLabelChars * labelStep))}</text>`);
   });
 
   if (spec.kind === 'bar') {

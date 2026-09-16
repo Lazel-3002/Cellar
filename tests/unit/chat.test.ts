@@ -3,7 +3,8 @@ import { parseArtifacts, parseInfoString } from '../../src/shared/artifacts';
 import { parseImageTags, withImageTags } from '../../src/shared/inline-images';
 import { branchPath, latestLeaf, siblingsOf } from '../../src/shared/message-tree';
 import type { Message } from '../../src/shared/types/chat';
-import { parseVizBlocks } from '../../src/shared/viz';
+import { parseChartSpec, parseVizBlocks, vizFileName, vizKindOf } from '../../src/shared/viz';
+import { sanitizeSvg, sizedSvg } from '../../src/shared/design/svg';
 import { fitToContext, truncateMiddle } from '../../src/main/chat/context-window';
 import { buildSystemPrompt, cleanTitle, fallbackTitle, parseParamsBillions, supportsArtifactInstructions } from '../../src/main/chat/prompts';
 import type { ProviderMessage } from '../../src/main/providers/types';
@@ -142,12 +143,14 @@ describe('inline visualizations', () => {
     const text = ['```html viz', '<h1>Chart</h1>', '```', '```html artifact title="Page"', '<div></div>', '```', '```html viz', '<div>partial'].join('\n');
     const blocks = parseVizBlocks(text);
     expect(blocks.map((b) => b.open)).toEqual([false, true]);
+    expect(blocks.map((b) => b.kind)).toEqual(['html', 'html']);
     expect(blocks[0].content).toBe('<h1>Chart</h1>');
     expect(blocks[1].content).toBe('<div>partial');
   });
 
-  it('ignores plain html code blocks without the viz marker', () => {
+  it('ignores plain html and svg code blocks without the viz marker', () => {
     expect(parseVizBlocks('```html\n<div></div>\n```')).toEqual([]);
+    expect(parseVizBlocks('```svg\n<svg></svg>\n```')).toEqual([]);
   });
 
   it('tolerates a trailing title attribute a model tacks onto the info string', () => {
@@ -157,6 +160,60 @@ describe('inline visualizations', () => {
 
   it('does not match "viz" as a substring of another word', () => {
     expect(parseVizBlocks('```html vizard\n<div></div>\n```')).toEqual([]);
+  });
+
+  it('recognizes the three kinds, with or without a redundant viz marker on chart', () => {
+    expect(vizKindOf('chart')).toBe('chart');
+    expect(vizKindOf('chart viz')).toBe('chart');
+    expect(vizKindOf('svg viz')).toBe('svg');
+    expect(vizKindOf('html viz')).toBe('html');
+    expect(vizKindOf('svg')).toBe(null);
+    expect(vizKindOf('jsx viz')).toBe(null);
+  });
+
+  it('parses a chart block and normalizes the loose shapes models write', () => {
+    const spec = parseChartSpec('{"type":"line","title":"Growth","labels":["Y1","Y2"],"datasets":[{"label":"Total","data":["10","20"]}]}');
+    expect(spec).toMatchObject({ kind: 'line', title: 'Growth', labels: ['Y1', 'Y2'] });
+    expect(spec?.series).toEqual([{ name: 'Total', values: [10, 20] }]);
+  });
+
+  it('repairs the JSON mistakes models actually make', () => {
+    const withComment = parseChartSpec('// a pie of the day\n{"type":"pie","labels":["A","B"],"values":[60,40],}');
+    expect(withComment).toMatchObject({ kind: 'pie', labels: ['A', 'B'] });
+    expect(withComment?.series[0].values).toEqual([60, 40]);
+    expect(parseChartSpec('Here you go: {"type":"bar","labels":["A"],"values":[1]} — enjoy')).toMatchObject({ kind: 'bar' });
+  });
+
+  it('gives up on a chart block with nothing to draw, so the source can be shown instead', () => {
+    expect(parseChartSpec('not json at all')).toBeNull();
+    expect(parseChartSpec('{"type":"bar"}')).toBeNull();
+  });
+
+  it('clamps a model-chosen chart height into a sane range', () => {
+    expect(parseChartSpec('{"type":"bar","labels":["A"],"values":[1],"height":9000}')?.height).toBe(600);
+    expect(parseChartSpec('{"type":"bar","labels":["A"],"values":[1]}')?.height).toBeUndefined();
+  });
+});
+
+describe('inline visualization exports', () => {
+  const drawing = '<svg xmlns="http://www.w3.org/2000/svg" width="680" height="320" viewBox="0 0 680 320"><rect width="10" height="10"/></svg>';
+
+  it('sizes a saved file from the viewBox, not from the sanitizer\'s width="100%"', () => {
+    const inline = sanitizeSvg(drawing) ?? '';
+    expect(inline).toContain('width="100%"');
+    // Reading the digits off "100%" would export a 100x100 thumbnail of a 680-wide diagram.
+    expect(sizedSvg(inline)).toMatch(/^<svg width="680" height="320"/);
+  });
+
+  it('keeps explicit pixel dimensions when there is no viewBox, and falls back to the column width', () => {
+    expect(sizedSvg('<svg xmlns="http://www.w3.org/2000/svg" width="400px" height="150px"><g/></svg>')).toMatch(/^<svg width="400" height="150"/);
+    expect(sizedSvg('<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>', 720)).toMatch(/^<svg width="720" height="432"/);
+  });
+
+  it('names the file after the drawing', () => {
+    expect(vizFileName('Minimax search tree', 'png')).toBe('minimax-search-tree.png');
+    expect(vizFileName(undefined, 'svg')).toBe('visualization.svg');
+    expect(vizFileName('!!!', 'png')).toBe('visualization.png');
   });
 });
 

@@ -314,6 +314,15 @@ export function registerIpcHandlers(): void {
 
   handle('images:search', (query) => searchImage(query));
   handle('viz:register', (html) => registerVizDocument(html));
+  handle('viz:saveAs', async (fileName, base64) => {
+    const safe = basename(String(fileName || 'visualization.png')).replace(/[^\w.-]+/g, '-');
+    const win = focusedWindow();
+    const options = { defaultPath: safe };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, Buffer.from(String(base64), 'base64'));
+    return result.filePath;
+  });
 
   registerCodeHandlers();
   registerChangesHandlers();

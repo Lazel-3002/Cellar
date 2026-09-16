@@ -6,7 +6,7 @@ import { Streamdown, type Components } from 'streamdown';
 import { parseArtifacts } from '@shared/artifacts';
 import { withImageTags } from '@shared/inline-images';
 import type { ArtifactType } from '@shared/types/chat';
-import { parseVizBlocks } from '@shared/viz';
+import { parseVizBlocks, type VizKind } from '@shared/viz';
 import { invoke } from '@/lib/ipc';
 import { cn, toBase64 } from '@/lib/utils';
 import { ArtifactCard } from './ArtifactCard';
@@ -35,7 +35,7 @@ export function withArtifactCards(markdown: string): string {
   return out + markdown.slice(cursor);
 }
 
-/** Replace `html viz` code fences with a placeholder element that renders as an inline sandboxed iframe. */
+/** Replace visualization code fences (`chart`, `svg viz`, `html viz`) with a placeholder element. */
 export function withVizBlocks(markdown: string): string {
   const blocks = parseVizBlocks(markdown);
   if (blocks.length === 0) return markdown;
@@ -43,7 +43,7 @@ export function withVizBlocks(markdown: string): string {
   let cursor = 0;
   for (const b of blocks) {
     out += markdown.slice(cursor, b.start);
-    out += `\n\n<inline-viz content="${toBase64(b.content)}" open="${b.open}"></inline-viz>\n\n`;
+    out += `\n\n<inline-viz kind="${b.kind}" content="${toBase64(b.content)}" open="${b.open}"></inline-viz>\n\n`;
     cursor = b.end;
   }
   return out + markdown.slice(cursor);
@@ -77,7 +77,9 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
         open={props.open === 'true' || props.open === true}
       />
     );
-    const Viz: ComponentType<Record<string, unknown>> = (props) => <InlineViz content={String(props.content ?? '')} open={props.open === 'true' || props.open === true} />;
+    const Viz: ComponentType<Record<string, unknown>> = (props) => (
+      <InlineViz kind={(String(props.kind ?? 'html') as VizKind) || 'html'} content={String(props.content ?? '')} open={props.open === 'true' || props.open === true} />
+    );
     const Image: ComponentType<Record<string, unknown>> = (props) => <InlineImage query={String(props.query ?? '')} />;
     const Anchor = ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
@@ -102,7 +104,7 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
       plugins={plugins}
       shikiTheme={['github-light', 'github-dark-default']}
       controls={{ table: true, code: true, mermaid: { download: true, copy: true, fullscreen: true, panZoom: true } }}
-      allowedTags={{ 'artifact-card': ['identifier', 'title', 'kind', 'open'], 'inline-viz': ['content', 'open'], 'inline-image': ['query'] }}
+      allowedTags={{ 'artifact-card': ['identifier', 'title', 'kind', 'open'], 'inline-viz': ['kind', 'content', 'open'], 'inline-image': ['query'] }}
       components={components}
       linkSafety={{ enabled: false }}
       lineNumbers={false}
