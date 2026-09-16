@@ -1,37 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RotateCw, TriangleAlert } from 'lucide-react';
 import { IconButton } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/form';
+import { invoke } from '@/lib/ipc';
 import { fromBase64 } from '@/lib/utils';
-
-/** Untrusted, model-authored HTML: no CDNs beyond the two we allow, no access to app internals. */
-const VIZ_CSP = [
-  "default-src 'none'",
-  "script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
-  "style-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com",
-  'font-src data: https://fonts.gstatic.com https://cdnjs.cloudflare.com',
-  'img-src data: blob: https:',
-  'connect-src https://cdnjs.cloudflare.com https://cdn.jsdelivr.net',
-  "frame-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-].join('; ');
 
 const BOOTSTRAP = `<script>window.onerror=function(m){try{parent.postMessage({source:'cellar-inline-viz',ok:false,message:String(m)},'*')}catch(e){}}</script>`;
 
+// The CSP itself is delivered by the main process as a real response header on the
+// cellar-viz:// document (see src/main/protocol/viz-protocol.ts) — a srcdoc/data: iframe would
+// only ever inherit (and be further restricted by) the main window's own strict CSP.
 function buildDocument(content: string): string {
-  const csp = `<meta http-equiv="Content-Security-Policy" content="${VIZ_CSP.replace(/"/g, '&quot;')}">`;
   const style = `<style>html,body{margin:0;padding:0;background:#fff;color:#1f1f1e;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}</style>`;
-  if (/<html[\s>]/i.test(content)) return content.replace(/<head[^>]*>/i, (m) => `${m}${csp}${BOOTSTRAP}`);
-  return `<!doctype html><html><head><meta charset="utf-8">${csp}${style}${BOOTSTRAP}</head><body>${content}</body></html>`;
+  if (/<html[\s>]/i.test(content)) return content.replace(/<head[^>]*>/i, (m) => `${m}${BOOTSTRAP}`);
+  return `<!doctype html><html><head><meta charset="utf-8">${style}${BOOTSTRAP}</head><body>${content}</body></html>`;
 }
 
 export function InlineViz({ content, open }: { content: string; open: boolean }) {
-  const html = useMemo(() => fromBase64(content), [content]);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [src, setSrc] = useState<string | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const html = open ? '' : fromBase64(content);
+
+  useEffect(() => {
+    if (open) return;
+    let cancelled = false;
+    invoke('viz:register', buildDocument(html)).then((id) => {
+      if (!cancelled) setSrc(`cellar-viz://render/${id}`);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, html, reloadKey]);
 
   useEffect(() => {
     if (open || failed) return;
@@ -77,15 +79,10 @@ export function InlineViz({ content, open }: { content: string; open: boolean })
         <pre className="max-h-96 overflow-auto p-3 text-[12px] leading-relaxed whitespace-pre-wrap">
           <code>{html}</code>
         </pre>
+      ) : src ? (
+        <iframe ref={frameRef} key={reloadKey} title="Inline visualization" sandbox="allow-scripts" src={src} className="h-80 w-full border-0 bg-white" />
       ) : (
-        <iframe
-          ref={frameRef}
-          key={reloadKey}
-          title="Inline visualization"
-          sandbox="allow-scripts"
-          srcDoc={buildDocument(html)}
-          className="h-80 w-full border-0 bg-white"
-        />
+        <div className="flex h-80 w-full items-center justify-center bg-white text-[12.5px] text-muted-foreground">Loading…</div>
       )}
     </div>
   );

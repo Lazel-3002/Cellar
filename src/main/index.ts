@@ -17,6 +17,7 @@ import { setSecretCodec } from './lib/secrets';
 import { installAppMenu } from './menu';
 import { localModels } from './models/local-index';
 import { handleArtifactProtocol, handleAttachmentProtocol, registerArtifactScheme } from './protocol/artifact-protocol';
+import { handleVizProtocol } from './protocol/viz-protocol';
 import { providers } from './providers/registry';
 import { runtimes } from './runtimes/llamacpp-runtimes';
 import { scheduler } from './scheduled/scheduler';
@@ -71,6 +72,7 @@ if (!app.requestSingleInstanceLock()) {
     forwardBusToWindows();
     handleArtifactProtocol();
     handleAttachmentProtocol();
+    handleVizProtocol();
     installPreview();
     installAppMenu();
     installPdfRenderer();

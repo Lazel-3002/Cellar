@@ -1,12 +1,12 @@
 {
   "electron.vite.config.ts": {
-    "mtime": 1789423851.8788564,
-    "ast_hash": "a2da68b080be9317f4f6d9ec924aed68",
+    "mtime": 1789582269.3275344,
+    "ast_hash": "1b34456809f7c1d0448aab54c1d2d395",
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1789580969.5675476,
-    "ast_hash": "0eab4e8dda1d755e9c8b66d41a595cd3",
+    "mtime": 1789582570.436869,
+    "ast_hash": "c0165ff44b6e5398da754a556e2aee4d",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "src/main/index.ts": {
-    "mtime": 1789424045.8767257,
-    "ast_hash": "0484360f5e785e48111cbee988230539",
+    "mtime": 1789582148.7630596,
+    "ast_hash": "e789f8a62976ba960450f31b39377adc",
     "semantic_hash": ""
   },
   "src/main/ipc/handlers.ts": {
-    "mtime": 1789577072.483904,
-    "ast_hash": "365f018a5e9c67b74702d14f773a96f1",
+    "mtime": 1789582159.1474326,
+    "ast_hash": "c2bc8064f4c37e28a5cbe5907e0d5a70",
     "semantic_hash": ""
   },
   "src/main/ipc/index.ts": {
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "src/main/protocol/artifact-protocol.ts": {
-    "mtime": 1789424060.9818077,
-    "ast_hash": "16feabe8c3fdb8e7733684eba85a8cf9",
+    "mtime": 1789582143.3294306,
+    "ast_hash": "578294f7f9d0ea0eb6377b1163cdfb6e",
     "semantic_hash": ""
   },
   "src/main/providers/llamacpp/args.ts": {
@@ -470,8 +470,8 @@
     "semantic_hash": ""
   },
   "src/shared/ipc-contract.ts": {
-    "mtime": 1789577061.7770586,
-    "ast_hash": "6dc8c2fd80ae49cc467d03fae312ebee",
+    "mtime": 1789582154.2792614,
+    "ast_hash": "3c8353d3abb5e9f5a173412c6ead4120",
     "semantic_hash": ""
   },
   "src/shared/message-tree.ts": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789580976.7934017,
-    "ast_hash": "9e8624f0ff38f442cdace55deb578d64",
+    "mtime": 1789582582.9154408,
+    "ast_hash": "295f4c3a892fdf0646bdf97edc9927a5",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -1360,8 +1360,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/chat/InlineViz.tsx": {
-    "mtime": 1789577201.1183715,
-    "ast_hash": "0c21f2f072f750111394ae257a2c159b",
+    "mtime": 1789582272.2535002,
+    "ast_hash": "bc948a2f934c08c3885f0b0614bf9d40",
     "semantic_hash": ""
   },
   "src/shared/inline-images.ts": {
@@ -1372,6 +1372,11 @@
   "src/shared/viz.ts": {
     "mtime": 1789580556.2671244,
     "ast_hash": "e51cb8a915282de215f52413d3d8e290",
+    "semantic_hash": ""
+  },
+  "src/main/protocol/viz-protocol.ts": {
+    "mtime": 1789582132.6828935,
+    "ast_hash": "4753de27c3a29530bed080893e216ae9",
     "semantic_hash": ""
   }
 }

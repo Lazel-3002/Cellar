@@ -163,9 +163,6 @@
   "161": "MathPage.tsx",
   "162": "Sketch.tsx",
   "163": "agent-core.test.ts",
-  "164": "ChatStore",
-  "165": "shared/artifacts.ts",
   "166": "Renderer",
-  "167": "clsx",
   "173": "zustand"
 }

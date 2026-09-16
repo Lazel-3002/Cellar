@@ -21,6 +21,7 @@ import { OpenAIServerProvider } from '../providers/openai-server';
 import { runtimes } from '../runtimes/llamacpp-runtimes';
 import { artifactsForConversation, getArtifact, listArtifacts } from '../services/artifacts';
 import { searchImage } from '../services/image-search';
+import { registerVizDocument } from '../protocol/viz-protocol';
 import * as models from '../services/models';
 import { addProjectFiles, createProject, deleteProject, listProjects, projectDetail, removeProjectFile, updateProject } from '../services/projects';
 import { settings } from '../services/settings';
@@ -312,6 +313,7 @@ export function registerIpcHandlers(): void {
   });
 
   handle('images:search', (query) => searchImage(query));
+  handle('viz:register', (html) => registerVizDocument(html));
 
   registerCodeHandlers();
   registerChangesHandlers();

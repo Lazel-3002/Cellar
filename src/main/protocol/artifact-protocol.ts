@@ -6,6 +6,7 @@ import { attachmentImage } from '../chat/attachments';
 import { PREVIEW_SCHEME_PRIVILEGES } from '../code/preview';
 import { getArtifact } from '../services/artifacts';
 import { paths } from '../system/paths';
+import { VIZ_SCHEME_PRIVILEGES } from './viz-protocol';
 
 export const ARTIFACT_SCHEME = 'cellar-artifact';
 
@@ -37,6 +38,7 @@ export function registerArtifactScheme(): void {
     { scheme: ARTIFACT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     PREVIEW_SCHEME_PRIVILEGES,
     { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    VIZ_SCHEME_PRIVILEGES,
   ]);
 }
 

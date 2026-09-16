@@ -213,6 +213,8 @@ export interface IpcInvokeMap {
   'artifacts:saveAs': Handler<[id: string], string | null>;
 
   'images:search': Handler<[query: string], { url: string; width?: number; height?: number } | null>;
+  /** Registers a fully-built inline-visualization document, returning a `cellar-viz://render/<id>` URL to load it. */
+  'viz:register': Handler<[html: string], string>;
 
   'app:background': Handler<[], BackgroundStatus>;
   /** Quick entry: show the main window on a conversation. */
@@ -441,6 +443,7 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'artifacts:forConversation': true,
   'artifacts:saveAs': true,
   'images:search': true,
+  'viz:register': true,
   'app:background': true,
   'app:openConversation': true,
   'app:hideQuickEntry': true,
