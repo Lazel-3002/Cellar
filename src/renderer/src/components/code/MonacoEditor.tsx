@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type * as MonacoApi from 'monaco-editor/editor/editor.api';
+import type { LspLanguage } from '@shared/types/lsp';
 import { Spinner } from '@/components/ui/misc';
+import { invoke } from '@/lib/ipc';
+import { documentUri, registerDocument, registerLspProviders, unregisterDocument } from '@/lib/lsp';
 import { baseEditorOptions, languageForPath, loadedMonaco, loadMonaco, themeName, type Monaco } from '@/lib/monaco';
 import { cn } from '@/lib/utils';
 
 type TextModel = MonacoApi.editor.ITextModel;
+
+/** How long to wait after the last keystroke before telling the language server about it. */
+const LSP_CHANGE_DEBOUNCE_MS = 300;
 
 function useMonaco(): { monaco: Monaco | null; error: string | null } {
   const [state, setState] = useState<{ monaco: Monaco | null; error: string | null }>(() => ({ monaco: loadedMonaco(), error: null }));
@@ -65,6 +71,20 @@ function EditorFrame({ monaco, error, containerRef, className }: { monaco: Monac
   );
 }
 
+interface Doc {
+  model: TextModel;
+  viewState: MonacoApi.editor.ICodeEditorViewState | null;
+  /** Set once code:lspOpen resolves; null means this file's extension isn't covered by either language server. */
+  lspLanguage: LspLanguage | null;
+}
+
+/** Fire-and-forget code:lspClose for a doc that had IntelliSense registered. */
+function closeLsp(conversationId: string | undefined, path: string, doc: Doc): void {
+  if (!conversationId || !doc.lspLanguage) return;
+  unregisterDocument(doc.model);
+  void invoke('code:lspClose', conversationId, path).catch(() => undefined);
+}
+
 export interface CodeEditorProps {
   /** Identifies the document; each path keeps its own undo history and scroll position. */
   path: string;
@@ -78,21 +98,27 @@ export interface CodeEditorProps {
   revealKey?: number | string;
   /** Paths whose documents to keep while another one is shown (open tabs). Others are released. */
   keepPaths?: string[];
+  /** A Code session id enables IntelliSense (autocomplete, go-to-definition, find references, live diagnostics) for TypeScript/JavaScript and Python. */
+  conversationId?: string;
   className?: string;
 }
 
-export function CodeEditor({ path, value, onChange, onSave, readOnly = false, revealLine, revealKey, keepPaths, className }: CodeEditorProps) {
+export function CodeEditor({ path, value, onChange, onSave, readOnly = false, revealLine, revealKey, keepPaths, conversationId, className }: CodeEditorProps) {
   const { monaco, error } = useMonaco();
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<MonacoApi.editor.IStandaloneCodeEditor | null>(null);
-  const docs = useRef(new Map<string, { model: TextModel; viewState: MonacoApi.editor.ICodeEditorViewState | null }>());
+  const docs = useRef(new Map<string, Doc>());
   const shownPath = useRef<string | null>(null);
   const applying = useRef(false);
   const callbacks = useRef({ onChange, onSave });
   callbacks.current = { onChange, onSave };
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
+  const lspChangeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     if (!monaco || !containerRef.current) return;
+    registerLspProviders(monaco);
     const editor = monaco.editor.create(containerRef.current, { ...baseEditorOptions, model: null, readOnly, theme: themeName() });
     editorRef.current = editor;
     editor.addAction({
@@ -102,13 +128,34 @@ export function CodeEditor({ path, value, onChange, onSave, readOnly = false, re
       run: (ed) => callbacks.current.onSave?.(ed.getValue()),
     });
     const changes = editor.onDidChangeModelContent(() => {
-      if (!applying.current) callbacks.current.onChange?.(editor.getValue());
+      const text = editor.getValue();
+      if (!applying.current) callbacks.current.onChange?.(text);
+      const cid = conversationIdRef.current;
+      const current = shownPath.current;
+      const doc = current ? docs.current.get(current) : undefined;
+      if (cid && current && doc?.lspLanguage) {
+        const timers = lspChangeTimers.current;
+        clearTimeout(timers.get(current));
+        timers.set(
+          current,
+          setTimeout(() => {
+            timers.delete(current);
+            void invoke('code:lspChange', cid, current, text).catch(() => undefined);
+          }, LSP_CHANGE_DEBOUNCE_MS),
+        );
+      }
     });
     const map = docs.current;
+    const timers = lspChangeTimers.current;
     return () => {
       changes.dispose();
       editor.dispose();
-      for (const doc of map.values()) doc.model.dispose();
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      for (const [p, doc] of map) {
+        closeLsp(conversationIdRef.current, p, doc);
+        doc.model.dispose();
+      }
       map.clear();
       editorRef.current = null;
       shownPath.current = null;
@@ -126,8 +173,18 @@ export function CodeEditor({ path, value, onChange, onSave, readOnly = false, re
       if (previous) previous.viewState = editor.saveViewState();
       let doc = map.get(path);
       if (!doc) {
-        doc = { model: monaco.editor.createModel(value, languageForPath(monaco, path)), viewState: null };
-        map.set(path, doc);
+        const uri = conversationId ? documentUri(monaco, conversationId, path) : undefined;
+        const created: Doc = { model: monaco.editor.createModel(value, languageForPath(monaco, path), uri), viewState: null, lspLanguage: null };
+        doc = created;
+        map.set(path, created);
+        if (conversationId) {
+          void invoke('code:lspOpen', conversationId, path, value).then((language) => {
+            // The map entry could have been released (tab closed) by the time this resolves.
+            if (map.get(path) !== created) return;
+            created.lspLanguage = language;
+            if (language) registerDocument(created.model, conversationId, path);
+          });
+        }
       }
       applying.current = true;
       try {
@@ -145,7 +202,7 @@ export function CodeEditor({ path, value, onChange, onSave, readOnly = false, re
     } finally {
       applying.current = false;
     }
-  }, [monaco, path, value]);
+  }, [monaco, path, value, conversationId]);
 
   // Release documents that are no longer open.
   const keepKey = keepPaths?.join('\0');
@@ -155,6 +212,7 @@ export function CodeEditor({ path, value, onChange, onSave, readOnly = false, re
     keep.add(path);
     for (const [p, doc] of docs.current) {
       if (keep.has(p)) continue;
+      closeLsp(conversationId, p, doc);
       doc.model.dispose();
       docs.current.delete(p);
     }

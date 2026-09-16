@@ -88,6 +88,7 @@ The Code switch in the title bar opens a coding agent for repositories. It share
 - **Panes** (resizable right side panel):
   - Changes: git diff against the session's base commit (renames, untracked files, +/− counts), Monaco diff editor (split or unified), discard per file, commit, and merge into the base branch (`changes*.ts`, `ChangesPane.tsx`).
   - Files: lazy tree plus a Monaco editor with tabs, Ctrl+S save and reload on disk changes (`FilesPane.tsx`, `lib/monaco.ts`).
+  - IntelliSense for TypeScript/JavaScript and Python: real language servers (`typescript-language-server` over tsserver, `pyright`), one per (language, session), spoken to over LSP/JSON-RPC on stdio (`code/lsp.ts`, `lib/lsp.ts`). Autocomplete, live diagnostics, go-to-definition and find-references; cross-file navigation opens the target file in the Files pane via `monaco.editor.registerEditorOpener`. TypeScript prefers the project's own installed `typescript` and falls back to Cellar's bundled copy.
   - Preview: localhost dev servers and HTML/SVG/image files through the `cellar-preview://<session>/<path>` scheme, with back/forward, reload, device widths, and `X-Frame-Options`/`frame-ancestors` removed only for localhost frames (`preview.ts`).
   - Terminal: node-pty shells in the working folder with xterm.js tabs, restart, clickable links (localhost links open in Preview) and scrollback replay (`terminal.ts`, `TerminalPane.tsx`).
 - **View modes:** normal, verbose (every step and thought expanded) and summary (requests, one-line step summaries and final answers).
@@ -111,7 +112,7 @@ Real model through the UI (`scripts/code-smoke.mjs`), Ollama qwen3.5:9b: given "
 - **Git:** no pull requests, pushes or conflict resolution UI. Merge refuses and explains when the base checkout is dirty or conflicts appear.
 - **Snapshots** track only edits made through the file tools and the editor, not files changed by commands (git sessions see everything).
 - **Preview:** PDFs do not render in the sandboxed preview frame (use "Open"). Non-localhost web pages open in the browser.
-- **Editor:** Monaco has syntax highlighting only (no language servers or IntelliSense).
+- **Editor:** IntelliSense now covers TypeScript/JavaScript and Python (see above); other languages Monaco can highlight still have no language server. "Go to definition" on an import specifier lands on the local import binding, not the re-exported source (tsserver's own `textDocument/definition` behavior) — same-file jumps and find-references work as expected. Peek-references previews are blank for files not already open (standalone Monaco doesn't resolve a model for them, though clicking still navigates correctly via the Files pane).
 - **Packaging:** node-pty's prebuilt N-API binaries are unpacked from the asar; the installer is not code signed.
 
 ---
@@ -195,7 +196,7 @@ Real software (`scripts/m4-smoke.mjs`, Ollama, throwaway profile):
 - **Chat tools** need native tool calling; models on the text protocol chat without tools. DuckDuckGo and Brave now retry with backoff and back off harder on HTTP 429 (see `agent/tools/web.ts`), but a sustained block still falls through to the error message; SearXNG remains the most robust choice for heavy use.
 - **Scheduled tasks** now sync a single OS-level wake job (Task Scheduler with `WakeToRun` on Windows, launchd on macOS, cron on Linux — `scheduled/os-scheduler.ts`) and a `~/.cellar/scheduled_tasks.json` registry, so a due task relaunches Cellar even if it was fully quit. Actual wake-from-hardware-sleep still depends on the OS/hardware honoring that (e.g. Windows power settings allowing wake timers); a Cowork run in Ask mode still waits for approval while you are away.
 - **Voice:** whisper.cpp's official Windows CUDA build still tops out at compute capability 9.0 (no x64 build covers Blackwell/RTX 50 series yet); Settings → Voice now detects this and recommends the CPU build there instead — measured on an RTX 5060, the CUDA 12 build fell back to slow PTX JIT and was ~70x slower than CPU for the same clip. Dictation now shows a rough live preview (greedy decoding, re-transcribed every 2.5s) while recording, with the final insert always a full-quality pass. Spoken replies exist via the browser's built-in speech synthesis (Settings → Voice → Spoken replies) — whisper.cpp itself is speech-to-text only, so it can't produce the voice output; this uses the OS's own TTS voices instead, offline.
-- **Diagnostics:** TypeScript files get syntax checks only (type errors need `get_diagnostics`, which runs tsc); no language servers.
+- **Diagnostics:** the agent's own `get_diagnostics` tool still only does syntax checks plus an on-demand `tsc`/`pyright`/`ruff` pass (`code/diagnostics.ts`); the editor's live squiggles now come from the real language servers described under M3's Editor bullet.
 - **Design ideas:** the "AI design engine" note in `docs/Creator Ideas - important things/` (styled documents, charts, themes and layouts in PDF/PPTX/DOCX) was delivered in M5.
 
 ---

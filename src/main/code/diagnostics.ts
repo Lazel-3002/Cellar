@@ -58,7 +58,7 @@ export function which(program: string): Promise<string | null> {
 }
 
 /** Node for running helper scripts: Electron's own binary in node mode, or node itself in tests. */
-function nodeRunner(): { file: string; env: NodeJS.ProcessEnv } {
+export function nodeRunner(): { file: string; env: NodeJS.ProcessEnv } {
   return { file: process.execPath, env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {} };
 }
 
@@ -138,7 +138,7 @@ async function checkJavaScript(file: string, root: string, signal?: AbortSignal)
 }
 
 /** The project's own TypeScript, looked up from the file's folder up to the working folder. */
-function localTypeScript(from: string, root: string): string | null {
+export function localTypeScript(from: string, root: string): string | null {
   let dir = from;
   for (;;) {
     const candidate = join(dir, 'node_modules', 'typescript', 'lib', 'typescript.js');

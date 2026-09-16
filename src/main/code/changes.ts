@@ -24,7 +24,7 @@ async function session(conversationId: unknown): Promise<CodeSessionContext> {
 }
 
 /** A path from the renderer, checked to stay inside the working folder, relative with forward slashes. */
-async function relPath(s: CodeSessionContext, path: unknown): Promise<string> {
+export async function relPath(s: CodeSessionContext, path: unknown): Promise<string> {
   const rel = s.workspace.relative(await s.workspace.resolve(pathSchema.parse(path)));
   if (rel === '.') throw new Error('Choose a file inside the working folder.');
   return rel;

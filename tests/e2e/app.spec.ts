@@ -371,6 +371,97 @@ test('code fixes a bug in its own worktree, with changes, terminal, side chat an
   }
 });
 
+test('code IntelliSense: real language servers give completion, diagnostics and go-to-definition', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'cellar-e2e-lsp-'));
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=E2E', '-c', 'user.email=e2e@cellar.local', ...args], { cwd: repo, encoding: 'utf8', windowsHide: true });
+  let workDir = '';
+  try {
+    writeFileSync(join(repo, 'app.js'), 'export function add(a, b) {\n  return a - b;\n}\n'); // satisfies the scripted mock-coder flow below
+    // prettier-ignore
+    const mathTs = [
+      'function double(n: number): number {',
+      '  return n * 2;',
+      '}',
+      '',
+      'function quadruple(n: number): number {',
+      '  return double(double(n));',
+      '}',
+      '',
+      'const bad: number = double("x");',
+      '',
+    ].join('\n');
+    writeFileSync(join(repo, 'math.ts'), mathTs);
+    writeFileSync(join(repo, 'main.py'), 'def add(a: int, b: int) -> int:\n    return a + b\n\nadd(1, "x")\n');
+    git('init', '-q', '-b', 'main');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'initial');
+    await ipc('settings:update', { recentRepos: [repo], codeMode: 'code', codeAutoAcceptEdits: true, codeUseWorktrees: false });
+
+    await win.locator('button[aria-label="Code"]').click();
+    await expect(win.getByTestId('code-sidebar')).toBeVisible();
+    await win.getByTestId('code-repo').click();
+    await win.getByRole('menuitem', { name: basename(repo) }).click();
+    await expect(win.getByTestId('code-worktree')).toBeVisible();
+    await selectModel('mock-coder');
+    await send('Fix the add function');
+    await expect(win.getByTestId('task-turn').last()).toHaveAttribute('data-status', 'complete', { timeout: 20_000 });
+
+    const conversationId = await win.evaluate(() => location.hash.split('/').pop()!);
+    const session = await ipc<{ conversation: { task: { workDir: string } } }>('chat:get', conversationId);
+    workDir = session.conversation.task.workDir;
+
+    // Capture diagnostics pushed to the renderer, the same way MonacoEditor/lsp.ts would consume them.
+    await win.evaluate(() => {
+      (window as unknown as { __lspDiag: unknown[] }).__lspDiag = [];
+      (window as unknown as { cellar: { on: (c: string, l: (p: unknown) => void) => void } }).cellar.on('code:lspDiagnostics', (p) => (window as unknown as { __lspDiag: unknown[] }).__lspDiag.push(p));
+    });
+
+    const tsLanguage = await ipc<string | null>('code:lspOpen', conversationId, 'math.ts', mathTs);
+    expect(tsLanguage).toBe('typescript');
+
+    // Column 24 lands inside "double" on `const bad: number = double("x");` (line 9).
+    const completions = await ipc<Array<{ label: string }>>('code:lspCompletion', conversationId, 'math.ts', { line: 9, column: 24 });
+    expect(completions.some((c) => c.label === 'double')).toBe(true);
+    expect(completions.some((c) => c.label === 'quadruple')).toBe(true);
+
+    // Column 13 lands inside the outer "double(" call on line 6, inside quadruple's body.
+    const definitions = await ipc<Array<{ path: string; line: number }>>('code:lspDefinition', conversationId, 'math.ts', { line: 6, column: 13 });
+    expect(definitions.some((d) => d.path === 'math.ts' && d.line === 1)).toBe(true);
+
+    // Column 13 lands inside "double" on its declaration (line 1); both calls on line 6 use it.
+    const references = await ipc<Array<{ path: string; line: number }>>('code:lspReferences', conversationId, 'math.ts', { line: 1, column: 13 });
+    expect(references.filter((r) => r.path === 'math.ts' && r.line === 6)).toHaveLength(2);
+
+    // `double("x")` on line 9 passes a string where a number is expected.
+    await expect
+      .poll(
+        async () =>
+          win.evaluate(() => (window as unknown as { __lspDiag: Array<{ path: string; diagnostics: unknown[] }> }).__lspDiag.some((e) => e.path === 'math.ts' && e.diagnostics.length > 0)),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+
+    // Python: pyright catches the string-where-int type mismatch.
+    const pyLanguage = await ipc<string | null>('code:lspOpen', conversationId, 'main.py', readFileSync(join(repo, 'main.py'), 'utf8'));
+    expect(pyLanguage).toBe('python');
+    await expect
+      .poll(
+        async () =>
+          win.evaluate(() => (window as unknown as { __lspDiag: Array<{ path: string; diagnostics: unknown[] }> }).__lspDiag.some((e) => e.path === 'main.py' && e.diagnostics.length > 0)),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+
+    for (const path of ['math.ts', 'main.py']) await ipc('code:lspClose', conversationId, path);
+    // Waits for the language server child processes to actually exit, so the folder is free to delete below.
+    await ipc('code:deleteSession', conversationId, false);
+  } finally {
+    await win.getByRole('button', { name: 'Chat and Cowork' }).click().catch(() => undefined);
+    rmSync(repo, { recursive: true, force: true });
+    if (workDir) rmSync(workDir, { recursive: true, force: true });
+  }
+});
+
 test('attached images show in the conversation, /tools lists tools, and chats use connector tools', async () => {
   await goHome();
   await win.getByRole('button', { name: 'Chat', exact: true }).click();

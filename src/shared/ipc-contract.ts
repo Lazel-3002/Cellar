@@ -68,6 +68,7 @@ import type { AppSettings, AppSettingsPatch } from './types/settings';
 import type { HardwareInfo, RuntimeInfo, RuntimeInstallProgress, RuntimeRelease, RuntimeVariant } from './types/system';
 import type { TranscriptionResult, VoiceProgress, VoiceStatus, WhisperVariant } from './types/voice';
 import type { AppUpdateState } from './types/update';
+import type { LspCompletionItem, LspDiagnosticsEvent, LspLanguage, LspLocation, LspPosition } from './types/lsp';
 
 export type Platform = 'win32' | 'darwin' | 'linux' | 'aix' | 'android' | 'freebsd' | 'haiku' | 'openbsd' | 'sunos' | 'cygwin' | 'netbsd';
 
@@ -188,6 +189,14 @@ export interface IpcInvokeMap {
   'code:previewUrl': Handler<[conversationId: string, path: string], string>;
   'code:sideChat': Handler<[request: SideChatRequest], void>;
   'code:sideChatStop': Handler<[requestId: string], void>;
+
+  /** Starts (or reuses) that file's language server; returns null for files neither one covers. */
+  'code:lspOpen': Handler<[conversationId: string, path: string, text: string], LspLanguage | null>;
+  'code:lspChange': Handler<[conversationId: string, path: string, text: string], void>;
+  'code:lspClose': Handler<[conversationId: string, path: string], void>;
+  'code:lspCompletion': Handler<[conversationId: string, path: string, position: LspPosition], LspCompletionItem[]>;
+  'code:lspDefinition': Handler<[conversationId: string, path: string, position: LspPosition], LspLocation[]>;
+  'code:lspReferences': Handler<[conversationId: string, path: string, position: LspPosition], LspLocation[]>;
 
   'terminal:create': Handler<[conversationId: string], TerminalInfo>;
   'terminal:list': Handler<[conversationId: string], TerminalInfo[]>;
@@ -340,6 +349,7 @@ export interface IpcEventMap {
   'terminal:exit': TerminalExitEvent;
   'terminal:changed': { conversationId: string };
   'code:side': SideChatEvent;
+  'code:lspDiagnostics': LspDiagnosticsEvent;
   'customize:changed': { kind: 'skills' | 'plugins' | 'commands' | 'memory' };
   'connectors:changed': ConnectorStatus[];
   'scheduled:changed': Record<string, never>;
@@ -434,6 +444,12 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'code:previewUrl': true,
   'code:sideChat': true,
   'code:sideChatStop': true,
+  'code:lspOpen': true,
+  'code:lspChange': true,
+  'code:lspClose': true,
+  'code:lspCompletion': true,
+  'code:lspDefinition': true,
+  'code:lspReferences': true,
   'terminal:create': true,
   'terminal:list': true,
   'terminal:buffer': true,
@@ -543,6 +559,7 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'terminal:exit': true,
   'terminal:changed': true,
   'code:side': true,
+  'code:lspDiagnostics': true,
   'customize:changed': true,
   'connectors:changed': true,
   'scheduled:changed': true,

@@ -4,6 +4,7 @@ import { installPdfRenderer, installTaskNotifications } from './agent/desktop';
 import { attachCloseToTray, backgroundActive, installBackground, isQuitting, markQuitting, showMainWindow } from './app/background';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
+import { configure as configureLsp, lsp } from './code/lsp';
 import { installPreview, registerPreviewScheme } from './code/preview';
 import { stopAllSideChats } from './code/side-chat';
 import { terminals } from './code/terminal';
@@ -66,6 +67,8 @@ if (!app.requestSingleInstanceLock()) {
     initPaths(app.getPath('userData'), runtimeDir);
     initLogFile(paths().logs);
     configureOsScheduler({ isPackaged: app.isPackaged, appPath: app.getAppPath() });
+    // Packages spawned as separate processes (language servers) live unpacked from the asar, like node-pty.
+    configureLsp({ appRoot: app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked') : app.getAppPath() });
     setSecretCodec({
       available: () => safeStorage.isEncryptionAvailable(),
       encrypt: (plain) => safeStorage.encryptString(plain),
@@ -118,7 +121,7 @@ if (!app.requestSingleInstanceLock()) {
     terminals.disposeAll();
     scheduler.dispose();
     updater.dispose();
-    void Promise.all([providers.dispose(), connectors.dispose()])
+    void Promise.all([providers.dispose(), connectors.dispose(), lsp.disposeAll()])
       .catch((err) => log.error('dispose failed', err))
       .finally(() => {
         closeDatabase();

@@ -483,6 +483,7 @@ export function FilesPane({ conversationId }: { conversationId: string }) {
               <CodeEditor
                 path={editorTab.path}
                 value={editorTab.value}
+                conversationId={conversationId}
                 keepPaths={readyTabs.map((t) => t.path)}
                 onChange={(value) => updateTab(editorTab.path, (t) => ({ ...t, value }))}
                 onSave={(value) => {

@@ -168,5 +168,21 @@
   "166": "Renderer",
   "167": "network.test.ts",
   "168": "ArtifactPanel",
-  "169": "sucrase"
+  "169": "sucrase",
+  "170": "MonacoEditor.tsx",
+  "171": "command.ts",
+  "172": "cmdk",
+  "173": "croner",
+  "174": "extract-zip",
+  "175": "@fontsource-variable/source-serif-4",
+  "176": "@huggingface/gguf",
+  "177": "monaco-editor",
+  "178": "systeminformation",
+  "179": "zod",
+  "180": "react",
+  "181": "@streamdown/mermaid",
+  "182": "@tailwindcss/browser",
+  "183": "vscode-languageserver-protocol",
+  "184": "@xterm/addon-fit",
+  "185": "zustand"
 }

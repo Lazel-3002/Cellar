@@ -27,6 +27,12 @@ files:
 asarUnpack:
   # Native modules, helper executables and the conout worker script must be real files.
   - '**/node_modules/node-pty/**'
+  # Code's IntelliSense spawns these as separate processes (typescript-language-server / pyright
+  # over LSP on stdio); a real file on disk is needed both to spawn them and for tsserver/pyright to
+  # read their own lib/typeshed files at runtime, none of which works from inside app.asar.
+  - '**/node_modules/typescript-language-server/**'
+  - '**/node_modules/pyright/**'
+  - '**/node_modules/typescript/**'
 extraResources:
   - from: resources/artifact-runtime
     to: artifact-runtime

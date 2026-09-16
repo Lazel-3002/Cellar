@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1789597829.66724,
-    "ast_hash": "bfbebd62625ade9592d37ce445b78bc1",
+    "mtime": 1789600528.7276838,
+    "ast_hash": "fac93e5277f8e1ea0abcd5eea52bb10d",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "src/main/index.ts": {
-    "mtime": 1789598991.1864102,
-    "ast_hash": "5e5b81abaadbe3c4fe16e61a382cd03c",
+    "mtime": 1789601484.7539914,
+    "ast_hash": "8907cfa108e3997c3d0c5f9752f82a5b",
     "semantic_hash": ""
   },
   "src/main/ipc/handlers.ts": {
@@ -470,8 +470,8 @@
     "semantic_hash": ""
   },
   "src/shared/ipc-contract.ts": {
-    "mtime": 1789599710.0927882,
-    "ast_hash": "b66a20d48b18823b3dc9f034b3b9a4dd",
+    "mtime": 1789600862.9616144,
+    "ast_hash": "5c420c500e4bff6e2b37740f6036cb79",
     "semantic_hash": ""
   },
   "src/shared/message-tree.ts": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "tests/e2e/app.spec.ts": {
-    "mtime": 1789592916.3673315,
-    "ast_hash": "846df9b873600be933220564c2d7dade",
+    "mtime": 1789601868.6573951,
+    "ast_hash": "d0ce27cfe619eccb74de2e744d8a7b48",
     "semantic_hash": ""
   },
   "tests/e2e/mock-server.ts": {
@@ -570,8 +570,8 @@
     "semantic_hash": ""
   },
   "electron-builder.yml": {
-    "mtime": 1789597980.192966,
-    "ast_hash": "e10cd8866835bde3249fb1ac268c1af0",
+    "mtime": 1789600918.583542,
+    "ast_hash": "9d98a949d7cf6fd717694337c598b331",
     "semantic_hash": ""
   },
   "src/renderer/index.html": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789599932.8105078,
-    "ast_hash": "96913c40f9fc23c3a8b8bab5a8f8d396",
+    "mtime": 1789602008.6137896,
+    "ast_hash": "bebb0dcc63390c4e14ba89a00a93752c",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -750,8 +750,8 @@
     "semantic_hash": ""
   },
   "src/main/code/changes.ts": {
-    "mtime": 1789405144.0119615,
-    "ast_hash": "16b0e8c41a3c2ca3a5f4862515e61122",
+    "mtime": 1789600874.7173917,
+    "ast_hash": "d373d68a63590f999ac2058f367516f6",
     "semantic_hash": ""
   },
   "src/main/code/context.ts": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "src/main/code/ipc.ts": {
-    "mtime": 1789405060.9715092,
-    "ast_hash": "96dc05ec7b410f8f843fea7b71fecc75",
+    "mtime": 1789601478.6797063,
+    "ast_hash": "a7849dc194288422600f610af9a320d4",
     "semantic_hash": ""
   },
   "src/main/code/preview.ts": {
@@ -815,13 +815,13 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/code/FilesPane.tsx": {
-    "mtime": 1789405991.7206867,
-    "ast_hash": "eb387170d27fa36f59684561abef44c4",
+    "mtime": 1789601223.2419353,
+    "ast_hash": "0d2f18e7f3603c9f4c7ba303bcf4d8fc",
     "semantic_hash": ""
   },
   "src/renderer/src/components/code/MonacoEditor.tsx": {
-    "mtime": 1789405607.9087424,
-    "ast_hash": "a2233529d7d9877319dad47608325ee4",
+    "mtime": 1789601207.4018586,
+    "ast_hash": "b4de7bbcfd73a5cbf5d34d88673bb7ad",
     "semantic_hash": ""
   },
   "src/renderer/src/components/code/PreviewPane.tsx": {
@@ -920,8 +920,8 @@
     "semantic_hash": ""
   },
   "src/main/code/diagnostics.ts": {
-    "mtime": 1789423204.5003908,
-    "ast_hash": "63a3573ff8d279b7adc7239eeae4956a",
+    "mtime": 1789600582.5773387,
+    "ast_hash": "da69ae693905321b33030d60599cde54",
     "semantic_hash": ""
   },
   "src/main/connectors/manager.ts": {
@@ -1407,6 +1407,21 @@
   "src/renderer/src/lib/tts.ts": {
     "mtime": 1789599823.086849,
     "ast_hash": "7f227c7f99fb64d15b6d23522ba1242e",
+    "semantic_hash": ""
+  },
+  "src/main/code/lsp.ts": {
+    "mtime": 1789601469.1796405,
+    "ast_hash": "9edb2198dca5cd78a9c8735c1b0bba95",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/lib/lsp.ts": {
+    "mtime": 1789601087.9342134,
+    "ast_hash": "d6d822e02bf9188f4b51bef26343bfd4",
+    "semantic_hash": ""
+  },
+  "src/shared/types/lsp.ts": {
+    "mtime": 1789600828.0532513,
+    "ast_hash": "031b13c2e7b3c402c66d37ffba66ae45",
     "semantic_hash": ""
   }
 }
