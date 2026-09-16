@@ -30,7 +30,9 @@ export function parseVizBlocks(markdown: string): ParsedViz[] {
       continue;
     }
     const fence = open[1];
-    const isViz = /^\s*html\s+viz\s*$/i.test(open[2] ?? '');
+    // Anchored on `html viz` as the first two tokens, but tolerant of anything a model tacks on
+    // after it (e.g. a `title="..."` attribute, copying the convention it knows from artifacts).
+    const isViz = /^\s*html\s+viz(\s|$)/i.test(open[2] ?? '');
     const close = new RegExp(`^\\s{0,3}${fence[0] === '`' ? '`' : '~'}{${fence.length},}\\s*$`);
     let j = i + 1;
     while (j < lines.length && !close.test(lines[j])) j++;

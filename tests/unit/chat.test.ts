@@ -149,6 +149,15 @@ describe('inline visualizations', () => {
   it('ignores plain html code blocks without the viz marker', () => {
     expect(parseVizBlocks('```html\n<div></div>\n```')).toEqual([]);
   });
+
+  it('tolerates a trailing title attribute a model tacks onto the info string', () => {
+    const [block] = parseVizBlocks('```html viz title="Pie chart"\n<canvas></canvas>\n```');
+    expect(block.content).toBe('<canvas></canvas>');
+  });
+
+  it('does not match "viz" as a substring of another word', () => {
+    expect(parseVizBlocks('```html vizard\n<div></div>\n```')).toEqual([]);
+  });
 });
 
 describe('inline images', () => {

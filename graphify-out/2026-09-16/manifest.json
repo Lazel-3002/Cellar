@@ -70,13 +70,13 @@
     "semantic_hash": ""
   },
   "src/main/chat/orchestrator.ts": {
-    "mtime": 1789494002.6471007,
-    "ast_hash": "9fa325d2deef9689883e968d6a44ec84",
+    "mtime": 1789577013.6656113,
+    "ast_hash": "19bde8afb4c8b9897ad7130d106adb29",
     "semantic_hash": ""
   },
   "src/main/chat/prompts.ts": {
-    "mtime": 1789423323.771024,
-    "ast_hash": "0bdb3b9edd5c04567bf9f92db239b677",
+    "mtime": 1789577010.9567623,
+    "ast_hash": "9ffc30a788223f239c5c289c0c4ebbcf",
     "semantic_hash": ""
   },
   "src/main/db/chat-store.ts": {
@@ -120,8 +120,8 @@
     "semantic_hash": ""
   },
   "src/main/ipc/handlers.ts": {
-    "mtime": 1789548883.4280853,
-    "ast_hash": "5435d679797481172207ea5af100c5e1",
+    "mtime": 1789577072.483904,
+    "ast_hash": "365f018a5e9c67b74702d14f773a96f1",
     "semantic_hash": ""
   },
   "src/main/ipc/index.ts": {
@@ -260,8 +260,8 @@
     "semantic_hash": ""
   },
   "src/main/services/settings.ts": {
-    "mtime": 1789425678.5016546,
-    "ast_hash": "b308d9c8635a0e5b6cc8530c2a1635c1",
+    "mtime": 1789576998.826753,
+    "ast_hash": "0a0418c05c3a3b569c4e105dc6fbbcb9",
     "semantic_hash": ""
   },
   "src/main/system/hardware.ts": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/chat/Markdown.tsx": {
-    "mtime": 1789308306.3365352,
-    "ast_hash": "24d541502592be219cac44d398f3dfb9",
+    "mtime": 1789577180.2148645,
+    "ast_hash": "ddc2757e87591f2dc5b4327cf600767e",
     "semantic_hash": ""
   },
   "src/renderer/src/components/chat/Messages.tsx": {
@@ -405,8 +405,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/lib/utils.ts": {
-    "mtime": 1789308499.0556688,
-    "ast_hash": "0bad57678016bf020ee1ede56e5c2746",
+    "mtime": 1789577099.7181456,
+    "ast_hash": "45a857ac34a47cff3bab79ac54bfc512",
     "semantic_hash": ""
   },
   "src/renderer/src/main.tsx": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/SettingsPage.tsx": {
-    "mtime": 1789425684.4104166,
-    "ast_hash": "6c1bec022b4f656717d75fe4daf4afd1",
+    "mtime": 1789577224.3689108,
+    "ast_hash": "d2ac2d2af6c8475aa36f8d997537b50b",
     "semantic_hash": ""
   },
   "src/renderer/src/router.tsx": {
@@ -470,8 +470,8 @@
     "semantic_hash": ""
   },
   "src/shared/ipc-contract.ts": {
-    "mtime": 1789494063.859449,
-    "ast_hash": "15451d191bf04a5c20e097ce0e5ca36a",
+    "mtime": 1789577061.7770586,
+    "ast_hash": "6dc8c2fd80ae49cc467d03fae312ebee",
     "semantic_hash": ""
   },
   "src/shared/message-tree.ts": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "src/shared/types/settings.ts": {
-    "mtime": 1789425400.2162066,
-    "ast_hash": "908fd93267171931af8639f46dd4eb59",
+    "mtime": 1789576993.8981068,
+    "ast_hash": "d8f5c54184968da45b8549ff9629d046",
     "semantic_hash": ""
   },
   "src/shared/types/system.ts": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "tests/unit/chat.test.ts": {
-    "mtime": 1789308790.0306373,
-    "ast_hash": "39a03cbee2933b2d31ea5d666fda2fad",
+    "mtime": 1789577291.4296427,
+    "ast_hash": "1a4e584f7703f7ac064fa09705d86f7b",
     "semantic_hash": ""
   },
   "tests/unit/db.test.ts": {
@@ -625,8 +625,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/runner.ts": {
-    "mtime": 1789494023.6085517,
-    "ast_hash": "69aaa817e134dedfa518ccadd230e810",
+    "mtime": 1789577024.4108915,
+    "ast_hash": "b6c1b8f743bcaae7a6057bdbfbee7fd1",
     "semantic_hash": ""
   },
   "src/main/agent/text-protocol.ts": {
@@ -1347,6 +1347,31 @@
   "docs/Creator Ideas - important things/Desgin needs to havee web search and should have a folder so it can browse and dowland.png": {
     "mtime": 1789461131.910885,
     "ast_hash": "71cc524644feee316715fa063d05590a",
+    "semantic_hash": ""
+  },
+  "src/main/services/image-search.ts": {
+    "mtime": 1789577052.8634632,
+    "ast_hash": "e5848ed8ee397ab88ce6c7fc1c3c4556",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/chat/InlineImage.tsx": {
+    "mtime": 1789577135.174955,
+    "ast_hash": "e0eef6526f01b1b60dae1ee00e052903",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/chat/InlineViz.tsx": {
+    "mtime": 1789577201.1183715,
+    "ast_hash": "0c21f2f072f750111394ae257a2c159b",
+    "semantic_hash": ""
+  },
+  "src/shared/inline-images.ts": {
+    "mtime": 1789577035.9168682,
+    "ast_hash": "2a38b7b02ff3be2b6ebb57e8ba525ea8",
+    "semantic_hash": ""
+  },
+  "src/shared/viz.ts": {
+    "mtime": 1789577029.8675618,
+    "ast_hash": "e73d2b33bdd7987e64c28dcf1c7c27a2",
     "semantic_hash": ""
   }
 }
