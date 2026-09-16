@@ -4,6 +4,7 @@ import { ChatPage } from './pages/ChatPage';
 import { CodeHomePage, CodeSessionPage } from './pages/CodePage';
 import { CustomizePage } from './pages/CustomizePage';
 import { DesignEditorPage, DesignHomePage } from './pages/DesignPage';
+import { MathBoardPage, MathHomePage } from './pages/MathPage';
 import { ScheduledPage } from './pages/ScheduledPage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
@@ -42,6 +43,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/code/$conversationId', component: CodeSessionPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/design', component: DesignHomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/design/$conversationId', component: DesignEditorPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/math', component: MathHomePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/math/$conversationId', component: MathBoardPage }),
 ] as const;
 
 const routeTree = rootRoute.addChildren([...routes]);

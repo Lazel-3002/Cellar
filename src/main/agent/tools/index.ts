@@ -1,6 +1,7 @@
 import type { PermissionMode } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
 import type { AppSettings } from '@shared/types/settings';
+import { calculateTool } from '../../math/tools';
 import { runCommand } from './command';
 import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFileTool, rememberTool, searchChatsTool, skillTool } from './extra';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
@@ -24,6 +25,7 @@ export const ALL_TOOLS: AgentTool[] = [
   diagnosticsTool,
   webSearch,
   webFetch,
+  calculateTool,
 ] as AgentTool[];
 
 /** Tools that do not depend on the working folder: skills, memory and past chats. */
@@ -47,9 +49,9 @@ export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]
   return [...tools, ...(await connectorTools(options.readOnly))];
 }
 
-/** Chat: web tools (when turned on) plus the extras. */
+/** Chat: the calculator, web tools (when turned on) and the extras. */
 export function chatBaseTools(settings: Pick<AppSettings, 'chatWebSearch'>): AgentTool[] {
-  return settings.chatWebSearch ? ([webSearch, webFetch] as AgentTool[]) : [];
+  return settings.chatWebSearch ? ([calculateTool, webSearch, webFetch] as AgentTool[]) : ([calculateTool] as AgentTool[]);
 }
 
 export interface ToolAvailability {
@@ -75,6 +77,11 @@ export function codeToolsFor(mode: CodeMode, permissionMode: PermissionMode, set
 
 /** Names models trained on other agents use for the same tools. */
 const ALIASES: Record<string, string> = {
+  calc: 'calculate',
+  calculator: 'calculate',
+  compute: 'calculate',
+  evaluate: 'calculate',
+  math: 'calculate',
   read: 'read_file',
   view: 'read_file',
   cat: 'read_file',
@@ -139,6 +146,10 @@ export function normalizeArgs(tool: AgentTool, args: Record<string, unknown>): R
     if (typeof alias === 'string') out.markdown = alias;
   }
   if (tool.name === 'run_command' && typeof out.command !== 'string' && typeof out.cmd === 'string') out.command = out.cmd;
+  if (tool.name === 'calculate' && out.expressions === undefined) {
+    const alias = out.expression ?? out.expr ?? out.input ?? out.query ?? out.value;
+    if (typeof alias === 'string' || Array.isArray(alias)) out.expressions = alias;
+  }
   if (tool.name === 'web_search' && typeof out.query !== 'string' && typeof out.q === 'string') out.query = out.q;
   return out;
 }

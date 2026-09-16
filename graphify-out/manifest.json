@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1789458220.4530873,
-    "ast_hash": "618dca5a7217c585accfc24750fe7237",
+    "mtime": 1789549226.7526839,
+    "ast_hash": "aa7eeb028b56385b598fa2343fdf8cb6",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -50,8 +50,8 @@
     "semantic_hash": ""
   },
   "scripts/verify-packaged.mjs": {
-    "mtime": 1789425924.922722,
-    "ast_hash": "afdfc2ac7021476dec69c7fee5804e51",
+    "mtime": 1789549690.3377368,
+    "ast_hash": "e9cf0721f251364d8b2a068cafa1f87b",
     "semantic_hash": ""
   },
   "src/artifact-runtime/react-runtime.tsx": {
@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "src/main/chat/orchestrator.ts": {
-    "mtime": 1789455637.4331026,
-    "ast_hash": "394b46cce949b1ca2fc46352a73ce9ce",
+    "mtime": 1789494002.6471007,
+    "ast_hash": "9fa325d2deef9689883e968d6a44ec84",
     "semantic_hash": ""
   },
   "src/main/chat/prompts.ts": {
@@ -80,8 +80,8 @@
     "semantic_hash": ""
   },
   "src/main/db/chat-store.ts": {
-    "mtime": 1789455369.5745986,
-    "ast_hash": "4c21f118bde4b41218f7458380c2a138",
+    "mtime": 1789493750.0373707,
+    "ast_hash": "0185539d69d0b45a9e6b5e56d75f0c2d",
     "semantic_hash": ""
   },
   "src/main/db/client.ts": {
@@ -90,8 +90,8 @@
     "semantic_hash": ""
   },
   "src/main/db/migrations.ts": {
-    "mtime": 1789455369.5730934,
-    "ast_hash": "9b9a6b6d350d4e11d8e356f1c3f89ffa",
+    "mtime": 1789493750.0388744,
+    "ast_hash": "d282d54ba1b4b7e8ce89a725d51020f4",
     "semantic_hash": ""
   },
   "src/main/db/provider-configs.ts": {
@@ -120,8 +120,8 @@
     "semantic_hash": ""
   },
   "src/main/ipc/handlers.ts": {
-    "mtime": 1789455802.6520717,
-    "ast_hash": "7c32b4e1ed4f6ced139003efd960af55",
+    "mtime": 1789548883.4280853,
+    "ast_hash": "5435d679797481172207ea5af100c5e1",
     "semantic_hash": ""
   },
   "src/main/ipc/index.ts": {
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "src/main/system/paths.ts": {
-    "mtime": 1789455369.5730934,
-    "ast_hash": "09c531181d926f00fdee0be6544d03d2",
+    "mtime": 1789493750.0373707,
+    "ast_hash": "ca6f0e7876738a0c739c180750cc216b",
     "semantic_hash": ""
   },
   "src/main/window.ts": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/composer/Composer.tsx": {
-    "mtime": 1789457230.5974293,
-    "ast_hash": "133757114041286d9a2b14dadca52fd9",
+    "mtime": 1789548567.8939357,
+    "ast_hash": "5855875bc5e512afacc431ebf3047eb8",
     "semantic_hash": ""
   },
   "src/renderer/src/components/composer/ModelPicker.tsx": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/AppShell.tsx": {
-    "mtime": 1789456618.789683,
-    "ast_hash": "d215038fbd67fff6535aa07fcf3b7fa8",
+    "mtime": 1789548589.8498623,
+    "ast_hash": "9f129cc7b7243d1a01509854e6c349e3",
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/DownloadsPopover.tsx": {
@@ -350,18 +350,18 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/SearchPalette.tsx": {
-    "mtime": 1789456622.2969928,
-    "ast_hash": "cbdf4426171c280630b2f4ea4d129572",
+    "mtime": 1789548589.852794,
+    "ast_hash": "15e3532ce7eba573e74758d5d8360695",
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/Sidebar.tsx": {
-    "mtime": 1789424593.7221415,
-    "ast_hash": "ee4f7e28428e1a9d4ca1844533e71b63",
+    "mtime": 1789548549.6604617,
+    "ast_hash": "cacdf3bd29e0330d768f1ccaa99a524e",
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/TitleBar.tsx": {
-    "mtime": 1789458200.772089,
-    "ast_hash": "1ff2889ee170f5144401ff40dfa1e4a5",
+    "mtime": 1789548589.8508632,
+    "ast_hash": "e5d2c91b8b39cf9eb8c3b75e6108e972",
     "semantic_hash": ""
   },
   "src/renderer/src/components/ui/button.tsx": {
@@ -390,8 +390,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/lib/hooks.ts": {
-    "mtime": 1789457283.8067527,
-    "ast_hash": "f592a7d7d74de092bab07b95db21cfde",
+    "mtime": 1789549352.1728225,
+    "ast_hash": "fe50cc30d5d2071438337e26c110486b",
     "semantic_hash": ""
   },
   "src/renderer/src/lib/ipc.ts": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/lib/queries.ts": {
-    "mtime": 1789424099.588951,
-    "ast_hash": "cd74947e05627ece6ecb167487d4603e",
+    "mtime": 1789548589.852794,
+    "ast_hash": "1325de920747f9fe6a63a0825901746b",
     "semantic_hash": ""
   },
   "src/renderer/src/lib/utils.ts": {
@@ -430,8 +430,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/MiscPages.tsx": {
-    "mtime": 1789456618.789683,
-    "ast_hash": "0dbb0e217d3417bc7f73466ab6eca4c5",
+    "mtime": 1789548589.8508632,
+    "ast_hash": "4c12092ae6656ca50c2d8a4bf846145e",
     "semantic_hash": ""
   },
   "src/renderer/src/pages/ModelsPage.tsx": {
@@ -450,8 +450,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/router.tsx": {
-    "mtime": 1789456618.7886832,
-    "ast_hash": "0f5fc7acaf2e8cd996f9d7936e3f56ca",
+    "mtime": 1789548549.6594605,
+    "ast_hash": "ce3d28ce1f62f8210f0c413b69645081",
     "semantic_hash": ""
   },
   "src/renderer/src/stores/streams.ts": {
@@ -470,8 +470,8 @@
     "semantic_hash": ""
   },
   "src/shared/ipc-contract.ts": {
-    "mtime": 1789455380.0657046,
-    "ast_hash": "03e59ccfde87718144d144032d8562d4",
+    "mtime": 1789494063.859449,
+    "ast_hash": "15451d191bf04a5c20e097ce0e5ca36a",
     "semantic_hash": ""
   },
   "src/shared/message-tree.ts": {
@@ -480,8 +480,8 @@
     "semantic_hash": ""
   },
   "src/shared/types/chat.ts": {
-    "mtime": 1789455369.5745986,
-    "ast_hash": "39dcb7f72a0c5a9fe76f5234dedd22ff",
+    "mtime": 1789494046.9392679,
+    "ast_hash": "03eb3c838462fc47a0b8899747042ea2",
     "semantic_hash": ""
   },
   "src/shared/types/hub.ts": {
@@ -510,13 +510,13 @@
     "semantic_hash": ""
   },
   "tests/e2e/app.spec.ts": {
-    "mtime": 1789457036.9572747,
-    "ast_hash": "5b3ad41e2831046ee0431ee2fcc66878",
+    "mtime": 1789548996.7805102,
+    "ast_hash": "1f475dd91e6fcdaf48c2e3ee7702a81c",
     "semantic_hash": ""
   },
   "tests/e2e/mock-server.ts": {
-    "mtime": 1789457036.9562738,
-    "ast_hash": "a77073d3e3f4eb3aed475e8d1a35a996",
+    "mtime": 1789548745.0416372,
+    "ast_hash": "552e78150dfba7909631c29cee934cf7",
     "semantic_hash": ""
   },
   "tests/unit/chat.test.ts": {
@@ -625,8 +625,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/runner.ts": {
-    "mtime": 1789455637.4331026,
-    "ast_hash": "51c13670fc9f6414ea9171693838f9a1",
+    "mtime": 1789494023.6085517,
+    "ast_hash": "69aaa817e134dedfa518ccadd230e810",
     "semantic_hash": ""
   },
   "src/main/agent/text-protocol.ts": {
@@ -645,8 +645,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/tools/index.ts": {
-    "mtime": 1789423431.815857,
-    "ast_hash": "53394df323d6a765a8cf288b50bcb888",
+    "mtime": 1789549256.5468905,
+    "ast_hash": "9e59e9ed9dcb7c778687e9aa8813a4fa",
     "semantic_hash": ""
   },
   "src/main/agent/tools/plan-docs.ts": {
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/lib/tasks.ts": {
-    "mtime": 1789456618.7886832,
-    "ast_hash": "1ebc6876abb766630afd5a69d535db70",
+    "mtime": 1789548549.6614623,
+    "ast_hash": "21cbd0e570042ffe7ebedaa2c2090bf1",
     "semantic_hash": ""
   },
   "src/renderer/src/pages/TaskPage.tsx": {
@@ -695,8 +695,8 @@
     "semantic_hash": ""
   },
   "src/shared/types/agent.ts": {
-    "mtime": 1789455369.5745986,
-    "ast_hash": "0ef69842384e781ddc9a328282dca792",
+    "mtime": 1789493750.0373707,
+    "ast_hash": "9a42b8a14b3e8b3945ed6fadc35cda41",
     "semantic_hash": ""
   },
   "tests/unit/agent-core.test.ts": {
@@ -715,13 +715,13 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789458503.1979768,
-    "ast_hash": "cc2ac239756579e4334fcc5fa84f0b82",
+    "mtime": 1789549092.7363822,
+    "ast_hash": "8b20bfe47ea76d05634b3bbf8ea0ff39",
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789458503.221005,
-    "ast_hash": "7c439508ecf4a12685c9c265934ed14e",
+    "mtime": 1789549984.709255,
+    "ast_hash": "c97f86e7c135cf94839529677d04e1d3",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -965,13 +965,13 @@
     "semantic_hash": ""
   },
   "src/main/customize/tool-listing.ts": {
-    "mtime": 1789455802.6550732,
-    "ast_hash": "def906c4a1869f7a5740e361566094b8",
+    "mtime": 1789494034.869961,
+    "ast_hash": "db8a340c06675dc927d4bcff23d42055",
     "semantic_hash": ""
   },
   "src/main/ipc/m4-handlers.ts": {
-    "mtime": 1789455802.6530714,
-    "ast_hash": "de15d8619510d323b4d60a35184cbadd",
+    "mtime": 1789494063.859449,
+    "ast_hash": "92605aee5d407fb572550ee3843c8733",
     "semantic_hash": ""
   },
   "src/main/rag/embeddings.ts": {
@@ -1030,8 +1030,8 @@
     "semantic_hash": ""
   },
   "src/shared/types/customize.ts": {
-    "mtime": 1789455369.5745986,
-    "ast_hash": "9f3cbf16eaa194d4f3f22b9d9a97d29e",
+    "mtime": 1789493750.0373707,
+    "ast_hash": "a4181716e614f9967c229a726901224d",
     "semantic_hash": ""
   },
   "src/shared/types/scheduled.ts": {
@@ -1212,6 +1212,141 @@
   "tests/unit/design.test.ts": {
     "mtime": 1789458014.2410984,
     "ast_hash": "64785367220eea57c1a9e191273a7307",
+    "semantic_hash": ""
+  },
+  "scripts/math-smoke.mjs": {
+    "mtime": 1789549204.7184062,
+    "ast_hash": "2ded3c019ffbd8b6a00685701a62b38f",
+    "semantic_hash": ""
+  },
+  "src/main/math/export.ts": {
+    "mtime": 1789493962.4125044,
+    "ast_hash": "d21263722d2087f7e39938ad136858b3",
+    "semantic_hash": ""
+  },
+  "src/main/math/ipc.ts": {
+    "mtime": 1789493976.5103545,
+    "ast_hash": "bfae6f1aeec5d3682cc9b585dbe6707d",
+    "semantic_hash": ""
+  },
+  "src/main/math/prompt.ts": {
+    "mtime": 1789549451.108209,
+    "ast_hash": "1780d87dd54c91589368e1c976e724ab",
+    "semantic_hash": ""
+  },
+  "src/main/math/session.ts": {
+    "mtime": 1789493779.2246451,
+    "ast_hash": "a92dc626d4db60aca8994dbef73bc24d",
+    "semantic_hash": ""
+  },
+  "src/main/math/store.ts": {
+    "mtime": 1789493773.538561,
+    "ast_hash": "bc78154cf8ab2a93e0dcee00c2cca9a5",
+    "semantic_hash": ""
+  },
+  "src/main/math/tools.ts": {
+    "mtime": 1789493883.912349,
+    "ast_hash": "f778c281b7dd58cb1309523e3e7f336b",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/math/Blocks.tsx": {
+    "mtime": 1789494279.8852105,
+    "ast_hash": "e7578d77454c6984787026336b13ac07",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/math/MathText.tsx": {
+    "mtime": 1789494203.4659362,
+    "ast_hash": "3f905b1fc1d12f321ced8e7099e27cbb",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/math/Panel.tsx": {
+    "mtime": 1789494367.9325328,
+    "ast_hash": "5f14b6a7dd46a84535990d9e0f3717d0",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/math/Sketch.tsx": {
+    "mtime": 1789494184.2027526,
+    "ast_hash": "4bffb86284937d404913724fe061c771",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/components/math/actions.ts": {
+    "mtime": 1789494149.358706,
+    "ast_hash": "bf3afc58eff37e195083d40deb4c6f58",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/pages/MathPage.tsx": {
+    "mtime": 1789548522.6907585,
+    "ast_hash": "4164c244ca4d31fd7a86164f2e65d421",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/stores/math.ts": {
+    "mtime": 1789494127.240331,
+    "ast_hash": "9f0c9212b5427624f67e71b905108656",
+    "semantic_hash": ""
+  },
+  "src/shared/math/calc.ts": {
+    "mtime": 1789492723.0915556,
+    "ast_hash": "ec1bdd46a9845eb148154d044b64c754",
+    "semantic_hash": ""
+  },
+  "src/shared/math/exact.ts": {
+    "mtime": 1789492461.817375,
+    "ast_hash": "2531cd6a0c64fac5d305708ae9fabdf1",
+    "semantic_hash": ""
+  },
+  "src/shared/math/expr.ts": {
+    "mtime": 1789493725.5559208,
+    "ast_hash": "3b0c3d21d2d361311aef8ceabeec764f",
+    "semantic_hash": ""
+  },
+  "src/shared/math/figure.ts": {
+    "mtime": 1789549850.3924122,
+    "ast_hash": "69fc39ada39e8745996f83c2b711c6bb",
+    "semantic_hash": ""
+  },
+  "src/shared/math/mathtext.ts": {
+    "mtime": 1789493562.7959325,
+    "ast_hash": "f111229d2b6c5d07ba6ba7f609ebcafd",
+    "semantic_hash": ""
+  },
+  "src/shared/math/normalize.ts": {
+    "mtime": 1789549388.673145,
+    "ast_hash": "e9d914d5bb560a3d74205fd3c3f59895",
+    "semantic_hash": ""
+  },
+  "src/shared/math/plot.ts": {
+    "mtime": 1789493039.7667425,
+    "ast_hash": "c174606d946b4787371618d76efb2082",
+    "semantic_hash": ""
+  },
+  "src/shared/math/quiz.ts": {
+    "mtime": 1789493145.5663426,
+    "ast_hash": "40f19b8049882ef63b7781d99388eec5",
+    "semantic_hash": ""
+  },
+  "src/shared/math/render.ts": {
+    "mtime": 1789493954.014159,
+    "ast_hash": "7d61480f3b834eb8a2f8bccebbaf0f4e",
+    "semantic_hash": ""
+  },
+  "src/shared/math/solve.ts": {
+    "mtime": 1789549409.6717257,
+    "ast_hash": "3db99afc7822ac8025969bad0b4cfbf5",
+    "semantic_hash": ""
+  },
+  "src/shared/types/math.ts": {
+    "mtime": 1789493079.7950177,
+    "ast_hash": "be422997f2fcd0227dddf68402400392",
+    "semantic_hash": ""
+  },
+  "tests/unit/math.test.ts": {
+    "mtime": 1789549863.1546776,
+    "ast_hash": "2faf31ca52fbcc63be008037843a418f",
+    "semantic_hash": ""
+  },
+  "docs/Creator Ideas - important things/Desgin needs to havee web search and should have a folder so it can browse and dowland.png": {
+    "mtime": 1789461131.910885,
+    "ast_hash": "71cc524644feee316715fa063d05590a",
     "semantic_hash": ""
   }
 }

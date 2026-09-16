@@ -10,6 +10,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M3 Code** | Coding agent for repositories | ✅ Done 2026-09-14 |
 | **M4 Customize, Scheduled, Voice** | Skills, MCP connectors, plugins, scheduled tasks, dictation, embeddings RAG | ✅ Done 2026-09-15 |
 | **M5 Design** | Canvas for mockups and slides, better-designed documents | ✅ Done 2026-09-15 |
+| **M6 Math** | Study boards: exact calculator, worked steps, figures, graphs, practice tests, whiteboard | ✅ Done 2026-09-16 |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -258,6 +259,56 @@ Real software (throwaway profiles, Ollama qwen3.5:9b):
 - **Documents:** Word charts need the app's renderer (in tests they become data tables). Remote images are not downloaded.
 - **Testing:** an e2e chat test can time out picking a model while Ollama is busy unloading a large model. It passes on rerun.
 
+## M6 Math — delivered
+
+Math in the sidebar opens a study board: a page of blocks a local model fills while teaching, and you work on by hand. It comes from the creator's notes and photos of a maths notebook (`docs/Creator Ideas - important things/`): a whiteboard, a calculator, drawn triangles and squares, arithmetic the model does not have to do itself, "make me a test", and step-by-step derivations written the way they are on paper.
+
+The rule behind the whole milestone: **a local model never does the arithmetic**. Every number on a board is worked out by Cellar's own engine, so a 2B model can still hand you a correct study sheet.
+
+- **Maths engine** (`src/shared/math/`), shared by the main process and the editor
+  - `exact.ts`: every value is `c · √r` with `c` a bigint fraction, so `12/13 + 5/13 = 17/13`, `√12 = 2√3`, `1/√3 = √3/3` and `(√3)² = 3` come out exact, with decimals only where the answer really is irrational.
+  - `expr.ts`: one tolerant parser for what people and models write — `2(3+4)`, `3√2·√2`, `sin30`, `a^2`, `-4^2 = -16`, LaTeX (`\frac{\sqrt{3}}{2}`, `\sqrt{16}`), Unicode (`√3`, `a²`, `≤`) — plus a numeric and an exact evaluator over the same tree, exact values at the school angles (0–360 in steps of 30 and 45), and a one-round reducer that gives the classic `3² + 4²` → `9 + 16` → `25`.
+  - `solve.ts`: step-by-step solvers for expressions, linear and quadratic equations (discriminant and exact roots), the Pythagorean theorem and the trigonometric ratios of a right triangle. The Pythagoras derivation is written exactly as in the notebook photo: `a² + b² = c²` → `a² + (√3)² = 2²` → `a² + 3 = 4` → `a² = 4 - 3` → `a² = 1` → `a = 1`.
+  - `figure.ts`: labelled geometry from what a problem says. Side lengths may be numbers, roots (`√3`) or letters (`a`, `x`); a right triangle with two sides gets the third from Pythagoras and a right-angle mark, and triangles are built by SSS with a clear error when the lengths cannot make one. Squares, rectangles, circles, polygons, angles and segments, with angle arcs, extra lines (a height, a diagonal) and optional squared paper.
+  - `plot.ts`: function graphs on labelled axes with nice tick steps, clipping and asymptote breaks.
+  - `quiz.ts`: seeded test generation for nine topics (arithmetic, fractions, powers, Pythagoras, trigonometric ratios, special angles, linear, quadratic, area) with the answers and worked solutions from the solvers, optional multiple choice, and figures where they help.
+  - `mathtext.ts`: maths text typeset as stacked fractions, radical signs and superscripts, from ASCII, a LaTeX subset or Unicode. It only ever emits Cellar's own markup around escaped text.
+  - `normalize.ts` and `render.ts`: loose model input turned into blocks (aliases for every field, types guessed from the words used, an error the model can act on instead of a crash), plus the board as a printable page, a Markdown study sheet and the shared CSS the editor uses, so screen and print match.
+- **Math sessions** (`src/main/math/`): conversations of kind `math` with `task.math = { boardId, selection }`, running through the M2 agent loop.
+  - Tools: `calculate`, `get_board`, `set_board`, `add_blocks`, `update_block`, `delete_blocks`, `solve_steps`, `draw_figure`, `plot_graph`, `make_quiz`. The ones that produce maths (`solve_steps`, `make_quiz`, `draw_figure`) compute it in Cellar and hand the model back what was added.
+  - `calculate` is also in Chat and Cowork, so any chat can work out `17/13` or `cos 30°` exactly.
+  - The prompt carries the board outline, the block the user selected ("explain this step"), and which test questions they got wrong.
+  - Boards live in the `boards` table (migration 5) with a version number. Model changes emit `math:changed` and the editor adopts them; a save from the editor must be based on the latest version, and pending edits are flushed before a message is sent.
+- **Board editor** (`pages/MathPage.tsx`, `components/math/`)
+  - Home: a prompt with paper choices (squared, dotted, lined, plain), ideas, an empty board, and your boards with the first line of maths as the preview.
+  - Blocks: explanation, formula (with what the letters mean), derivation (steps with arrows and reasons, highlighted result), figure, graph, table, practice test and whiteboard. Every block can be edited in place, reordered by drag or arrows, duplicated and deleted; undo/redo covers model changes too.
+  - Practice tests are answered on the board: typed or multiple choice, checked against the answer (1/2 and 0.5 both count), with "show the answer" revealing the worked solution and a score for the block.
+  - Whiteboard: pen, line, arrow, rectangle, circle, triangle and eraser, five colours and widths, on squared paper, stored in a fixed coordinate space so it looks the same on screen and in exports.
+  - Right panel: a calculator with a keypad, exact and decimal answers, history and "add to the board"; an Insert tab with every block type and a test generator (topic, count, level, multiple choice); a Properties tab for the selected figure or graph and for the board itself (topic, paper, degrees/radians).
+  - Chat panel with the selection chip, the same transcript as everywhere else, and suggestions.
+- **Export** (`export.ts`): PDF and PNG through the offline Chromium renderer that Design uses, and a Markdown study sheet. A test paper (answers off) prints the questions with answer lines and puts the answer key on its own page.
+
+Tests: 233 unit tests (35 new) and 16 Playwright tests (1 new). The new unit tests cover exact arithmetic and the parser (including the notebook's own sums), the solvers line by line, figures (a completed right triangle, symbolic sides, impossible triangles), graphs, typesetting and escaping, seeded test generation across every topic, block normalization from loose model input, board export, and a Math session through the agent loop with a scripted model — the board, the selection, tool errors reported back, save conflicts, blank boards and duplication.
+
+The new Playwright test drives the whole flow: a scripted tutor sets the topic, adds the rule, draws the triangle, works the derivation out and generates a test; a question is answered and revealed; the calculator's `12/13 + 5/13` lands on the board; a whiteboard stroke is drawn with the mouse; a follow-up with a block selected adds a note to it; and a test-paper PDF and a Markdown study sheet are exported.
+
+Real software (throwaway profile, Ollama gemma4:e4b — a 4B model, deliberately small):
+- **"Teach me the Pythagorean theorem…"** (`scripts/math-smoke.mjs`): the board came back with the rule, two worked derivations (`c = 5` and `b = 2√10`) and a four-question test, in 55 s. Both derivations and every test answer were re-checked against the engine and matched, a question answered in the UI was marked correct, and PDF, test paper and Markdown exports took under 2 s. The follow-up on a selected block took 12 s.
+- The first run of that prompt exposed three things a small model gets wrong, all now handled rather than refused: block types it invents (`type: "block"`, `type: "section"`) are guessed from the fields, `solve_steps` takes a letter for the side to find and verifies three given sides instead of erroring, and a right-angle vertex that contradicts the given sides falls back to treating them as the legs.
+- **Packaged build** (`scripts/verify-packaged.mjs`): the installed 6.0.0 app produces the same notebook derivation, `17/13` and `√3/2` from the calculator, and board PDF, test-paper PDF and Markdown exports.
+
+### Known gaps and follow-ups from M6
+- **Solvers** cover expressions, linear and quadratic equations, Pythagoras and right-triangle trigonometry. Systems of equations, inequalities, logarithm and trigonometric equations, calculus and geometry beyond triangles are not solved step by step (the model can still write those steps itself, with `calculate` for the numbers).
+- **Exact arithmetic** covers fractions and a single square root; nested or added roots (`√2 + √3`) fall back to decimals.
+- **PNG export** measures the page from the blocks rather than from the browser, so a very long board can get extra white space at the bottom; PDF is the exact one.
+- **Whiteboard** strokes are not pressure-sensitive and there is no shape recognition or text tool; the eraser removes whole strokes.
+- **Handwriting and photos:** a photo of a page cannot be read into a board yet (attach it in Chat with a vision model instead).
+- **Real models:** verified with scripted models end to end; the real-model run is `scripts/math-smoke.mjs`.
+
+---
+
+---
+
 ## M2 Cowork — original goals
 
 Give Cellar an agent mode like Claude Cowork: describe an outcome, the model plans, works through steps using tools in a chosen folder, and you watch progress and steer.
@@ -424,3 +475,14 @@ Things that are easy to get wrong when continuing:
 - **Menus:** registering the `editMenu` role on Windows can keep Ctrl+Z/C/V from reaching page handlers. Chromium handles those keys in text fields without the menu.
 - **Model tolerance:** a strict `kind` in the chart schema rejected a model's `type: "line"`. Optional fields plus normalization after validation work better than enums in tool schemas.
 - **Races with the model:** an edit made less than the save debounce before sending a message was overwritten by the model's next tool change. Flush pending saves before sending, and keep the replaced state on the undo stack.
+
+## Technical notes learned in M6
+
+- **Exact arithmetic beats a bigger model.** Writing every value as `c · √r` over bigint fractions covers the whole school syllabus (fractions, simplified roots, rationalized denominators, the special angles) in about 200 lines, and it is what lets a 2B model produce a correct study sheet: the model chooses what to teach, Cellar computes it.
+- **Parsing what models write** needs more tolerance than a calculator grammar: `sqrt3` and `sin30` tokenize as one identifier, so a known function name followed by digits is split; `log2` must stay one name. `-4^2` is `-(4^2)`, so unary minus binds looser than `^`. `rac{\sqrt{3}}{2}` needs a brace-balanced expansion — a regex for `frac{…}{…}` cannot see nested braces.
+- **Rounding for tidiness is not free:** clamping every result to 13 significant digits made `√3` come back as 1.732050807569. Only trigonometry needs that cleanup (so `tan 45° = 1`); roots and logarithms keep full precision.
+- **Figures have to accept letters.** Real problems label sides `a`, `x` or `√3`, so a length is a value *and* a label: a right triangle with one symbolic side still gets drawn by measuring the other two, and an all-symbolic triangle falls back to a 3-4-5 shape so the labels sit where they belong.
+- **Typesetting without a library:** stacked fractions (`inline-flex` column with a `border-top`) and radicals (a `√` glyph plus an overlined radicand) are enough for a notebook, work in the export window with scripts disabled, and avoid shipping KaTeX into the PDF renderer. Unicode letters must be part of the "name" token, or `karşı/hip` never becomes a fraction.
+- **A strict IPC schema silently drops new fields.** `chat:send` validates with a zod object, so a new `math`/`mathSelection` pair on `SendMessageInput` reaches the orchestrator only after the schema learns about it — the symptom is a conversation created as a plain chat and the editor redirecting home.
+- **PNG capture needs a height up front**, and the render window has JavaScript disabled, so the page cannot measure itself. Estimating from the blocks (figures and graphs report their real pixel size) is close enough; PDF stays the exact export.
+- **Playwright:** `[data-block-type="figure"] svg` also matches every Lucide icon in the block toolbar — match the figure's own class. A block added below the fold needs `scrollIntoViewIfNeeded()` before `boundingBox()`, or the synthetic mouse draws outside the window and nothing is drawn.

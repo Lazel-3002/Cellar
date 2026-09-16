@@ -62,7 +62,7 @@ interface MessageRow {
   created_at: number;
 }
 
-const kindOf = (kind: string): ConversationKind => (kind === 'task' || kind === 'code' || kind === 'design' ? kind : 'chat');
+const kindOf = (kind: string): ConversationKind => (kind === 'task' || kind === 'code' || kind === 'design' || kind === 'math' ? kind : 'chat');
 
 const toConversation = (r: ConversationRow): Conversation => ({
   id: r.id,

@@ -27,6 +27,8 @@ export interface CellarPaths {
   whisper: string;
   /** Working folders of Design sessions. */
   designs: string;
+  /** Working folders of Math sessions. */
+  boards: string;
   /** Claude Desktop's config and Claude Code's skills, for importing. */
   claudeDesktopConfig: string;
   claudeSkills: string;
@@ -62,6 +64,7 @@ export function initPaths(userData: string, artifactRuntimeDir: string): CellarP
     commands: join(cellarHome, 'commands'),
     whisper: join(cellarHome, 'whisper'),
     designs: join(cellarHome, 'designs'),
+    boards: join(cellarHome, 'boards'),
     claudeDesktopConfig: join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json'),
     claudeSkills: join(home, '.claude', 'skills'),
   };

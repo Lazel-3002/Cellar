@@ -7,6 +7,7 @@ import { invoke } from '@/lib/ipc';
 import { useAppInfo } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { useDesignLayout } from '@/stores/design';
+import { useMathLayout } from '@/stores/math';
 import { useUi } from '@/stores/ui';
 
 function AppMenu() {
@@ -62,11 +63,14 @@ export function TitleBar() {
   const { sidebarOpen: mainSidebar, toggleSidebar: toggleMainSidebar, setSearchOpen, incognito, setIncognito } = useUi();
   const isCode = pathname.startsWith('/code');
   const isDesignEditor = pathname.startsWith('/design/');
+  const isMathBoard = pathname.startsWith('/math/');
   const designSidebar = useDesignLayout((s) => s.sidebar);
   const setDesignSidebar = useDesignLayout((s) => s.setSidebar);
-  // The design editor keeps the sidebar closed unless it is opened there, so the canvas gets the room.
-  const sidebarOpen = isDesignEditor ? designSidebar : mainSidebar;
-  const toggleSidebar = isDesignEditor ? () => setDesignSidebar(!designSidebar) : toggleMainSidebar;
+  const mathSidebar = useMathLayout((s) => s.sidebar);
+  const setMathSidebar = useMathLayout((s) => s.setSidebar);
+  // The design editor and the board keep the sidebar closed unless it is opened there, so the work gets the room.
+  const sidebarOpen = isDesignEditor ? designSidebar : isMathBoard ? mathSidebar : mainSidebar;
+  const toggleSidebar = isDesignEditor ? () => setDesignSidebar(!designSidebar) : isMathBoard ? () => setMathSidebar(!mathSidebar) : toggleMainSidebar;
   const mac = window.cellar.platform === 'darwin';
 
   const toggleIncognito = () => {
@@ -96,7 +100,10 @@ export function TitleBar() {
             <button
               aria-label="Chat and Cowork"
               onClick={() => void navigate({ to: '/' })}
-              className={cn('flex h-[26px] w-[34px] items-center justify-center rounded-lg border text-muted-foreground', !isCode && !pathname.startsWith('/design') ? 'border-seg-border bg-selected text-foreground' : 'border-transparent hover:text-foreground')}
+              className={cn(
+                'flex h-[26px] w-[34px] items-center justify-center rounded-lg border text-muted-foreground',
+                !isCode && !pathname.startsWith('/design') && !pathname.startsWith('/math') ? 'border-seg-border bg-selected text-foreground' : 'border-transparent hover:text-foreground',
+              )}
             >
               <MessagesSquare className="size-4" strokeWidth={1.75} />
             </button>

@@ -2,6 +2,7 @@ import { branchPath, latestLeaf } from '@shared/message-tree';
 import type { ApprovalDecision, ConversationKind, PermissionMode } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
 import type { DesignStartOptions } from '@shared/types/design';
+import type { MathStartOptions } from '@shared/types/math';
 import type {
   ChatStreamEvent,
   Conversation,
@@ -17,6 +18,8 @@ import { TaskRunner } from '../agent/runner';
 import { prepareCodeSession } from '../code/session';
 import { prepareDesignSession } from '../design/session';
 import { copyDesign, createDesign, designForConversation } from '../design/store';
+import { prepareMathSession } from '../math/session';
+import { boardForConversation, copyBoard, createBoard } from '../math/store';
 import { connectors } from '../connectors/manager';
 import { assistantContext } from '../customize/context';
 import { activeSkills } from '../customize/skills';
@@ -83,7 +86,7 @@ class ChatOrchestrator {
 
   init(): void {
     run("UPDATE messages SET status = 'stopped' WHERE status = 'streaming'");
-    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code', 'design') AND json_extract(task, '$.status') IN ('running', 'waiting')");
+    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code', 'design', 'math') AND json_extract(task, '$.status') IN ('running', 'waiting')");
   }
 
   private store(conversationId: string): ChatStore {
@@ -130,13 +133,27 @@ class ChatOrchestrator {
       store = this.store(input.conversationId);
       conversation = store.getConversation(input.conversationId);
     }
-    const kind: ConversationKind = conversation ? conversation.kind : input.design ? 'design' : input.code ? 'code' : input.task ? 'task' : 'chat';
+    const kind: ConversationKind = conversation ? conversation.kind : input.math ? 'math' : input.design ? 'design' : input.code ? 'code' : input.task ? 'task' : 'chat';
     const isTask = kind !== 'chat';
-    if (isTask && store.incognito) throw new Error(kind === 'code' ? 'Code sessions cannot be incognito.' : kind === 'design' ? 'Designs cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.');
-    if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) throw new Error(`This ${kind === 'code' ? 'session' : kind === 'design' ? 'design' : 'task'} is still working. Stop it or wait for it to finish first.`);
+    if (isTask && store.incognito) {
+      throw new Error(
+        kind === 'code' ? 'Code sessions cannot be incognito.' : kind === 'design' ? 'Designs cannot be incognito.' : kind === 'math' ? 'Math boards cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.',
+      );
+    }
+    if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) {
+      throw new Error(`This ${kind === 'code' ? 'session' : kind === 'design' ? 'design' : kind === 'math' ? 'board' : 'task'} is still working. Stop it or wait for it to finish first.`);
+    }
     if (!conversation) {
       const id = newId();
-      const task = input.design ? await prepareDesignSession() : input.code ? await prepareCodeSession(id, input.code, content) : input.task ? await this.tasks.prepare(id, input.task) : undefined;
+      const task = input.math
+        ? await prepareMathSession()
+        : input.design
+          ? await prepareDesignSession()
+          : input.code
+            ? await prepareCodeSession(id, input.code, content)
+            : input.task
+              ? await this.tasks.prepare(id, input.task)
+              : undefined;
       const created = Date.now();
       conversation = {
         id,
@@ -154,9 +171,15 @@ class ChatOrchestrator {
       };
       store.createConversation(conversation);
       if (input.design && task?.design) createDesign(id, input.design, task.design.designId);
+      if (input.math && task?.math) createBoard(id, input.math, task.math.boardId);
     }
     if (kind === 'design' && input.designSelection !== undefined && conversation.task?.design) {
       const task = { ...conversation.task, design: { ...conversation.task.design, selection: input.designSelection ?? undefined } };
+      store.updateConversation(conversation.id, { task });
+      conversation = { ...conversation, task };
+    }
+    if (kind === 'math' && input.mathSelection !== undefined && conversation.task?.math) {
+      const task = { ...conversation.task, math: { ...conversation.task.math, selection: input.mathSelection ?? undefined } };
       store.updateConversation(conversation.id, { task });
       conversation = { ...conversation, task };
     }
@@ -181,7 +204,9 @@ class ChatOrchestrator {
       currentLeafId: assistant.id,
       model: input.model,
       settings: { ...conversation.settings, thinking: input.thinking },
-      ...(conversation.title ? {} : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : kind === 'design' ? 'New design' : isTask ? 'New task' : 'New chat')) }),
+      ...(conversation.title
+        ? {}
+        : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : kind === 'design' ? 'New design' : kind === 'math' ? 'New board' : isTask ? 'New task' : 'New chat')) }),
     });
     this.notify(conversation.id);
     if (isTask) {
@@ -236,6 +261,42 @@ class ChatOrchestrator {
     const now = Date.now();
     this.sqlite.createConversation({ id, kind: 'design', title: `${source.title} (copy)`.slice(0, 120), projectId: null, starred: false, currentLeafId: null, settings: {}, task, incognito: false, createdAt: now, updatedAt: now });
     const copy = copyDesign(source.id, id, task.design!.designId);
+    this.notify(id);
+    return { conversationId: copy.conversationId };
+  }
+
+  /** A board with no messages yet (an empty page). */
+  async createBoard(options: MathStartOptions & { title?: string }): Promise<{ conversationId: string; boardId: string }> {
+    const id = newId();
+    const task = await prepareMathSession('done');
+    const now = Date.now();
+    this.sqlite.createConversation({
+      id,
+      kind: 'math',
+      title: options.title?.trim().slice(0, 120) || 'Untitled board',
+      projectId: null,
+      starred: false,
+      currentLeafId: null,
+      settings: {},
+      task,
+      incognito: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const board = createBoard(id, options, task.math!.boardId);
+    this.notify(id);
+    return { conversationId: id, boardId: board.id };
+  }
+
+  /** A copy of a board in a new conversation (without the chat). */
+  async duplicateBoard(conversationId: string): Promise<{ conversationId: string }> {
+    const source = boardForConversation(conversationId);
+    if (!source) throw new Error('Board not found');
+    const id = newId();
+    const task = await prepareMathSession('done');
+    const now = Date.now();
+    this.sqlite.createConversation({ id, kind: 'math', title: `${source.title} (copy)`.slice(0, 120), projectId: null, starred: false, currentLeafId: null, settings: {}, task, incognito: false, createdAt: now, updatedAt: now });
+    const copy = copyBoard(source.id, id, task.math!.boardId);
     this.notify(id);
     return { conversationId: copy.conversationId };
   }

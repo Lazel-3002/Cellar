@@ -1,6 +1,8 @@
 import type { ComponentType, SVGProps } from 'react';
 import {
   Brain,
+  Calculator,
+  ChartSpline,
   File,
   FileArchive,
   FileCode,
@@ -13,15 +15,20 @@ import {
   Hand,
   History,
   LayoutTemplate,
+  ListChecks,
   ListTodo,
   Map as MapIcon,
   Palette,
   PenTool,
   Plug,
   Presentation,
+  Plus,
   Search,
+  Shapes,
   Sheet,
+  Sigma,
   Sparkles,
+  SquareFunction,
   SquareTerminal,
   Stethoscope,
   TextSearch,
@@ -39,7 +46,15 @@ export const PERMISSION_MODES: Record<PermissionMode, { label: string; short: st
 };
 
 export const conversationRoute = (kind: ConversationKind) =>
-  kind === 'code' ? ('/code/$conversationId' as const) : kind === 'design' ? ('/design/$conversationId' as const) : kind === 'task' ? ('/task/$conversationId' as const) : ('/chat/$conversationId' as const);
+  kind === 'code'
+    ? ('/code/$conversationId' as const)
+    : kind === 'design'
+      ? ('/design/$conversationId' as const)
+      : kind === 'math'
+        ? ('/math/$conversationId' as const)
+        : kind === 'task'
+          ? ('/task/$conversationId' as const)
+          : ('/chat/$conversationId' as const);
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -114,6 +129,34 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>
     }
     case 'delete_artboard':
       return { icon: LayoutTemplate, done: 'Deleted', active: 'Deleting', failed: "Couldn't delete", target: text(args.artboard) };
+    case 'calculate': {
+      const expressions = Array.isArray(args.expressions) ? args.expressions : [args.expressions];
+      const first = short(text(expressions[0]), 48);
+      return { icon: Calculator, done: 'Worked out', active: 'Working out', failed: "Couldn't work out", target: expressions.length > 1 ? `${first} and ${expressions.length - 1} more` : first };
+    }
+    case 'get_board':
+      return { icon: Sigma, done: 'Looked at the board', active: 'Looking at the board', failed: "Couldn't read the board", target: text(args.block) || undefined };
+    case 'set_board':
+      return { icon: Sigma, done: 'Set up the board', active: 'Setting up the board', failed: "Couldn't set up the board", target: short(text(args.topic), 48) || undefined };
+    case 'add_blocks': {
+      const blocks = Array.isArray(args.blocks) ? (args.blocks as Array<Record<string, unknown>>) : [];
+      const kinds = [...new Set(blocks.map((block) => text(block?.type) || 'block'))].join(', ');
+      return { icon: Plus, done: 'Added', active: 'Adding', failed: "Couldn't add", target: kinds || `${blocks.length} blocks` };
+    }
+    case 'update_block':
+      return { icon: PenTool, done: 'Changed', active: 'Changing', failed: "Couldn't change", target: text(args.block) };
+    case 'delete_blocks':
+      return { icon: PenTool, done: 'Removed', active: 'Removing', failed: "Couldn't remove", target: Array.isArray(args.blocks) ? args.blocks.join(', ') : text(args.blocks) };
+    case 'solve_steps':
+      return { icon: SquareFunction, done: 'Worked through', active: 'Working through', failed: "Couldn't solve", target: short(text(args.input), 56) || (args.sides ? 'the triangle' : args.triangle ? 'the ratios' : undefined) };
+    case 'draw_figure':
+      return { icon: Shapes, done: 'Drew', active: 'Drawing', failed: "Couldn't draw", target: `${text(args.kind) || 'a figure'}${Array.isArray(args.sides) && args.sides.length ? ` (${args.sides.join(', ')})` : ''}` };
+    case 'plot_graph': {
+      const functions = Array.isArray(args.functions) ? args.functions.map((fn) => (typeof fn === 'string' ? fn : text((fn as Record<string, unknown>)?.expr))) : [];
+      return { icon: ChartSpline, done: 'Graphed', active: 'Graphing', failed: "Couldn't graph", target: functions.filter(Boolean).join(', ') || undefined };
+    }
+    case 'make_quiz':
+      return { icon: ListChecks, done: 'Made a test on', active: 'Making a test on', failed: "Couldn't make the test", target: text(args.topic) || (Array.isArray(args.questions) ? `${args.questions.length} questions` : undefined) };
     case 'get_diagnostics':
       return { icon: Stethoscope, done: 'Checked for problems in', active: 'Checking for problems in', failed: "Couldn't check", target: path || 'the project' };
     case 'skill':

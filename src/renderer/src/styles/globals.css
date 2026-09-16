@@ -37,6 +37,14 @@
   --success: #2f8a4d;
   --warning: #b7791f;
   --titlebar-reserve: 140px;
+  /* Squared paper and maths blocks (shared with the board exporter). */
+  --m-line: rgba(20, 20, 19, 0.075);
+  --m-dot: rgba(20, 20, 19, 0.18);
+  --m-border: var(--divider);
+  --m-muted: var(--muted-foreground);
+  --m-accent-soft: color-mix(in srgb, var(--brand) 14%, transparent);
+  --m-sans: 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+  --m-math-font: 'Source Serif 4 Variable', 'Cambria Math', Georgia, serif;
   --chat-font: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
 }
 
@@ -68,6 +76,8 @@
   --danger: #ef6b52;
   --success: #5bb67a;
   --warning: #e0a43a;
+  --m-line: rgba(240, 239, 236, 0.08);
+  --m-dot: rgba(240, 239, 236, 0.16);
 }
 
 @theme inline {

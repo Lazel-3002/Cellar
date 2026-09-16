@@ -18,6 +18,9 @@ import { assistantContext } from '../customize/context';
 import { buildDesignPrompt } from '../design/prompt';
 import { getDesign } from '../design/store';
 import { DESIGN_TOOLS } from '../design/tools';
+import { buildMathPrompt } from '../math/prompt';
+import { getBoard } from '../math/store';
+import { MATH_TOOLS } from '../math/tools';
 import type { ChatStore } from '../db/chat-store';
 import { bus } from '../lib/events';
 import { logger } from '../lib/log';
@@ -86,6 +89,7 @@ function stableJson(value: unknown): string {
 function agentNoun(kind: ConversationKind | undefined): { fallback: string; settings: string; mode: string } {
   if (kind === 'chat') return { fallback: 'A chat', settings: '', mode: 'This chat' };
   if (kind === 'design') return { fallback: 'A design', settings: 'Settings → Cowork', mode: 'Design' };
+  if (kind === 'math') return { fallback: 'A board', settings: 'Settings → Cowork', mode: 'Math' };
   return kind === 'code' ? { fallback: 'A Code session', settings: 'Settings → Code', mode: 'Code' } : { fallback: 'A Cowork task', settings: 'Settings → Cowork', mode: 'Cowork' };
 }
 
@@ -360,7 +364,7 @@ export class TaskRunner {
       incognito: store.incognito,
       shell: code ? powershell.exe : undefined,
       beforeChange: code && !code.isGit ? (abs) => snapshotBeforeChange(conversationId, workspace.root, abs) : undefined,
-      afterChange: run.chat || task.design ? undefined : (abs) => problemsAfterChange(abs, workspace.root),
+      afterChange: run.chat || task.design || task.math ? undefined : (abs) => problemsAfterChange(abs, workspace.root),
       recordFile: (file) => {
         const path = workspace.relative(file.absolutePath);
         const previous = task.files.find((f) => f.path === path);
@@ -388,7 +392,15 @@ export class TaskRunner {
         return;
       }
       // Mode changes during a run apply from the next step.
-      const baseTools = run.chat ? chatBaseTools(app) : task.design ? DESIGN_TOOLS : task.code ? codeToolsFor(task.code.mode, task.permissionMode, app) : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
+      const baseTools = run.chat
+        ? chatBaseTools(app)
+        : task.math
+          ? MATH_TOOLS
+          : task.design
+            ? DESIGN_TOOLS
+            : task.code
+              ? codeToolsFor(task.code.mode, task.permissionMode, app)
+              : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
       const extras = await extraTools({ settings: app, skills: customize.skills.length > 0, incognito: store.incognito, readOnly: task.permissionMode === 'plan' && !run.chat });
       const tools = [...baseTools, ...extras];
       const schemas = tools.map(toolSchema);
@@ -407,6 +419,19 @@ export class TaskRunner {
             toolNames: tools.map((t) => t.name),
             extraSections: customize.sections,
             textProtocol,
+          })
+        : task.math
+        ? buildMathPrompt({
+            modelName: entry.displayName,
+            userName: app.userName,
+            preferences: app.personalPreferences,
+            board: getBoard(task.math.boardId),
+            selection: task.math.selection,
+            toolNames: tools.map((t) => t.name),
+            customSystemPrompt,
+            textProtocol,
+            extraSections: customize.sections,
+            outlineChars: Math.round(Math.min(16_000, Math.max(2_000, contextLength * 0.2 * 3.2))),
           })
         : task.design
         ? buildDesignPrompt({
@@ -789,7 +814,7 @@ export class TaskRunner {
       call.status = 'done';
       call.finishedAt = Date.now();
       // After a change, reading or listing again is legitimate (for example to check the edit).
-      if (tool.category === 'edit' || tool.category === 'command' || tool.category === 'design') counts.clear();
+      if (tool.category === 'edit' || tool.category === 'command' || tool.category === 'design' || tool.category === 'math') counts.clear();
     } catch (err) {
       if (signal.aborted) {
         call.status = 'cancelled';

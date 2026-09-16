@@ -28,6 +28,7 @@ import { detectHardware } from '../system/hardware';
 import { paths } from '../system/paths';
 import { applyTitleBarTheme } from '../window';
 import { registerDesignHandlers } from '../design/ipc';
+import { registerMathHandlers } from '../math/ipc';
 import { registerM4Handlers } from './m4-handlers';
 import { handle } from './register';
 
@@ -56,6 +57,8 @@ const sendSchema = z.object({
   code: codeStartSchema.optional(),
   design: z.object({ format: z.enum(['slides', 'document', 'social', 'poster', 'web', 'mobile', 'custom']), themeId: z.string().max(60) }).optional(),
   designSelection: z.object({ artboardId: z.string().max(60), elementIds: z.array(z.string().max(60)).max(400) }).nullable().optional(),
+  math: z.object({ topic: z.string().max(400).optional(), paper: z.enum(['grid', 'dots', 'lined', 'plain']).optional(), angleMode: z.enum(['deg', 'rad']).optional() }).optional(),
+  mathSelection: z.object({ blockId: z.string().max(60) }).nullable().optional(),
 });
 
 const approvalSchema = z.object({ action: z.enum(['allow', 'allow-all', 'deny']), feedback: z.string().max(4000).optional() });
@@ -314,4 +317,5 @@ export function registerIpcHandlers(): void {
   registerSideChatHandlers();
   registerM4Handlers();
   registerDesignHandlers();
+  registerMathHandlers();
 }

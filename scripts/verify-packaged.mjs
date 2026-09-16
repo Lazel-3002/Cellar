@@ -47,5 +47,35 @@ for (const format of ['pdf', 'png', 'pptx']) {
   console.log(`design ${format}:`, written ? `${statSync(written).size} bytes` : 'cancelled');
 }
 await ipc('chat:delete', [conversationId]);
+
+// M6: a board with a figure, worked steps and a generated test, exported to PDF and Markdown.
+const { conversationId: boardConversation, boardId } = await ipc('math:create', { topic: 'Packaged check', paper: 'grid' });
+const blankBoard = await ipc('math:get', boardConversation);
+const quiz = await ipc('math:quiz', { topic: 'pythagoras', count: 2, seed: 'packaged' });
+const solution = await ipc('math:solve', { sides: { b: '√3', c: 2 } });
+console.log('solver:', solution.steps.map((step) => step.math).join(' → '));
+console.log('calculator:', (await ipc('math:calculate', '12/13 + 5/13')).answer, '·', (await ipc('math:calculate', 'cos(30)')).answer);
+await ipc(
+  'math:save',
+  {
+    ...blankBoard,
+    blocks: [
+      { id: 'b1', type: 'formula', title: 'Pythagorean theorem', formula: 'a^2 + b^2 = c^2' },
+      { id: 'b2', type: 'figure', figure: { kind: 'right-triangle', labels: ['A', 'B', 'C'], sides: [3, 4], rightAngleAt: 1 } },
+      { id: 'b3', type: 'derivation', title: solution.title, steps: solution.steps, result: solution.result },
+      { id: 'b4', type: 'quiz', title: quiz.title, instructions: quiz.instructions, questions: quiz.questions },
+    ],
+  },
+  blankBoard.version,
+);
+for (const [format, answers] of [['pdf', true], ['pdf', false], ['md', true]]) {
+  const target = join(exportDir, `board-${format}-${answers ? 'answers' : 'test'}.${format}`);
+  await app.evaluate(({ dialog }, file) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+  }, target);
+  const written = await ipc('math:export', { boardId, format, answers });
+  console.log(`board ${format}${answers ? '' : ' (test paper)'}:`, written ? `${statSync(written).size} bytes` : 'cancelled');
+}
+await ipc('chat:delete', [boardConversation]);
 await win.screenshot({ path: join(project, 'test-results', 'screenshots', 'packaged-home.png') });
 await app.close();

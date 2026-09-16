@@ -7,6 +7,7 @@ import type { ModelRef } from '@shared/types/models';
 import { pdfAvailable } from '../agent/documents';
 import { chatBaseTools, codeToolsFor, extraTools, toolsFor, type AgentTool } from '../agent/tools';
 import { DESIGN_TOOLS } from '../design/tools';
+import { MATH_TOOLS } from '../math/tools';
 import { chat } from '../chat/orchestrator';
 import { providers } from '../providers/registry';
 import { settings } from '../services/settings';
@@ -80,9 +81,18 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
       );
     }
   }
-  const base = scope === 'chat' ? chatBaseTools(app) : scope === 'design' ? DESIGN_TOOLS : scope === 'code' ? codeToolsFor(codeMode, permissionMode, app) : toolsFor(permissionMode, app, { pdf: pdfAvailable() });
+  const base =
+    scope === 'chat'
+      ? chatBaseTools(app)
+      : scope === 'math'
+        ? MATH_TOOLS
+        : scope === 'design'
+          ? DESIGN_TOOLS
+          : scope === 'code'
+            ? codeToolsFor(codeMode, permissionMode, app)
+            : toolsFor(permissionMode, app, { pdf: pdfAvailable() });
   const skills = await activeSkills();
-  const extras = await extraTools({ settings: app, skills: skills.length > 0, incognito, readOnly: scope !== 'chat' && scope !== 'design' && permissionMode === 'plan' });
+  const extras = await extraTools({ settings: app, skills: skills.length > 0, incognito, readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && permissionMode === 'plan' });
   const tools = [...base, ...extras].map(describe);
   const connectorPolicies = new Map<string, string>();
   for (const tool of extras) if (tool.category === 'connector') connectorPolicies.set(tool.name, (await tool.approval?.({}, undefined as never)) ? 'ask' : 'allow');

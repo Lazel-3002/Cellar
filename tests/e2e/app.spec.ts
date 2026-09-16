@@ -33,6 +33,12 @@ async function send(text: string) {
 
 const lastAssistant = () => win.getByTestId('assistant-message').last();
 
+/** The Design and Math pages hide the sidebar, so open it before using its links. */
+async function openSidebar() {
+  if (!(await win.getByRole('link', { name: 'Projects', exact: true }).isVisible())) await win.getByRole('button', { name: 'Toggle sidebar  Ctrl+B' }).click();
+  await expect(win.getByRole('link', { name: 'Projects', exact: true })).toBeVisible();
+}
+
 test.beforeAll(async () => {
   mock = await startMockServer();
   profile = mkdtempSync(join(tmpdir(), 'cellar-e2e-'));
@@ -72,7 +78,7 @@ test.afterAll(async () => {
 });
 
 test('home screen mirrors the Claude layout', async () => {
-  for (const label of ['New', 'Projects', 'Artifacts', 'Scheduled', 'Customize', 'Design']) {
+  for (const label of ['New', 'Projects', 'Artifacts', 'Scheduled', 'Customize', 'Design', 'Math']) {
     await expect(win.getByRole('link', { name: label, exact: true })).toBeVisible();
   }
   await expect(win.getByText('Chats and tasks')).toBeVisible();
@@ -509,6 +515,98 @@ test('design: a model builds slides on the canvas, the user edits them and expor
     await win.getByRole('button', { name: 'Toggle sidebar  Ctrl+B' }).click();
     await win.getByRole('link', { name: 'Design', exact: true }).click();
     await expect(win.getByTestId('design-list')).toContainText('A pitch deck for Bean Club');
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('math: a tutor fills a board, the calculator and whiteboard work, and a test paper exports', async () => {
+  const out = mkdtempSync(join(tmpdir(), 'cellar-math-export-'));
+  try {
+    await openSidebar();
+    await win.getByRole('link', { name: 'Math', exact: true }).click();
+    await expect(win.getByText('What are we studying?')).toBeVisible();
+    await selectModel('mock-tutor');
+    await send('Teach me the Pythagorean theorem');
+    await expect(win.getByTestId('math-board')).toBeVisible({ timeout: 20_000 });
+    await expect(win.getByTestId('math-chat')).toContainText('three questions', { timeout: 30_000 });
+
+    // The rule, a drawn triangle, the worked steps and a test are all on the board.
+    const board = win.getByTestId('math-board');
+    await expect(board.locator('[data-block-type="formula"]')).toContainText('a');
+    await expect(board.locator('[data-block-type="figure"] svg.m-figure')).toBeVisible();
+    const steps = board.locator('[data-block-type="derivation"]');
+    // Cellar worked the arithmetic out, so the notebook lines are exact.
+    await expect(steps).toContainText('4 - 3');
+    await expect(steps).toContainText('a = 1');
+    await expect(board.locator('[data-block-type="quiz"] [data-testid^="question-"]')).toHaveCount(3);
+
+    // Answering a question is checked against the generated answer.
+    const question = board.locator('[data-block-type="quiz"] [data-testid^="question-"]').first();
+    await question.getByTestId(/^answer-/).fill('1');
+    await question.getByRole('button', { name: 'Check' }).click();
+    await expect(question).toContainText('Not quite.');
+    await question.getByRole('button', { name: 'Show the answer' }).click();
+    await expect(question).toContainText('Answer:');
+
+    // The calculator keeps fractions exact and can drop its working onto the board.
+    await win.getByTestId('calc-input').fill('12/13 + 5/13');
+    await expect(win.getByTestId('calc-result')).toContainText('17');
+    await win.getByTestId('calc-insert').click();
+    await expect(board.locator('[data-block-type="derivation"]')).toHaveCount(2);
+
+    // A whiteboard block takes freehand strokes.
+    await win.getByTestId('board-insert').click();
+    await win.getByTestId('insert-whiteboard').click();
+    const canvas = win.getByTestId('sketch-canvas').last();
+    await canvas.scrollIntoViewIfNeeded();
+    const box = (await canvas.boundingBox())!;
+    await win.mouse.move(box.x + 60, box.y + 60);
+    await win.mouse.down();
+    await win.mouse.move(box.x + 160, box.y + 120, { steps: 8 });
+    await win.mouse.move(box.x + 260, box.y + 70, { steps: 8 });
+    await win.mouse.up();
+    await expect(canvas.locator('path')).toHaveCount(1);
+
+    // A follow-up with a block selected: the model is told which one.
+    await board.locator('[data-block-type="formula"]').click();
+    await win.getByTestId('math-chat').getByTestId('composer-input').fill('Add a reminder to this');
+    await win.getByTestId('math-chat').getByTestId('composer-send').click();
+    await expect(win.getByTestId('math-chat')).toContainText('Added a reminder.', { timeout: 20_000 });
+    await expect(board.locator('[data-block-type="formula"]')).toContainText('longest side');
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-math.png') });
+
+    // Exports: the study sheet with answers, and a test paper with the key at the end.
+    const pdf = join(out, 'board.pdf');
+    const md = join(out, 'board.md');
+    for (const [label, file] of [
+      ['Test paper (answer key at the end)', pdf],
+      ['Markdown study sheet', md],
+    ] as const) {
+      await app.evaluate(({ dialog }, target) => {
+        dialog.showSaveDialog = (async () => ({ canceled: false, filePath: target })) as unknown as typeof dialog.showSaveDialog;
+      }, file);
+      await win.getByTestId('board-export').click();
+      await win.getByRole('menuitem', { name: label }).click();
+      await expect.poll(() => existsSync(file), { timeout: 40_000 }).toBe(true);
+    }
+    expect(readFileSync(pdf).subarray(0, 5).toString()).toBe('%PDF-');
+    const sheet = readFileSync(md, 'utf8');
+    expect(sheet).toContain('a² + b² = c²');
+    // The study sheet keeps the answers inline; the test paper PDF is the one with the key at the end.
+    expect(sheet).toContain('**Answer:**');
+    expect(sheet).toContain('a² = 4 - 3');
+
+    const conversationId = (await win.evaluate(() => location.hash)).split('/').pop()!;
+    const saved = await ipc<{ topic: string; blocks: Array<{ type: string }> }>('math:get', conversationId);
+    expect(saved.topic).toBe('Right triangles');
+    expect(saved.blocks.map((block) => block.type)).toContain('sketch');
+
+    await openSidebar();
+    await win.getByRole('link', { name: 'Math', exact: true }).click();
+    // The card shows the board's topic and the first line of maths on it.
+    await expect(win.getByTestId('board-list')).toContainText('Right triangles');
+    await expect(win.getByTestId('board-list')).toContainText('a² + b² = c²');
   } finally {
     rmSync(out, { recursive: true, force: true });
   }

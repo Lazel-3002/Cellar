@@ -123,6 +123,10 @@ export function useIpcSync(): void {
         if (kind === 'commands' || kind === 'plugins') void qc.invalidateQueries({ queryKey: ['commands'] });
         if (kind === 'memory') void qc.invalidateQueries({ queryKey: keys.memory });
       }),
+      onEvent('math:changed', ({ conversationId }) => {
+        void qc.invalidateQueries({ queryKey: ['boards'] });
+        void qc.invalidateQueries({ queryKey: ['board', conversationId] });
+      }),
       onEvent('connectors:changed', (list) => qc.setQueryData(keys.connectors, list)),
       onEvent('scheduled:changed', () => {
         void qc.invalidateQueries({ queryKey: keys.scheduled });

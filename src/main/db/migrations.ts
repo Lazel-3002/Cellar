@@ -239,4 +239,18 @@ export const migrations: string[] = [
   );
   CREATE INDEX designs_updated ON designs(updated_at DESC);
   `,
+  /* 5: Math boards */ `
+  CREATE TABLE boards (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+    topic TEXT NOT NULL DEFAULT '',
+    paper TEXT NOT NULL DEFAULT 'grid',
+    angle_mode TEXT NOT NULL DEFAULT 'deg',
+    data TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX boards_updated ON boards(updated_at DESC);
+  `,
 ];

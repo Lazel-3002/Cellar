@@ -28,7 +28,7 @@ export async function startMockServer(): Promise<MockServer> {
   const server: Server = createServer((req, res) => {
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -91,6 +91,37 @@ export async function startMockServer(): Promise<MockServer> {
             send({}, 'tool_calls');
           } else {
             send({ content: selected ? 'Recolored it.' : 'Made a two-slide deck.' }, 'stop');
+          }
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-tutor' && parsed.tools?.length) {
+          // Scripted tutor: the rule, a figure and the worked steps, then a test; follow-ups act on the selected block.
+          const lastUser = parsed.messages.map((m) => m.role).lastIndexOf('user');
+          const results = parsed.messages.slice(lastUser).filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const system = String(parsed.messages[0]?.content ?? '');
+          const toolCall = (index: number, id: string, name: string, args: string) => {
+            send({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] });
+            for (const piece of args.match(/.{1,24}/gs) ?? []) send({ tool_calls: [{ index, function: { arguments: piece } }] });
+          };
+          const selected = /The user has block (\S+) selected/.exec(system)?.[1];
+          if (selected && results.length === 0) {
+            toolCall(0, 'u1', 'update_block', JSON.stringify({ block: selected, note: 'Remember: the hypotenuse is always the longest side.' }));
+            send({}, 'tool_calls');
+          } else if (!selected && results.length === 0) {
+            send({ content: 'Here is the rule first.' });
+            toolCall(0, 's1', 'set_board', JSON.stringify({ topic: 'Right triangles', paper: 'grid' }));
+            toolCall(1, 'b1', 'add_blocks', JSON.stringify({ blocks: [{ type: 'formula', title: 'Pythagorean theorem', formula: 'a^2 + b^2 = c^2', where: ['c: the hypotenuse'] }] }));
+            send({}, 'tool_calls');
+          } else if (!selected && results.length === 2) {
+            toolCall(0, 'f1', 'draw_figure', JSON.stringify({ kind: 'right-triangle', labels: ['A', 'B', 'C'], sides: ['a', '√3', 2], rightAngleAt: 'B', caption: 'Find a' }));
+            toolCall(1, 'v1', 'solve_steps', JSON.stringify({ sides: { b: '√3', c: 2 }, title: 'Find a' }));
+            send({}, 'tool_calls');
+          } else if (!selected && results.length === 4) {
+            toolCall(0, 'q1', 'make_quiz', JSON.stringify({ topic: 'pythagoras', count: 3, seed: 'e2e' }));
+            send({}, 'tool_calls');
+          } else {
+            send({ content: selected ? 'Added a reminder.' : 'That is the theorem, a worked example and three questions.' }, 'stop');
           }
           res.end('data: [DONE]\n\n');
           return;

@@ -1,8 +1,9 @@
 /** Cowork: an agent that works through a task with tools inside a folder. Code sessions share this machinery. */
 import type { CodeSessionInfo } from './code';
 import type { DesignSessionInfo } from './design';
+import type { MathSessionInfo } from './math';
 
-export type ConversationKind = 'chat' | 'task' | 'code' | 'design';
+export type ConversationKind = 'chat' | 'task' | 'code' | 'design' | 'math';
 
 /**
  * - ask: file changes and commands wait for approval
@@ -59,10 +60,12 @@ export interface TaskState {
   code?: CodeSessionInfo;
   /** Present for Design sessions. */
   design?: DesignSessionInfo;
+  /** Present for Math sessions. */
+  math?: MathSessionInfo;
 }
 
-/** connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget. design: canvas changes (undoable, never ask). */
-export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design';
+/** connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget. design and math: canvas or board changes (undoable, never ask). */
+export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math';
 
 export type ToolPartStatus = 'streaming' | 'awaiting-approval' | 'running' | 'done' | 'error' | 'denied' | 'cancelled';
 

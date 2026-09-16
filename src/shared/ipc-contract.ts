@@ -35,6 +35,7 @@ import type {
   ThinkingLevel,
 } from './types/chat';
 import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary } from './types/design';
+import type { MathBoard, MathBoardSummary, MathChangedEvent, MathExportRequest, MathStartOptions } from './types/math';
 import type { DownloadJob, HfModelSummary, HfRepoDetail, HfSearchQuery, QuantFit, StartDownloadInput } from './types/hub';
 import type {
   LoadConfig,
@@ -288,6 +289,23 @@ export interface IpcInvokeMap {
   'design:duplicate': Handler<[conversationId: string], { conversationId: string }>;
   /** Asks where to save and writes PNG, PDF or PowerPoint; null when cancelled. */
   'design:export': Handler<[request: DesignExportRequest], string | null>;
+
+  'math:list': Handler<[], MathBoardSummary[]>;
+  /** The board of a Math conversation. */
+  'math:get': Handler<[conversationId: string], MathBoard>;
+  /** A blank board without a first message; returns its conversation. */
+  'math:create': Handler<[options: MathStartOptions & { title?: string }], { conversationId: string; boardId: string }>;
+  /** Saves an edited board; fails when `baseVersion` is no longer the latest (reload and retry). */
+  'math:save': Handler<[board: MathBoard, baseVersion: number], MathBoard>;
+  'math:duplicate': Handler<[conversationId: string], { conversationId: string }>;
+  /** Asks where to save and writes a PDF, a PNG or a Markdown study sheet; null when cancelled. */
+  'math:export': Handler<[request: MathExportRequest], string | null>;
+  /** The calculator: exact and decimal answers, optionally with the reduction. */
+  'math:calculate': Handler<[expression: string, options?: { angle?: 'deg' | 'rad'; steps?: boolean; decimals?: number }], import('./math/calc').CalcResult>;
+  /** Step-by-step solutions, worked out by Cellar rather than by a model. */
+  'math:solve': Handler<[request: import('./math/solve').SolveRequest], import('./math/solve').Solution & { text: string }>;
+  /** Generates a practice test with answers and worked solutions. */
+  'math:quiz': Handler<[request: import('./math/quiz').QuizRequest], import('./math/quiz').GeneratedQuiz>;
 }
 
 export interface IpcEventMap {
@@ -316,6 +334,7 @@ export interface IpcEventMap {
   /** Sent to the quick entry window each time it opens. */
   'quick:shown': Record<string, never>;
   'design:changed': DesignChangedEvent;
+  'math:changed': MathChangedEvent;
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;
@@ -475,6 +494,15 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'design:save': true,
   'design:duplicate': true,
   'design:export': true,
+  'math:list': true,
+  'math:get': true,
+  'math:create': true,
+  'math:save': true,
+  'math:duplicate': true,
+  'math:export': true,
+  'math:calculate': true,
+  'math:solve': true,
+  'math:quiz': true,
 };
 
 const eventChannelFlags: Record<EventChannel, true> = {
@@ -501,6 +529,7 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'projects:index': true,
   'quick:shown': true,
   'design:changed': true,
+  'math:changed': true,
 };
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelFlags) as InvokeChannel[];

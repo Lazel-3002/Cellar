@@ -92,7 +92,12 @@ export function useAppCommands(): void {
   useEffect(
     () =>
       onEvent('tasks:notify', (notice) => {
-        if (notice.conversationId && [`/task/${notice.conversationId}`, `/code/${notice.conversationId}`, `/chat/${notice.conversationId}`, `/design/${notice.conversationId}`].includes(pathname)) return;
+        if (
+          notice.conversationId &&
+          [`/task/${notice.conversationId}`, `/code/${notice.conversationId}`, `/chat/${notice.conversationId}`, `/design/${notice.conversationId}`, `/math/${notice.conversationId}`].includes(pathname)
+        ) {
+          return;
+        }
         const open = notice.conversationId
           ? { label: 'Open', onClick: () => void navigate({ to: conversationRoute(notice.conversationKind), params: { conversationId: notice.conversationId } }) }
           : { label: 'Scheduled', onClick: () => void navigate({ to: '/scheduled' }) };
