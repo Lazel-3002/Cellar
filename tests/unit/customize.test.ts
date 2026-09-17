@@ -209,7 +209,7 @@ describe('connectors', () => {
       ['broken', 'ask'],
     ]);
     const lookup = await connectors.callTool(status.config.id, 'lookup', { item: 'bolts' }, new AbortController().signal);
-    expect(lookup).toEqual({ text: 'bolts: 42 in stock (env t0k)', isError: false });
+    expect(lookup).toEqual({ text: 'bolts: 42 in stock (env t0k)', isError: false, images: [] });
     expect((await connectors.callTool(status.config.id, 'broken', {}, new AbortController().signal)).isError).toBe(true);
 
     await connectors.setToolPolicy(status.config.id, 'broken', 'off');
