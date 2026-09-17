@@ -1,6 +1,6 @@
 import PptxGenJS from 'pptxgenjs';
 import { inlineRuns, paragraphs } from '@shared/design/text';
-import { chartPalette, fontName, hex6, mixColors, parseRgb, resolveColor } from '@shared/design/theme';
+import { chartPalette, fontName, gradientStops, hex6, mixColors, parseRgb, resolveColor } from '@shared/design/theme';
 import type { Artboard, ChartElement, DesignElement, DesignTheme, TextElement } from '@shared/types/design';
 import type { ResolvedImage } from './images';
 
@@ -63,7 +63,7 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
     const pt = (px: number) => Math.round(px * k * 72 * 10) / 10;
     const inch = (px: number) => Math.round(px * k * 10000) / 10000;
     const pos = (el: Pick<DesignElement, 'x' | 'y' | 'w' | 'h'>) => ({ x: ox + inch(el.x), y: oy + inch(el.y), w: Math.max(0.01, inch(el.w)), h: Math.max(0.01, inch(el.h)) });
-    const bg = artboard.gradient ? resolveColor(artboard.gradient.from, theme, 'background') : resolveColor(artboard.background, theme, 'background');
+    const bg = artboard.gradient ? resolveColor(gradientStops(artboard.gradient)[0].color, theme, 'background') : resolveColor(artboard.background, theme, 'background');
     slide.background = { color: hex6(bg === 'transparent' ? '#FFFFFF' : bg) };
     if (ox > 0.001 || oy > 0.001) {
       // Letterbox artboards of other proportions on the slide.
@@ -102,7 +102,7 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
         }
         case 'rect':
         case 'ellipse': {
-          const fillColor = el.gradient ? resolveColor(el.gradient.from, theme, 'primary') : resolveColor(el.fill, theme, 'transparent');
+          const fillColor = el.gradient ? resolveColor(gradientStops(el.gradient)[0].color, theme, 'primary') : resolveColor(el.fill, theme, 'transparent');
           const rounded = el.type === 'rect' && !!el.radius;
           slide.addShape(el.type === 'ellipse' ? 'ellipse' : rounded ? 'roundRect' : 'rect', {
             ...pos(el),

@@ -135,6 +135,13 @@ export function newArtboardId(used: Iterable<string>): string {
   return `a${n}`;
 }
 
+let groupCounter = 0;
+/** A fresh id for a new group of elements. */
+export function newGroupId(): string {
+  groupCounter += 1;
+  return `g${Date.now().toString(36)}${(groupCounter % 1000).toString(36)}`;
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** 120, "120", "120px", "50%" (of `relative`). */
@@ -168,12 +175,26 @@ export function canonicalFields(raw: Record<string, unknown>): Record<string, un
 function gradient(value: unknown): Gradient | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const g = value as Record<string, unknown>;
+  const angle = Number(g.angle ?? 180);
+  const type = String(g.type ?? '').toLowerCase() === 'radial' ? 'radial' : undefined;
+  const rawStops = Array.isArray(g.stops) ? g.stops : Array.isArray(g.colors) && g.colors.length > 2 ? g.colors.map((c) => ({ color: c })) : undefined;
+  if (rawStops) {
+    const stops = rawStops
+      .map((s, i) => {
+        const entry: Record<string, unknown> = s && typeof s === 'object' ? (s as Record<string, unknown>) : { color: s };
+        const color = normalizeColor(entry.color ?? entry.value);
+        if (!color) return undefined;
+        const at = Number(entry.at ?? entry.offset ?? entry.position ?? i / Math.max(1, rawStops.length - 1));
+        return { color, at: Number.isFinite(at) ? clamp(at > 1 ? at / 100 : at, 0, 1) : i / Math.max(1, rawStops.length - 1) };
+      })
+      .filter((s): s is { color: string; at: number } => !!s);
+    if (stops.length >= 2) return { angle: Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 180, ...(type ? { type } : {}), stops };
+  }
   const colors = Array.isArray(g.colors) ? g.colors : [];
   const from = normalizeColor(g.from ?? colors[0]);
   const to = normalizeColor(g.to ?? colors[1]);
   if (!from || !to) return undefined;
-  const angle = Number(g.angle ?? 180);
-  return { from, to, angle: Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 180 };
+  return { from, to, angle: Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 180, ...(type ? { type } : {}) };
 }
 
 function color(value: unknown): string | undefined {
@@ -213,6 +234,7 @@ export function normalizeElement(input: unknown, ctx: NormalizeContext): { eleme
     opacity: opacityRaw !== undefined && Number.isFinite(opacityRaw) ? clamp(opacityRaw > 1 ? opacityRaw / 100 : opacityRaw, 0, 1) : undefined,
     locked: bool(raw.locked) || undefined,
     hidden: bool(raw.hidden) || undefined,
+    groupId: typeof raw.groupId === 'string' && raw.groupId.trim() ? raw.groupId.trim().replace(/[^\w-]/g, '').slice(0, 40) : undefined,
   };
 
   let element: DesignElement;

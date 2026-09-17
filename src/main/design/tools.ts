@@ -26,6 +26,16 @@ const elementSchema = z
     align: z.string().optional().describe('left, center, right or justify'),
     list: z.string().optional().describe('text: "bullet" or "number" makes each line a list item'),
     fill: z.string().optional().describe('rect/ellipse fill, or a text box background'),
+    gradient: z
+      .looseObject({
+        type: z.string().optional().describe('"linear" (default) or "radial"'),
+        angle: num.optional().describe('Degrees, linear only (180 = top to bottom)'),
+        stops: z.array(z.looseObject({ color: z.string(), at: num.optional().describe('0-1 or 0-100 position along the gradient') })).optional().describe('2+ stops; omit for a simple from/to gradient'),
+        from: z.string().optional(),
+        to: z.string().optional(),
+      })
+      .optional()
+      .describe('rect/ellipse fill as a gradient instead of a flat color'),
     stroke: z.string().optional().describe('Border or line color'),
     radius: num.optional().describe('Corner radius in px'),
     src: z.string().optional().describe('image: "attachment:<id>" of an image the user attached; empty for a placeholder'),

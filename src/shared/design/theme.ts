@@ -1,4 +1,4 @@
-import type { ColorToken, DesignFormat, DesignTheme, Gradient, ThemeColors } from '../types/design';
+import type { ColorToken, DesignFormat, DesignTheme, Gradient, GradientStop, ThemeColors } from '../types/design';
 
 /**
  * Theme presets. Fonts are ones Windows and Office ship, so exported PowerPoint and Word files
@@ -241,8 +241,20 @@ export function resolveColor(value: string | undefined, theme: DesignTheme, fall
   return normalized;
 }
 
+/** A gradient's stops: its own `stops` when set, otherwise the `from`/`to` shorthand as two stops. */
+export function gradientStops(gradient: Gradient): GradientStop[] {
+  if (gradient.stops?.length) return gradient.stops;
+  return [
+    { color: gradient.from ?? 'primary', at: 0 },
+    { color: gradient.to ?? 'secondary', at: 1 },
+  ];
+}
+
 export function gradientCss(gradient: Gradient, theme: DesignTheme): string {
-  return `linear-gradient(${Math.round(gradient.angle)}deg, ${resolveColor(gradient.from, theme, 'primary')}, ${resolveColor(gradient.to, theme, 'secondary')})`;
+  const stops = gradientStops(gradient)
+    .map((s) => `${resolveColor(s.color, theme, 'primary')} ${Math.round(Math.min(1, Math.max(0, s.at)) * 1000) / 10}%`)
+    .join(', ');
+  return gradient.type === 'radial' ? `radial-gradient(circle, ${stops})` : `linear-gradient(${Math.round(gradient.angle ?? 180)}deg, ${stops})`;
 }
 
 /** RGB channels and alpha of a CSS color (hex or rgb()). */

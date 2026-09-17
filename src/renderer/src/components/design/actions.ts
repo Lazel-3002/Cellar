@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { elementIds, newArtboardId, normalizeElement } from '@shared/design/normalize';
+import { elementIds, newArtboardId, newGroupId, normalizeElement } from '@shared/design/normalize';
 import { buildLayout, cloneElements, duplicateArtboard, reorderElement, type OrderChange } from '@shared/design/ops';
 import type { LayoutName } from '@shared/design/layouts';
 import { ARTBOARD_PRESETS, FORMAT_DEFAULTS } from '@shared/design/theme';
@@ -101,6 +101,45 @@ export function alignSelection(edge: AlignEdge): void {
     if (edge === 'middle') patches[e.id] = { y: Math.round(bounds.y + (bounds.h - e.h) / 2) };
     if (edge === 'bottom') patches[e.id] = { y: bounds.y + bounds.h - e.h };
   }
+  state.patchElements(artboard.id, patches);
+}
+
+/** Every element that shares a group with the selection, so clicking or grouping never splits one. */
+export function expandToGroups(artboard: Artboard, selected: string[]): string[] {
+  const groups = new Set(artboard.elements.filter((e) => selected.includes(e.id) && e.groupId).map((e) => e.groupId));
+  if (groups.size === 0) return selected;
+  return artboard.elements.filter((e) => selected.includes(e.id) || (e.groupId && groups.has(e.groupId))).map((e) => e.id);
+}
+
+/** True when the selection is exactly one complete group (not a partial subset, not several groups). */
+export function isWholeGroup(artboard: Artboard, ids: string[]): boolean {
+  if (ids.length < 2) return false;
+  const els = artboard.elements.filter((e) => ids.includes(e.id));
+  const groupId = els[0]?.groupId;
+  if (!groupId || els.some((e) => e.groupId !== groupId)) return false;
+  return artboard.elements.filter((e) => e.groupId === groupId).length === els.length;
+}
+
+/** Groups the selection so it moves, rotates and (de)selects as one unit. */
+export function groupSelection(): void {
+  const state = editor();
+  const artboard = selectedArtboard(state);
+  if (!artboard || state.selection.elementIds.length < 2) return;
+  const id = newGroupId();
+  const patches: Record<string, Partial<DesignElement>> = {};
+  for (const el of artboard.elements) if (state.selection.elementIds.includes(el.id)) patches[el.id] = { groupId: id };
+  state.patchElements(artboard.id, patches);
+}
+
+/** Ungroups every group touched by the selection. */
+export function ungroupSelection(): void {
+  const state = editor();
+  const artboard = selectedArtboard(state);
+  if (!artboard) return;
+  const groups = new Set(artboard.elements.filter((e) => state.selection.elementIds.includes(e.id) && e.groupId).map((e) => e.groupId));
+  if (groups.size === 0) return;
+  const patches: Record<string, Partial<DesignElement>> = {};
+  for (const el of artboard.elements) if (el.groupId && groups.has(el.groupId)) patches[el.id] = { groupId: undefined };
   state.patchElements(artboard.id, patches);
 }
 

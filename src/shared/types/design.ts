@@ -31,11 +31,23 @@ export interface DesignTheme {
 
 export type ColorToken = keyof ThemeColors;
 
+export interface GradientStop {
+  /** A theme color name or a hex color. */
+  color: string;
+  /** 0–1 along the gradient. */
+  at: number;
+}
+
 export interface Gradient {
-  from: string;
-  to: string;
-  /** Degrees, CSS convention (180 = top to bottom). */
+  /** Default 'linear'. */
+  type?: 'linear' | 'radial';
+  /** Degrees, CSS convention (180 = top to bottom). Linear only. */
   angle: number;
+  /** Two or more stops, in order. When absent, `from`/`to` are used as a two-stop shorthand. */
+  stops?: GradientStop[];
+  /** Two-stop shorthand kept for older designs; prefer `stops`. */
+  from?: string;
+  to?: string;
 }
 
 interface ElementBase {
@@ -52,6 +64,8 @@ interface ElementBase {
   opacity?: number;
   locked?: boolean;
   hidden?: boolean;
+  /** Elements sharing an id are one group: clicking any member selects them all, and they move and rotate together. */
+  groupId?: string;
 }
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';

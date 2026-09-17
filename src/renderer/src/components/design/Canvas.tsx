@@ -9,14 +9,16 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTri
 import { cn } from '@/lib/utils';
 import { artboardOffsets, useDesignEditor } from '@/stores/design';
 import { ArtboardView } from './ArtboardView';
-import { addArtboard, addElement, imagesFromFiles, placeImage } from './actions';
+import { addArtboard, addElement, expandToGroups, imagesFromFiles, isWholeGroup, placeImage } from './actions';
 
-type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'start' | 'end';
+type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'start' | 'end' | 'rotate';
 
 type Drag =
   | { kind: 'pan'; x: number; y: number; panX: number; panY: number }
   | { kind: 'move'; artboardId: string; start: Point; origin: Map<string, Point>; moved: boolean }
   | { kind: 'resize'; artboardId: string; id: string; handle: Handle; start: Point; box: Box; moved: boolean }
+  | { kind: 'resize-group'; artboardId: string; handle: Handle; start: Point; box: Box; origin: Map<string, Box>; moved: boolean }
+  | { kind: 'rotate'; artboardId: string; center: Point; startAngle: number; origin: Map<string, { x: number; y: number; cx: number; cy: number; rotation: number }>; moved: boolean }
   | { kind: 'marquee'; artboardId: string; start: Point; additive: string[] }
   | { kind: 'create'; artboardId: string; type: 'rect' | 'ellipse' | 'line'; start: Point; id: string | null };
 
@@ -50,6 +52,28 @@ const HANDLES: Array<{ id: Handle; cx: number; cy: number; cursor: string }> = [
 ];
 
 const isEditable = (el: Element | null) => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable);
+
+/** An element's axis-aligned box in its own local coordinates (lines use their bounding box). */
+function elementBox(el: DesignElement): Box {
+  return el.type === 'line' ? { x: Math.min(el.x, el.x + el.w), y: Math.min(el.y, el.y + el.h), w: Math.max(1, Math.abs(el.w)), h: Math.max(1, Math.abs(el.h)) } : { x: el.x, y: el.y, w: el.w, h: el.h };
+}
+
+function unionBox(boxes: Box[]): Box {
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const right = Math.max(...boxes.map((b) => b.x + b.w));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.h));
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+/** Keeps a rotation delta from drifting past a full turn. */
+function wrapAngle(deg: number): number {
+  let d = deg % 360;
+  if (d > 180) d -= 360;
+  if (d <= -180) d += 360;
+  return d;
+}
+
 
 /** Fits all artboards (or one) into the visible canvas. */
 export function fitView(container: HTMLElement | null, design: Design | null, artboardId?: string): void {
@@ -145,12 +169,47 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
       return;
     }
     const handle = target.closest<HTMLElement>('[data-handle]');
-    if (handle && s.selection.artboardId && s.selection.elementIds.length === 1) {
+    if (handle && s.selection.artboardId && s.selection.elementIds.length >= 1) {
       const artboard = design.artboards.find((a) => a.id === s.selection.artboardId)!;
-      const el = artboard.elements.find((x) => x.id === s.selection.elementIds[0]);
-      if (el) {
+      const els = artboard.elements.filter((x) => s.selection.elementIds.includes(x.id));
+      const handleId = handle.dataset.handle as Handle;
+      if (handleId === 'rotate' && els.length && !els.some((el) => el.locked)) {
+        const box = unionBox(els.map(elementBox));
+        const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+        const worldCenter = { x: offsets.get(artboard.id)! + center.x, y: center.y };
         s.checkpoint();
-        drag.current = { kind: 'resize', artboardId: artboard.id, id: el.id, handle: handle.dataset.handle as Handle, start: local(artboard, world), box: { x: el.x, y: el.y, w: el.w, h: el.h }, moved: false };
+        drag.current = {
+          kind: 'rotate',
+          artboardId: artboard.id,
+          center,
+          startAngle: Math.atan2(world.y - worldCenter.y, world.x - worldCenter.x),
+          origin: new Map(
+            els.map((el) => {
+              const b = elementBox(el);
+              return [el.id, { x: el.x, y: el.y, cx: b.x + b.w / 2, cy: b.y + b.h / 2, rotation: el.rotation ?? 0 }];
+            }),
+          ),
+          moved: false,
+        };
+        return;
+      }
+      if (handleId !== 'rotate' && els.length === 1) {
+        const el = els[0];
+        s.checkpoint();
+        drag.current = { kind: 'resize', artboardId: artboard.id, id: el.id, handle: handleId, start: local(artboard, world), box: { x: el.x, y: el.y, w: el.w, h: el.h }, moved: false };
+        return;
+      }
+      if (handleId !== 'rotate' && els.length > 1 && !els.some((el) => el.locked)) {
+        s.checkpoint();
+        drag.current = {
+          kind: 'resize-group',
+          artboardId: artboard.id,
+          handle: handleId,
+          start: local(artboard, world),
+          box: unionBox(els.map(elementBox)),
+          origin: new Map(els.map((el) => [el.id, elementBox(el)])),
+          moved: false,
+        };
         return;
       }
     }
@@ -176,8 +235,10 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
     if (hitId) {
       const sameBoard = s.selection.artboardId === artboard.id;
       let ids = sameBoard ? s.selection.elementIds : [];
-      if (e.shiftKey || e.ctrlKey) ids = ids.includes(hitId) ? ids.filter((id) => id !== hitId) : [...ids, hitId];
-      else if (!ids.includes(hitId)) ids = [hitId];
+      const clickIds = expandToGroups(artboard, [hitId]);
+      const alreadySelected = clickIds.every((id) => ids.includes(id));
+      if (e.shiftKey || e.ctrlKey) ids = alreadySelected ? ids.filter((id) => !clickIds.includes(id)) : [...new Set([...ids, ...clickIds])];
+      else if (!alreadySelected) ids = clickIds;
       s.select({ artboardId: artboard.id, elementIds: ids });
       const movable = artboard.elements.filter((x) => ids.includes(x.id) && !x.locked);
       if (movable.length && ids.includes(hitId)) drag.current = { kind: 'move', artboardId: artboard.id, start: p, origin: new Map(movable.map((x) => [x.id, { x: x.x, y: x.y }])), moved: false };
@@ -300,11 +361,66 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
       return;
     }
 
+    if (d.kind === 'resize-group') {
+      const dx = p.x - d.start.x;
+      const dy = p.y - d.start.y;
+      d.moved = true;
+      const b = d.box;
+      let { x, y, w, h } = b;
+      if (d.handle.includes('e')) w = b.w + dx;
+      if (d.handle.includes('w')) {
+        w = b.w - dx;
+        x = b.x + dx;
+      }
+      if (d.handle.includes('s')) h = b.h + dy;
+      if (d.handle.includes('n')) {
+        h = b.h - dy;
+        y = b.y + dy;
+      }
+      const min = 4;
+      if (w < min) {
+        if (d.handle.includes('w')) x -= min - w;
+        w = min;
+      }
+      if (h < min) {
+        if (d.handle.includes('n')) y -= min - h;
+        h = min;
+      }
+      const sx = w / Math.max(1, b.w);
+      const sy = h / Math.max(1, b.h);
+      const patches: Record<string, Partial<DesignElement>> = {};
+      for (const [id, origin] of d.origin) patches[id] = { x: Math.round(x + (origin.x - b.x) * sx), y: Math.round(y + (origin.y - b.y) * sy), w: Math.round(origin.w * sx), h: Math.round(origin.h * sy) };
+      s.patchElements(artboard.id, patches, { history: false });
+      return;
+    }
+
+    if (d.kind === 'rotate') {
+      const world = toWorld(e.clientX, e.clientY);
+      const worldCenter = { x: offsets.get(artboard.id)! + d.center.x, y: d.center.y };
+      const angle = Math.atan2(world.y - worldCenter.y, world.x - worldCenter.x);
+      let deltaDeg = ((angle - d.startAngle) * 180) / Math.PI;
+      if (e.shiftKey) deltaDeg = Math.round(deltaDeg / 15) * 15;
+      d.moved = true;
+      const rad = (deltaDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const patches: Record<string, Partial<DesignElement>> = {};
+      for (const [id, o] of d.origin) {
+        const relX = o.cx - d.center.x;
+        const relY = o.cy - d.center.y;
+        const newCx = d.center.x + relX * cos - relY * sin;
+        const newCy = d.center.y + relX * sin + relY * cos;
+        patches[id] = { x: Math.round(o.x + (newCx - o.cx)), y: Math.round(o.y + (newCy - o.cy)), rotation: wrapAngle(o.rotation + deltaDeg) || undefined };
+      }
+      s.patchElements(artboard.id, patches, { history: false });
+      return;
+    }
+
     if (d.kind === 'marquee') {
       const box = { x: Math.min(d.start.x, p.x), y: Math.min(d.start.y, p.y), w: Math.abs(p.x - d.start.x), h: Math.abs(p.y - d.start.y) };
       setMarquee(box);
       const hits = artboard.elements.filter((x) => !x.hidden && x.x < box.x + box.w && x.x + x.w > box.x && x.y < box.y + box.h && x.y + x.h > box.y).map((x) => x.id);
-      s.select({ artboardId: artboard.id, elementIds: [...new Set([...d.additive, ...hits])] });
+      s.select({ artboardId: artboard.id, elementIds: [...new Set([...d.additive, ...expandToGroups(artboard, hits)])] });
       return;
     }
 
@@ -329,7 +445,7 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (!d) return;
     const s = store();
-    if (d.kind === 'resize' && !d.moved) s.undo();
+    if ((d.kind === 'resize' || d.kind === 'resize-group' || d.kind === 'rotate') && !d.moved) s.undo();
     if (d.kind === 'create') {
       if (!d.id) {
         const artboard = design.artboards.find((a) => a.id === d.artboardId);
@@ -384,6 +500,7 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
 
   const selectedBoard = design.artboards.find((a) => a.id === selection.artboardId);
   const selected = selectedBoard?.elements.filter((el) => selection.elementIds.includes(el.id)) ?? [];
+  const groupSelected = selectedBoard && isWholeGroup(selectedBoard, selection.elementIds) ? selected : null;
   const hovered = hover && !selection.elementIds.includes(hover) ? design.artboards.flatMap((a) => a.elements.map((el) => ({ a, el }))).find((x) => x.el.id === hover) : undefined;
   const last = design.artboards[design.artboards.length - 1];
   const addX = last ? offsets.get(last.id)! + last.width + 60 : 0;
@@ -458,6 +575,7 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
           />
         ))}
       {selectedBoard && selected.length === 1 && !editingTextId && !selected[0].locked && <Handles el={selected[0]} box={screen(selectedBoard.id, selected[0])} />}
+      {selectedBoard && groupSelected && !editingTextId && !groupSelected.some((el) => el.locked) && <GroupHandles box={screen(selectedBoard.id, unionBox(groupSelected.map(elementBox)))} />}
       {guides.map((g, i) =>
         g.axis === 'x' ? (
           <div key={i} className="pointer-events-none absolute w-px bg-[#ff3b8b]" style={{ left: panX + g.at * zoom, top: panY + g.from * zoom, height: (g.to - g.from) * zoom }} />
@@ -523,6 +641,36 @@ function Handles({ el, box }: { el: DesignElement; box: { left: number; top: num
           style={{ width: size, height: size, left: h.cx * box.width - size / 2, top: h.cy * box.height - size / 2, cursor: h.cursor }}
         />
       ))}
+      <RotateHandle width={box.width} />
+    </div>
+  );
+}
+
+/** A stem and grip above a selection's box, for click-drag rotation; sits inside the (possibly rotated) box so it turns with it. */
+function RotateHandle({ width }: { width: number }) {
+  return (
+    <>
+      <div className="pointer-events-none absolute w-px bg-brand/60" style={{ left: width / 2, top: -22, height: 14 }} />
+      <div data-handle="rotate" data-testid="handle-rotate" className="pointer-events-auto absolute size-3 cursor-grab rounded-full border-2 border-brand bg-white" style={{ left: width / 2 - 6, top: -28 }} />
+    </>
+  );
+}
+
+/** Resize handles and a rotate grip around a group's bounding box (axis-aligned; members may each have their own rotation). */
+function GroupHandles({ box }: { box: { left: number; top: number; width: number; height: number } }) {
+  const size = 8;
+  return (
+    <div className="pointer-events-none absolute" style={box}>
+      {HANDLES.map((h) => (
+        <div
+          key={h.id}
+          data-handle={h.id}
+          data-testid={`handle-${h.id}`}
+          className="pointer-events-auto absolute rounded-[2px] border border-brand bg-white"
+          style={{ width: size, height: size, left: h.cx * box.width - size / 2, top: h.cy * box.height - size / 2, cursor: h.cursor }}
+        />
+      ))}
+      <RotateHandle width={box.width} />
     </div>
   );
 }

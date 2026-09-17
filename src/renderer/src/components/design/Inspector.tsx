@@ -20,6 +20,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Group,
   Image as ImageIcon,
   Italic,
   Lock,
@@ -29,19 +30,20 @@ import {
   Square,
   Trash,
   Type,
+  Ungroup,
   Underline,
 } from 'lucide-react';
 import { CHART_KINDS } from '@shared/design/charts';
 import { estimateTextHeight } from '@shared/design/text';
-import { ARTBOARD_PRESETS, FONTS, fontName, normalizeColor, resolveColor, THEMES } from '@shared/design/theme';
-import type { Artboard, ChartElement, ColorToken, Design, DesignElement, DesignTheme, ImageElement, LineElement, ShapeElement, TextElement } from '@shared/types/design';
+import { ARTBOARD_PRESETS, FONTS, fontName, gradientCss, gradientStops, normalizeColor, resolveColor, THEMES } from '@shared/design/theme';
+import type { Artboard, ChartElement, ColorToken, Design, DesignElement, DesignTheme, Gradient, ImageElement, LineElement, ShapeElement, TextElement } from '@shared/types/design';
 import { Button, IconButton } from '@/components/ui/button';
 import { Input, Select, Switch, Textarea } from '@/components/ui/form';
 import { Menu, MenuContent, MenuItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from '@/components/ui/menu';
 import { invoke } from '@/lib/ipc';
 import { cn } from '@/lib/utils';
 import { useDesignEditor, useDesignLayout } from '@/stores/design';
-import { addArtboard, alignSelection, deleteArtboard, deleteSelection, duplicateSelection, moveArtboard, reorderSelection } from './actions';
+import { addArtboard, alignSelection, deleteArtboard, deleteSelection, duplicateSelection, groupSelection, isWholeGroup, moveArtboard, reorderSelection, ungroupSelection } from './actions';
 
 const TOKENS: ColorToken[] = ['background', 'surface', 'text', 'muted', 'primary', 'secondary', 'accent'];
 
@@ -143,6 +145,39 @@ export function ColorField({ label, value, theme, onChange, allowNone, testId }:
   );
 }
 
+/** Linear/radial type, angle, and an editable list of color stops. */
+function GradientEditor({ gradient, theme, onChange }: { gradient: Gradient; theme: DesignTheme; onChange: (g: Gradient) => void }) {
+  const stops = gradientStops(gradient);
+  const setStops = (next: typeof stops) => onChange({ type: gradient.type, angle: gradient.angle, stops: next });
+  return (
+    <div className="space-y-2">
+      <Row>
+        <Select value={gradient.type ?? 'linear'} onChange={(v) => onChange({ ...gradient, type: v === 'radial' ? 'radial' : undefined })} options={[{ value: 'linear', label: 'Linear' }, { value: 'radial', label: 'Radial' }]} className="w-full min-w-0" />
+        {(gradient.type ?? 'linear') === 'linear' && <NumberField label="Angle" value={gradient.angle ?? 180} onChange={(angle) => onChange({ ...gradient, angle })} min={0} max={360} suffix="°" />}
+      </Row>
+      <div className="h-6 rounded border border-black/10" style={{ background: gradientCss(gradient, theme) }} />
+      <div className="space-y-1.5">
+        {stops.map((stop, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <ColorField label="Color" value={stop.color} theme={theme} onChange={(color) => setStops(stops.map((s, j) => (j === i ? { ...s, color: color ?? s.color } : s)))} />
+            </div>
+            <NumberField label="At" value={Math.round(stop.at * 100)} onChange={(v) => setStops(stops.map((s, j) => (j === i ? { ...s, at: Math.min(1, Math.max(0, v / 100)) } : s)))} min={0} max={100} suffix="%" />
+            {stops.length > 2 && (
+              <IconButton label="Remove stop" onClick={() => setStops(stops.filter((_, j) => j !== i))}>
+                <Trash className="size-3.5" />
+              </IconButton>
+            )}
+          </div>
+        ))}
+      </div>
+      <Button size="sm" variant="outline" className="w-full" onClick={() => setStops([...stops, { color: stops[stops.length - 1]?.color ?? 'secondary', at: 1 }])}>
+        Add stop
+      </Button>
+    </div>
+  );
+}
+
 function FontSelect({ value, theme, onChange }: { value: string | undefined; theme: DesignTheme; onChange: (v: string) => void }) {
   const options = [
     { value: 'heading', label: `Heading · ${theme.fonts.heading}` },
@@ -193,7 +228,7 @@ function Properties() {
         <ThemePanel design={design} />
       </>
     );
-  if (elements.length > 1) return <MultiPanel count={elements.length} />;
+  if (elements.length > 1) return <MultiPanel count={elements.length} grouped={isWholeGroup(artboard, selection.elementIds)} />;
   return <ElementPanel artboard={artboard} el={elements[0]} theme={design.theme} />;
 }
 
@@ -201,7 +236,7 @@ function patch(artboardId: string, id: string, changes: Partial<DesignElement>) 
   useDesignEditor.getState().patchElements(artboardId, { [id]: changes });
 }
 
-function ArrangeSection({ single }: { single: boolean }) {
+function ArrangeSection({ single, grouped }: { single: boolean; grouped?: boolean }) {
   return (
     <Section title={single ? 'Align to artboard' : 'Align'}>
       <div className="flex flex-wrap gap-0.5">
@@ -237,6 +272,11 @@ function ArrangeSection({ single }: { single: boolean }) {
         <Toggle label="Send to back" onClick={() => reorderSelection('back')}>
           <ArrowDownToLine className="size-4" />
         </Toggle>
+        {!single && (
+          <Toggle label={grouped ? 'Ungroup  Ctrl+Shift+G' : 'Group  Ctrl+G'} onClick={grouped ? ungroupSelection : groupSelection}>
+            {grouped ? <Ungroup className="size-4" /> : <Group className="size-4" />}
+          </Toggle>
+        )}
         <div className="flex-1" />
         <Toggle label="Duplicate  Ctrl+D" onClick={() => duplicateSelection()}>
           <Copy className="size-4" />
@@ -249,11 +289,11 @@ function ArrangeSection({ single }: { single: boolean }) {
   );
 }
 
-function MultiPanel({ count }: { count: number }) {
+function MultiPanel({ count, grouped }: { count: number; grouped: boolean }) {
   return (
     <>
       <div className="px-3.5 pt-3 text-[13px] text-foreground">{count} elements selected</div>
-      <ArrangeSection single={false} />
+      <ArrangeSection single={false} grouped={grouped} />
     </>
   );
 }
@@ -349,17 +389,18 @@ function TextSection({ artboard, el, theme }: { artboard: Artboard; el: TextElem
 
 function ShapeSection({ el, theme, set }: { el: ShapeElement; theme: DesignTheme; set: (c: Partial<ShapeElement>) => void }) {
   return (
-    <Section title="Fill and border">
-      {el.gradient ? (
-        <div className="flex items-center gap-2 text-[12.5px] text-fg-2">
-          <span className="h-5 flex-1 rounded border border-black/10" style={{ background: `linear-gradient(90deg, ${resolveColor(el.gradient.from, theme, 'primary')}, ${resolveColor(el.gradient.to, theme, 'secondary')})` }} />
-          <button className="text-muted-foreground hover:text-foreground" onClick={() => set({ gradient: undefined })}>
-            Remove gradient
-          </button>
-        </div>
-      ) : (
-        <ColorField label="Fill" value={el.fill} theme={theme} onChange={(fill) => set({ fill: fill ?? 'transparent' })} allowNone testId="prop-fill" />
-      )}
+    <Section
+      title="Fill and border"
+      action={
+        <button
+          className="text-[12px] text-muted-foreground hover:text-foreground"
+          onClick={() => (el.gradient ? set({ gradient: undefined, fill: el.gradient.stops?.[0]?.color ?? el.gradient.from ?? el.fill }) : set({ gradient: { angle: 180, stops: [{ color: el.fill ?? 'primary', at: 0 }, { color: 'secondary', at: 1 }] } }))}
+        >
+          {el.gradient ? 'Use solid fill' : 'Use gradient'}
+        </button>
+      }
+    >
+      {el.gradient ? <GradientEditor gradient={el.gradient} theme={theme} onChange={(gradient) => set({ gradient })} /> : <ColorField label="Fill" value={el.fill} theme={theme} onChange={(fill) => set({ fill: fill ?? 'transparent' })} allowNone testId="prop-fill" />}
       <ColorField label="Border" value={el.stroke} theme={theme} onChange={(stroke) => set({ stroke })} allowNone />
       <Row>
         <NumberField label="Bord" value={el.strokeWidth ?? (el.stroke ? 1 : 0)} onChange={(strokeWidth) => set({ strokeWidth })} min={0} max={200} />
@@ -514,7 +555,18 @@ function ArtboardPanel({ artboard, design }: { artboard: Artboard; design: Desig
         <NumberField label="W" value={artboard.width} onChange={(width) => update((a) => (a.width = Math.round(width)))} min={50} max={8000} />
         <NumberField label="H" value={artboard.height} onChange={(height) => update((a) => (a.height = Math.round(height)))} min={50} max={8000} />
       </Row>
-      <ColorField label="Background" value={artboard.background} theme={design.theme} onChange={(bg) => update((a) => ((a.background = bg ?? 'background'), delete a.gradient))} />
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[11.5px] text-muted-foreground">Background</span>
+          <button
+            className="text-[12px] text-muted-foreground hover:text-foreground"
+            onClick={() => update((a) => (artboard.gradient ? delete a.gradient : (a.gradient = { angle: 180, stops: [{ color: a.background, at: 0 }, { color: 'secondary', at: 1 }] })))}
+          >
+            {artboard.gradient ? 'Use solid fill' : 'Use gradient'}
+          </button>
+        </div>
+        {artboard.gradient ? <GradientEditor gradient={artboard.gradient} theme={design.theme} onChange={(gradient) => update((a) => (a.gradient = gradient))} /> : <ColorField label="Background" value={artboard.background} theme={design.theme} onChange={(bg) => update((a) => (a.background = bg ?? 'background'))} />}
+      </div>
       <Textarea value={notes} rows={2} placeholder="Speaker notes" onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (artboard.notes ?? '') && update((a) => (a.notes = notes || undefined))} className="text-[12.5px]" />
     </Section>
   );

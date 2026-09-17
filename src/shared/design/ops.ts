@@ -1,6 +1,6 @@
 import type { Artboard, Design, DesignElement, DesignTheme } from '../types/design';
 import { layoutElements, type LayoutContent, type LayoutName } from './layouts';
-import { newArtboardId, newElementId, normalizeElement, type NormalizeContext } from './normalize';
+import { newArtboardId, newElementId, newGroupId, normalizeElement, type NormalizeContext } from './normalize';
 import { plainText } from './text';
 
 /** Finds an artboard by id, name or 1-based position. */
@@ -27,9 +27,13 @@ export function findElement(design: Pick<Design, 'artboards'>, id: string): { ar
   return undefined;
 }
 
-/** Copies elements with fresh ids. */
+/** Copies elements with fresh ids; groups get fresh group ids too, so a copy is its own group. */
 export function cloneElements(elements: DesignElement[], ids: Set<string>, offset = 0): DesignElement[] {
-  return elements.map((el) => ({ ...structuredClone(el), id: newElementId(el.type, ids), x: el.x + offset, y: el.y + offset }));
+  const groupMap = new Map<string, string>();
+  return elements.map((el) => {
+    const groupId = el.groupId ? (groupMap.get(el.groupId) ?? groupMap.set(el.groupId, newGroupId()).get(el.groupId)!) : undefined;
+    return { ...structuredClone(el), id: newElementId(el.type, ids), x: el.x + offset, y: el.y + offset, groupId };
+  });
 }
 
 export function duplicateArtboard(design: Design, artboard: Artboard, name?: string): Artboard {

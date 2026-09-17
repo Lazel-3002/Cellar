@@ -42,7 +42,7 @@ import type { TaskStatus } from '@shared/types/agent';
 import type { Design, DesignExportFormat, DesignFormat, DesignSummary } from '@shared/types/design';
 import { CellarMark } from '@/components/brand/Logo';
 import { Composer } from '@/components/composer/Composer';
-import { addElement, copySelection, deleteSelection, duplicateSelection, imagesFromFiles, nudgeSelection, pasteClipboard, placeImage } from '@/components/design/actions';
+import { addElement, copySelection, deleteSelection, duplicateSelection, groupSelection, imagesFromFiles, nudgeSelection, pasteClipboard, placeImage, ungroupSelection } from '@/components/design/actions';
 import { ArtboardThumbnail } from '@/components/design/ArtboardView';
 import { DesignCanvas, fitView } from '@/components/design/Canvas';
 import { Inspector } from '@/components/design/Inspector';
@@ -628,6 +628,8 @@ export function DesignEditorPage() {
       if (ctrl && key === 'z' && !e.shiftKey) return handled(), s.undo();
       if ((ctrl && key === 'y') || (ctrl && key === 'z' && e.shiftKey)) return handled(), s.redo();
       if (ctrl && key === 'd') return handled(), duplicateSelection();
+      if (ctrl && e.shiftKey && key === 'g') return handled(), ungroupSelection();
+      if (ctrl && key === 'g') return handled(), groupSelection();
       if (ctrl && key === 'c') return copySelection();
       if (ctrl && key === 'v') {
         if (pasteClipboard()) handled();
