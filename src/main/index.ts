@@ -11,6 +11,7 @@ import { installPreview, registerPreviewScheme } from './code/preview';
 import { stopAllSideChats } from './code/side-chat';
 import { terminals } from './code/terminal';
 import { connectors } from './connectors/manager';
+import { initAutoMemory } from './customize/memory-auto';
 import { closeDatabase, openDatabase } from './db/client';
 import { downloads } from './hub/downloads';
 import { handlers } from './ipc';
@@ -81,6 +82,7 @@ if (!app.requestSingleInstanceLock()) {
 
     providers.init();
     chat.init();
+    initAutoMemory();
     downloads.init();
     setTrustedOrigin(isAppUrl);
     handlers.register();

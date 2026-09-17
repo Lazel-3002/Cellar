@@ -42,6 +42,7 @@ export const keys = {
   commands: (scope: string) => ['commands', scope] as const,
   connectors: ['connectors'] as const,
   memory: ['memory'] as const,
+  memoryTopics: ['memory-topics'] as const,
   scheduled: ['scheduled'] as const,
   scheduledRuns: (taskId?: string) => ['scheduled-runs', taskId ?? 'all'] as const,
   voice: ['voice'] as const,
@@ -84,6 +85,7 @@ export const usePlugins = () => useQuery({ queryKey: keys.plugins, queryFn: () =
 export const useCommands = (scope: ToolScope) => useQuery({ queryKey: keys.commands(scope), queryFn: () => invoke('commands:list', scope), staleTime: 60_000 });
 export const useConnectors = () => useQuery({ queryKey: keys.connectors, queryFn: () => invoke('connectors:list') });
 export const useMemories = () => useQuery({ queryKey: keys.memory, queryFn: () => invoke('memory:list') });
+export const useMemoryTopics = () => useQuery({ queryKey: keys.memoryTopics, queryFn: () => invoke('memory:listTopics') });
 export const useScheduled = () => useQuery({ queryKey: keys.scheduled, queryFn: () => invoke('scheduled:list'), refetchInterval: 30_000 });
 export const useScheduledRuns = (taskId?: string) => useQuery({ queryKey: keys.scheduledRuns(taskId), queryFn: () => invoke('scheduled:runs', taskId) });
 export const useVoice = () => useQuery({ queryKey: keys.voice, queryFn: () => invoke('voice:status'), staleTime: 60_000 });
@@ -144,7 +146,10 @@ export function useIpcSync(): void {
         if (kind === 'skills' || kind === 'plugins') void qc.invalidateQueries({ queryKey: keys.skills });
         if (kind === 'plugins') void qc.invalidateQueries({ queryKey: keys.plugins });
         if (kind === 'commands' || kind === 'plugins') void qc.invalidateQueries({ queryKey: ['commands'] });
-        if (kind === 'memory') void qc.invalidateQueries({ queryKey: keys.memory });
+        if (kind === 'memory') {
+          void qc.invalidateQueries({ queryKey: keys.memory });
+          void qc.invalidateQueries({ queryKey: keys.memoryTopics });
+        }
       }),
       onEvent('math:changed', ({ conversationId }) => {
         void qc.invalidateQueries({ queryKey: ['boards'] });

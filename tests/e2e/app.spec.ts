@@ -571,6 +571,28 @@ test('skills, memory and scheduled tasks from their pages', async () => {
   await expect(win.getByTestId('memory-row')).toContainText('I prefer answers in metric units');
   expect(mock.requests.length).toBe(before);
 
+  // /update-memory reads the chat itself and keeps only what is worth keeping.
+  await goHome();
+  await selectModel('mock-echo');
+  await send('I bake sourdough bread every weekend.');
+  await expect(lastAssistant()).toContainText('Echo:', { timeout: 20_000 });
+  await win.getByTestId('composer-input').last().fill('/update');
+  await expect(win.getByText('Look through this chat and remember anything worth keeping')).toBeVisible();
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-update-memory.png') });
+  await send('/update-memory');
+  await expect(win.getByText('Memory updated')).toBeVisible({ timeout: 30_000 });
+  await win.getByRole('link', { name: 'Customize', exact: true }).click();
+  await win.getByRole('link', { name: 'Memory' }).click();
+  await expect(win.getByText('Bakes sourdough bread at the weekend.')).toBeVisible();
+
+  // Nothing durable in the chat means nothing is saved.
+  await goHome();
+  await selectModel('mock-echo');
+  await send('What is 2 + 2?');
+  await expect(lastAssistant()).toContainText('Echo:', { timeout: 20_000 });
+  await send('/update-memory');
+  await expect(win.getByText('Nothing saved')).toBeVisible({ timeout: 30_000 });
+
   // A scheduled chat, run now from the Scheduled page.
   const providerId = (await ipc<Array<{ id: string; kind: string }>>('providers:configs')).find((c) => c.kind === 'openai')!.id;
   await ipc('scheduled:save', { name: 'Daily hello', prompt: 'Say hello from the schedule', kind: 'chat', cron: '0 9 * * 1-5', model: { providerId, modelId: 'mock-echo' }, folder: null, permissionMode: 'auto-edits', allowCommands: false, projectId: null, enabled: true });

@@ -141,6 +141,14 @@ export async function startMockServer(): Promise<MockServer> {
           res.end('data: [DONE]\n\n');
           return;
         }
+        // /update-memory (and the automatic pass): reply with the extraction JSON it asks for, and
+        // with nothing to keep unless the transcript actually holds something durable.
+        if (parsed.messages.some((m) => m.role === 'system' && String(m.content).includes('You maintain a private memory profile'))) {
+          const keep = /sourdough/i.test(prompt);
+          send({ content: keep ? '{"upsert": [{"category": "topic", "title": "Baking", "content": "Bakes sourdough bread at the weekend."}], "remove": []}' : '{"upsert": [], "remove": []}' }, 'stop');
+          res.end('data: [DONE]\n\n');
+          return;
+        }
         if (parsed.model === 'mock-coder' && parsed.tools?.length) {
           // Scripted Code agent: read app.js, fix the bug with an edit, then report.
           const results = parsed.messages.filter((m) => m.role === 'tool').map((m) => String(m.content));

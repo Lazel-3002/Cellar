@@ -7,7 +7,7 @@ import type { AttachmentRef, SendMessageResult } from '@shared/types/chat';
 import type { CodeStartOptions } from '@shared/types/code';
 import type { DesignSelection, DesignStartOptions } from '@shared/types/design';
 import type { MathSelection, MathStartOptions } from '@shared/types/math';
-import type { ToolScope } from '@shared/types/customize';
+import type { MemoryUpdateResult, ToolScope } from '@shared/types/customize';
 import { AttachmentImage } from '@/components/chat/Attachments';
 import { CodeModeMenu, nextCodeMode, type CodeModeValue } from '@/components/code/CodeModeMenu';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
@@ -54,6 +54,27 @@ export interface ComposerProps {
   mathSelection?: MathSelection | null;
   /** Runs before the message is sent (the design editor saves pending edits so the model sees them). */
   beforeSend?: () => Promise<void>;
+}
+
+const NOT_SAVED: Record<NonNullable<MemoryUpdateResult['reason']>, string> = {
+  'nothing-useful': 'Nothing here was worth remembering.',
+  incognito: 'Incognito chats are never remembered.',
+  'too-short': 'There is not enough of a conversation to remember yet.',
+  'no-model': 'No model is available to read the conversation.',
+  'turned-off': 'Memory is turned off in Customize → Memory.',
+};
+
+/** /update-memory: the model reads the conversation and keeps what is worth keeping, or nothing. */
+async function updateMemoryFromChat(conversationId: string): Promise<void> {
+  const id = toast.loading('Looking through this chat…');
+  try {
+    const result = await invoke('memory:updateFromChat', conversationId);
+    const parts = [result.saved.length ? `Remembered ${result.saved.join(', ')}` : '', result.removed.length ? `dropped ${result.removed.join(', ')}` : ''].filter(Boolean);
+    if (parts.length === 0) toast('Nothing saved', { id, description: NOT_SAVED[result.reason ?? 'nothing-useful'] });
+    else toast.success('Memory updated', { id, description: `${parts.join(' · ')}.` });
+  } catch (err) {
+    toast.error("Couldn't update memory", { id, description: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 export function PermissionMenu({ value, onChange }: { value: PermissionMode; onChange: (mode: PermissionMode) => void }) {
@@ -266,6 +287,15 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         await invoke('memory:add', commandArgs);
         toast.success('Saved to memory', { description: commandArgs.trim().slice(0, 140) });
         return clear();
+      }
+      if (content === text && known?.name === 'update-memory') {
+        if (!conversationId) {
+          toast.error('Start a conversation first, then /update-memory can look through it.');
+          return;
+        }
+        clear();
+        await updateMemoryFromChat(conversationId);
+        return;
       }
       if (content === text && known && known.source !== 'built-in') content = await invoke('commands:expand', known.name, commandArgs);
       await beforeSend?.();

@@ -55,6 +55,8 @@ import type {
   ConnectorInput,
   ConnectorStatus,
   MemoryItem,
+  MemoryTopic,
+  MemoryUpdateResult,
   PluginInfo,
   SkillDetail,
   SkillInfo,
@@ -281,6 +283,15 @@ export interface IpcInvokeMap {
   'memory:update': Handler<[id: string, content: string], MemoryItem>;
   'memory:delete': Handler<[id: string], void>;
   'memory:clear': Handler<[], void>;
+
+  'memory:listTopics': Handler<[], MemoryTopic[]>;
+  'memory:updateTopic': Handler<[id: string, content: string], MemoryTopic>;
+  'memory:deleteTopic': Handler<[id: string], void>;
+  'memory:clearTopics': Handler<[], void>;
+  /** The "Tell Claude what to change or remove" box; returns a short confirmation. */
+  'memory:editWithText': Handler<[instruction: string], string>;
+  /** /update-memory: read this conversation now and keep whatever is worth keeping (nothing, if nothing is). */
+  'memory:updateFromChat': Handler<[conversationId: string], MemoryUpdateResult>;
 
   /** The tools a model would get in a context (for /tools). */
   'tools:list': Handler<[scope: ToolScope, conversationId?: string, model?: ModelRef], ToolListing>;
@@ -541,6 +552,12 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'memory:update': true,
   'memory:delete': true,
   'memory:clear': true,
+  'memory:listTopics': true,
+  'memory:updateTopic': true,
+  'memory:deleteTopic': true,
+  'memory:clearTopics': true,
+  'memory:editWithText': true,
+  'memory:updateFromChat': true,
   'tools:list': true,
   'scheduled:list': true,
   'scheduled:save': true,

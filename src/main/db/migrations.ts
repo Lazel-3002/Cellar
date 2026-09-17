@@ -268,4 +268,23 @@ export const migrations: string[] = [
   ALTER TABLE scheduled_tasks ADD COLUMN fire_at INTEGER;
   ALTER TABLE scheduled_tasks ADD COLUMN reminder TEXT;
   `,
+  /* 8: memory generated from conversations, grouped like Claude's "You" / "Topics" / "Areas" */ `
+  CREATE TABLE memory_topics (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX memory_topics_category_title ON memory_topics(category, title);
+  CREATE INDEX memory_topics_updated ON memory_topics(updated_at DESC);
+
+  CREATE TABLE memory_processed (
+    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    message_count INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];

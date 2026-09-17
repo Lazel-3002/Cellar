@@ -6,6 +6,9 @@ import { hideQuickEntry, openConversation, quickEntryShortcutActive } from '../a
 import { connectors } from '../connectors/manager';
 import { deleteCommand, expandCommand, getCommand, listCommands, saveCommand } from '../customize/commands';
 import { addMemory, clearMemories, deleteMemory, listMemories, updateMemory } from '../customize/memory';
+import { updateMemoryFromConversation } from '../customize/memory-auto';
+import { editMemoryWithText } from '../customize/memory-edit';
+import { clearMemoryTopics, deleteMemoryTopic, listMemoryTopics, updateMemoryTopic } from '../customize/memory-topics';
 import { installPlugin, listPlugins, removePlugin, setPluginEnabled } from '../customize/plugins';
 import { claudeSkillsAvailable, deleteSkill, getSkill, importClaudeSkills, importSkills, listSkills, saveSkill, setSkillEnabled } from '../customize/skills';
 import { listTools } from '../customize/tool-listing';
@@ -109,6 +112,12 @@ export function registerM4Handlers(): void {
   handle('memory:update', (id, content) => updateMemory(id, z.string().max(5000).parse(content)));
   handle('memory:delete', (id) => deleteMemory(id));
   handle('memory:clear', () => clearMemories());
+  handle('memory:listTopics', () => listMemoryTopics());
+  handle('memory:updateTopic', (id, content) => updateMemoryTopic(id, z.string().max(2000).parse(content)));
+  handle('memory:deleteTopic', (id) => deleteMemoryTopic(id));
+  handle('memory:clearTopics', () => clearMemoryTopics());
+  handle('memory:editWithText', (instruction) => editMemoryWithText(z.string().max(2000).parse(instruction)));
+  handle('memory:updateFromChat', (conversationId) => updateMemoryFromConversation(z.string().min(1).max(200).parse(conversationId)));
 
   handle('tools:list', (s, conversationId, model) => listTools(scope.parse(s), conversationId, model ? modelRef.parse(model) : undefined));
 

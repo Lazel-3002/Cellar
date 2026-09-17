@@ -57,6 +57,9 @@ function defaults(): StoredSettings {
     disabledPlugins: [],
     memoryEnabled: true,
     searchPastChats: true,
+    // Off by default: this runs an extra summarization pass on the user's own GPU after each chat.
+    generateMemoryFromChats: false,
+    memorySensitiveTopics: false,
     runInBackground: true,
     // Ctrl+Alt+Space belongs to Claude Desktop's quick entry, which people often run alongside.
     quickEntryShortcut: 'Alt+Shift+Space',
@@ -169,6 +172,8 @@ class SettingsService {
     if (patch.disabledPlugins !== undefined) set('disabledPlugins', uniqueStrings(patch.disabledPlugins));
     if (patch.memoryEnabled !== undefined) set('memoryEnabled', !!patch.memoryEnabled);
     if (patch.searchPastChats !== undefined) set('searchPastChats', !!patch.searchPastChats);
+    if (patch.generateMemoryFromChats !== undefined) set('generateMemoryFromChats', !!patch.generateMemoryFromChats);
+    if (patch.memorySensitiveTopics !== undefined) set('memorySensitiveTopics', !!patch.memorySensitiveTopics);
     if (patch.runInBackground !== undefined) set('runInBackground', !!patch.runInBackground);
     if (patch.quickEntryShortcut !== undefined) set('quickEntryShortcut', patch.quickEntryShortcut.trim().slice(0, 60));
     if (patch.voiceModel !== undefined && /^ggml-[\w.-]+\.bin$/.test(patch.voiceModel)) set('voiceModel', patch.voiceModel);

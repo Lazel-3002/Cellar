@@ -123,6 +123,31 @@ export interface MemoryItem {
   updatedAt: number;
 }
 
+/** "you" = who the user is / how to respond to them; "topic" = a recurring interest; "area" = a project. */
+export type MemoryCategory = 'you' | 'topic' | 'area';
+
+/** A grouped, running summary quietly built from conversations (Customize -> Memory, "Generate memory from chats"). */
+export interface MemoryTopic {
+  id: string;
+  category: MemoryCategory;
+  title: string;
+  content: string;
+  projectId?: string;
+  projectName?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** What /update-memory (or an automatic pass) did with a conversation. */
+export interface MemoryUpdateResult {
+  /** Titles of the memory topics written or updated. */
+  saved: string[];
+  /** Titles dropped as outdated. */
+  removed: string[];
+  /** Why nothing was kept, when both lists are empty. */
+  reason?: 'nothing-useful' | 'incognito' | 'too-short' | 'no-model' | 'turned-off';
+}
+
 export type ToolScope = 'chat' | 'task' | 'code' | 'design' | 'math';
 
 export interface ToolInfo {

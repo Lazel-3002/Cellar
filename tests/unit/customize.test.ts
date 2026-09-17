@@ -20,6 +20,8 @@ const skills = await import('../../src/main/customize/skills');
 const plugins = await import('../../src/main/customize/plugins');
 const commands = await import('../../src/main/customize/commands');
 const memory = await import('../../src/main/customize/memory');
+const memoryAuto = await import('../../src/main/customize/memory-auto');
+const { listMemoryTopics } = await import('../../src/main/customize/memory-topics');
 const { connectors, renderToolResult } = await import('../../src/main/connectors/manager');
 const { connectorToolName } = await import('../../src/main/agent/tools/extra');
 const { listTools } = await import('../../src/main/customize/tool-listing');
@@ -183,6 +185,48 @@ describe('memory', () => {
     expect(memory.memoryPrompt(memory.listMemories(), true)).toContain(`[${memory.memoryHandle(item.id)}] The user prefers metric units.`);
     memory.deleteMemory(item.id);
     expect(memory.listMemories()).toEqual([]);
+  });
+});
+
+describe('/update-memory', () => {
+  /** A finished two-turn conversation for the extraction pass to read. */
+  async function conversation(content: string, incognito = false): Promise<string> {
+    fake.script = () => [{ type: 'text', delta: 'Noted.' }];
+    const { conversationId, assistantMessageId } = await chat.send({ content, attachmentIds: [], model: entry.ref, thinking: 'off', incognito });
+    await waitFor(() => message(conversationId, assistantMessageId).status !== 'streaming');
+    return conversationId;
+  }
+
+  it('keeps what is worth keeping, and saves nothing when the chat holds nothing durable', async () => {
+    // Deliberately off: asking for it explicitly runs the pass anyway.
+    settings.update({ defaultModel: entry.ref, generateMemoryFromChats: false });
+    const conversationId = await conversation('I manage a warehouse in Ankara and prefer metric units.');
+
+    fake.script = () => [{ type: 'text', delta: '{"upsert": [{"category": "you", "title": "Profile", "content": "Manages a warehouse in Ankara; prefers metric units."}], "remove": []}' }];
+    expect(await memoryAuto.updateMemoryFromConversation(conversationId)).toEqual({ saved: ['Profile'], removed: [] });
+    expect(listMemoryTopics().map((t) => [t.category, t.title, t.content])).toEqual([['you', 'Profile', 'Manages a warehouse in Ankara; prefers metric units.']]);
+
+    fake.script = () => [{ type: 'text', delta: '{"upsert": [], "remove": []}' }];
+    expect(await memoryAuto.updateMemoryFromConversation(conversationId)).toEqual({ saved: [], removed: [], reason: 'nothing-useful' });
+    expect(listMemoryTopics()).toHaveLength(1);
+
+    fake.script = () => [{ type: 'text', delta: '{"upsert": [], "remove": ["Profile"]}' }];
+    expect(await memoryAuto.updateMemoryFromConversation(conversationId)).toEqual({ saved: [], removed: ['Profile'] });
+    expect(listMemoryTopics()).toEqual([]);
+  });
+
+  it('never remembers an incognito chat, or one too short to hold anything', async () => {
+    settings.update({ defaultModel: entry.ref });
+    const secret = await conversation('This one is off the record.', true);
+    expect(await memoryAuto.updateMemoryFromConversation(secret)).toEqual({ saved: [], removed: [], reason: 'incognito' });
+    expect(listMemoryTopics()).toEqual([]);
+    expect(await memoryAuto.updateMemoryFromConversation('no-such-conversation')).toMatchObject({ saved: [], removed: [] });
+  });
+
+  it('is offered as a built-in command wherever a conversation can be read', () => {
+    for (const scope of ['chat', 'code'] as const) {
+      expect(commands.builtInCommands(scope).map((c) => c.name)).toContain('update-memory');
+    }
   });
 });
 

@@ -67,6 +67,10 @@ export interface AppSettings {
   memoryEnabled: boolean;
   /** Models can search earlier chats (tool-capable models only). */
   searchPastChats: boolean;
+  /** Quietly extract durable facts from conversations in the background, without being asked. */
+  generateMemoryFromChats: boolean;
+  /** Let generated memory include sensitive topics (health, religion, politics, etc.). */
+  memorySensitiveTopics: boolean;
   /** Closing the window keeps Cellar in the notification area so scheduled tasks keep running. */
   runInBackground: boolean;
   /** Global shortcut for the quick entry window ('' turns it off). Electron accelerator syntax. */

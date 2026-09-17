@@ -3,14 +3,14 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Brain, ChevronRight, Ellipsis, ExternalLink, FolderOpen, Import, LogOut, Pencil, Plug, Plus, Puzzle, RefreshCw, Sparkles, SquareSlash, Trash } from 'lucide-react';
 import { toast } from 'sonner';
-import type { CommandInfo, ConnectorInput, ConnectorStatus, ConnectorTransport, SkillInfo, ToolPolicy } from '@shared/types/customize';
+import type { CommandInfo, ConnectorInput, ConnectorStatus, ConnectorTransport, MemoryCategory, SkillInfo, ToolPolicy } from '@shared/types/customize';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Segmented, Select, Switch, Textarea } from '@/components/ui/form';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { Badge, EmptyState, Spinner, StatusDot } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
-import { keys, useBackground, useCommands, useConnectors, useMemories, usePlugins, useSettings, useSkills, useUpdateSettings } from '@/lib/queries';
+import { keys, useBackground, useCommands, useConnectors, useMemories, useMemoryTopics, usePlugins, useSettings, useSkills, useUpdateSettings } from '@/lib/queries';
 import { cn, relativeTime } from '@/lib/utils';
 
 const SECTIONS = [
@@ -753,18 +753,76 @@ function CommandsSection() {
 // ---------------------------------------------------------------------------
 // Memory
 
+const CATEGORY_LABEL: Record<MemoryCategory, string> = { you: 'You', topic: 'Topics', area: 'Areas' };
+const CATEGORY_ORDER: MemoryCategory[] = ['you', 'topic', 'area'];
+
+function MemoryTopicRow({ topic }: { topic: { id: string; title: string; content: string; projectName?: string; updatedAt: number } }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(topic.content);
+  return (
+    <div className="group flex items-start gap-3 px-4 py-2.5" data-testid="memory-topic-row">
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium text-foreground">{topic.projectName ?? topic.title}</div>
+        {editing ? (
+          <Textarea
+            autoFocus
+            rows={3}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={async () => {
+              setEditing(false);
+              if (text.trim() && text.trim() !== topic.content) {
+                await attempt(() => invoke('memory:updateTopic', topic.id, text));
+                await qc.invalidateQueries({ queryKey: keys.memoryTopics });
+              }
+            }}
+          />
+        ) : (
+          <div className="mt-0.5 truncate text-[13px] text-muted-foreground">{topic.content}</div>
+        )}
+        <div className="mt-0.5 text-[11.5px] text-muted-foreground">Updated {relativeTime(topic.updatedAt)}</div>
+      </div>
+      {!editing && (
+        <button
+          aria-label="Edit memory topic"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground"
+          onClick={() => setEditing(true)}
+        >
+          <Pencil className="size-3.5" />
+        </button>
+      )}
+      <button
+        aria-label="Delete memory topic"
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-danger"
+        onClick={async () => {
+          await attempt(() => invoke('memory:deleteTopic', topic.id));
+          await qc.invalidateQueries({ queryKey: keys.memoryTopics });
+        }}
+      >
+        <Trash className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function MemorySection() {
   const qc = useQueryClient();
   const { data: settings } = useSettings();
   const update = useUpdateSettings();
   const { data: memories = [], isLoading } = useMemories();
+  const { data: topics = [] } = useMemoryTopics();
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [ask, setAsk] = useState('');
+  const [asking, setAsking] = useState(false);
+  const byCategory = new Map<MemoryCategory, typeof topics>();
+  for (const topic of topics) byCategory.set(topic.category, [...(byCategory.get(topic.category) ?? []), topic]);
   if (!settings) return null;
   return (
     <>
-      <Header title="Memory" description="Facts models keep in mind across conversations: your preferences, projects and context. Ask a tool-capable model to remember or forget something, type /remember, or add memories here. Incognito chats never use memory." />
+      <Header title="Memory" description="Facts models keep in mind across conversations: your preferences, projects and context. Incognito chats never use memory." />
       <Card className="mb-4">
         <Field label="Use memory" description="Include saved memories in chats, tasks and Code sessions, and let models save new ones when you ask.">
           <Switch checked={settings.memoryEnabled} onCheckedChange={(v) => update.mutate({ memoryEnabled: v })} />
@@ -772,7 +830,69 @@ function MemorySection() {
         <Field label="Search past chats" description="Let tool-capable models look up earlier conversations when you refer to them.">
           <Switch checked={settings.searchPastChats} onCheckedChange={(v) => update.mutate({ searchPastChats: v })} />
         </Field>
+        <Field label="Generate memory from chats" description="Quietly build the profile below from your conversations, without you having to ask. Runs a short extra pass on your loaded model after a chat goes idle.">
+          <Switch checked={settings.generateMemoryFromChats} onCheckedChange={(v) => update.mutate({ generateMemoryFromChats: v })} />
+        </Field>
+        <Field label="Include sensitive topics in memory" description="Allow generated memory to include health, religious, political or other sensitive personal details.">
+          <Switch checked={settings.memorySensitiveTopics} onCheckedChange={(v) => update.mutate({ memorySensitiveTopics: v })} disabled={!settings.generateMemoryFromChats} />
+        </Field>
       </Card>
+
+      {topics.length > 0 && (
+        <div className="mb-4 space-y-4">
+          {CATEGORY_ORDER.filter((c) => byCategory.get(c)?.length).map((category) => (
+            <div key={category}>
+              <div className="mb-1.5 px-1 text-[12px] font-medium text-muted-foreground">{CATEGORY_LABEL[category]}</div>
+              <div className="divide-y divide-divider rounded-xl border border-divider bg-card">
+                {byCategory.get(category)!.map((topic) => (
+                  <MemoryTopicRow key={topic.id} topic={topic} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-4 flex gap-2">
+        <Input
+          value={ask}
+          onChange={(e) => setAsk(e.target.value)}
+          placeholder="Tell Claude what to change or remove"
+          disabled={asking}
+          onKeyDown={async (e) => {
+            if (e.key === 'Enter' && ask.trim() && !asking) {
+              setAsking(true);
+              const reply = await attempt(() => invoke('memory:editWithText', ask));
+              setAsking(false);
+              if (reply !== undefined) {
+                toast.success(reply);
+                setAsk('');
+                await qc.invalidateQueries({ queryKey: keys.memoryTopics });
+                await qc.invalidateQueries({ queryKey: keys.memory });
+              }
+            }
+          }}
+        />
+        <Button
+          variant="secondary"
+          disabled={!ask.trim() || asking}
+          onClick={async () => {
+            setAsking(true);
+            const reply = await attempt(() => invoke('memory:editWithText', ask));
+            setAsking(false);
+            if (reply !== undefined) {
+              toast.success(reply);
+              setAsk('');
+              await qc.invalidateQueries({ queryKey: keys.memoryTopics });
+              await qc.invalidateQueries({ queryKey: keys.memory });
+            }
+          }}
+        >
+          {asking ? <Spinner /> : 'Send'}
+        </Button>
+      </div>
+
+      <div className="mb-1.5 px-1 text-[12px] font-medium text-muted-foreground">Manual notes</div>
       <div className="mb-3 flex gap-2">
         <Input
           value={draft}
@@ -792,7 +912,7 @@ function MemorySection() {
       {isLoading ? (
         <Spinner />
       ) : memories.length === 0 ? (
-        <EmptyState icon={<Brain className="size-5" />} title="Nothing remembered yet" />
+        <EmptyState icon={<Brain className="size-5" />} title="Nothing remembered yet" description="Ask a tool-capable model to remember or forget something, type /remember, or add a note here." />
       ) : (
         <>
           <div className="divide-y divide-divider rounded-xl border border-divider bg-card">
