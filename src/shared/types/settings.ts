@@ -1,6 +1,7 @@
 import type { PermissionMode } from './agent';
 import type { CodeMode } from './code';
 import type { ModelRef } from './models';
+import type { TtsEngine } from './voice';
 
 export type ThemePreference = 'dark' | 'light' | 'system';
 export type ChatFont = 'default' | 'sans' | 'system';
@@ -82,6 +83,12 @@ export interface AppSettings {
   voiceReplies: boolean;
   /** SpeechSynthesisVoice.name; '' uses the system default voice. */
   voiceReplyVoice: string;
+  /** Which engine speaks: Chromium's own voices, or a downloaded piper voice. */
+  ttsEngine: TtsEngine;
+  /** The piper voice to speak with, e.g. en_US-amy-medium. */
+  piperVoice: string;
+  /** Re-transcribe while the mic is still open, committing settled text at pauses. */
+  voiceStreaming: boolean;
   /** Let models open, read and click pages in Cellar's built-in browser. The panel itself is always available to the user. */
   browserEnabled: boolean;
   /** Offer the `call(module, task)` tool in chats, so a chat can hand work to Code, Math, Design, Cowork or Voice. */

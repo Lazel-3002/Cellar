@@ -45,6 +45,7 @@ export const keys = {
   scheduled: ['scheduled'] as const,
   scheduledRuns: (taskId?: string) => ['scheduled-runs', taskId ?? 'all'] as const,
   voice: ['voice'] as const,
+  tts: ['tts'] as const,
   background: ['background'] as const,
   update: ['update'] as const,
 };
@@ -86,6 +87,7 @@ export const useMemories = () => useQuery({ queryKey: keys.memory, queryFn: () =
 export const useScheduled = () => useQuery({ queryKey: keys.scheduled, queryFn: () => invoke('scheduled:list'), refetchInterval: 30_000 });
 export const useScheduledRuns = (taskId?: string) => useQuery({ queryKey: keys.scheduledRuns(taskId), queryFn: () => invoke('scheduled:runs', taskId) });
 export const useVoice = () => useQuery({ queryKey: keys.voice, queryFn: () => invoke('voice:status'), staleTime: 60_000 });
+export const useTts = () => useQuery({ queryKey: keys.tts, queryFn: () => invoke('tts:status'), staleTime: 60_000 });
 export const useBackground = () => useQuery({ queryKey: keys.background, queryFn: () => invoke('app:background'), staleTime: 10_000 });
 export const useUpdateState = () => useQuery({ queryKey: keys.update, queryFn: () => invoke('update:state'), staleTime: Infinity });
 

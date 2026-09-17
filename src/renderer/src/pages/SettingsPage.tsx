@@ -25,6 +25,7 @@ import {
   useProviders,
   useRuntimes,
   useSettings,
+  useTts,
   useUpdateSettings,
   useUpdateState,
   useVoice,
@@ -206,7 +207,7 @@ function Voice() {
     () =>
       onEvent('voice:progress', (p) => {
         setProgress((prev) => ({ ...prev, [`${p.kind}:${p.id}`]: p }));
-        if (p.stage === 'done' || p.stage === 'error') void qc.invalidateQueries({ queryKey: keys.voice });
+        if (p.stage === 'done' || p.stage === 'error') void qc.invalidateQueries({ queryKey: p.kind === 'tts' ? keys.tts : keys.voice });
       }),
     [qc],
   );
@@ -223,6 +224,7 @@ function Voice() {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       void qc.invalidateQueries({ queryKey: keys.voice });
+      void qc.invalidateQueries({ queryKey: keys.tts });
     }
   };
   const bar = (key: string) => {
@@ -239,17 +241,30 @@ function Voice() {
   };
   return (
     <>
-      <Card title="Voice dictation" description="The mic button in the composer turns speech into text on this computer with whisper.cpp. Nothing is sent anywhere. A live, rougher preview appears while you're still talking; the text inserted once you stop is always the full-quality pass.">
+      <Card title="Voice dictation" description="The mic button in the composer turns speech into text on this computer with whisper.cpp. Nothing is sent anywhere.">
         <Field label="Status">
           {voice.ready ? <Badge tone="success">Ready</Badge> : <Badge tone="warning">{voice.runtime ? 'Download a voice model' : 'Install whisper.cpp'}</Badge>}
         </Field>
         <Field label="Language" description="Detecting automatically works for most speech; choosing your language is a little faster and more reliable.">
           <Select value={s.voiceLanguage} onChange={(voiceLanguage) => update.mutate({ voiceLanguage })} options={LANGUAGES} className="w-52" />
         </Field>
+        <Field
+          label="Transcribe while you talk"
+          description="Text appears as you speak instead of only when you stop: the tail of the recording is re-transcribed every second or so, and whatever is settled gets frozen at each natural pause, so a long dictation does not get slower and slower. Turn it off to transcribe the whole clip once, at the end."
+        >
+          <Switch checked={s.voiceStreaming} onCheckedChange={(voiceStreaming) => update.mutate({ voiceStreaming })} />
+        </Field>
       </Card>
-      <SpokenReplies s={s} update={update} />
-      <Card title="whisper.cpp" description={voice.runtime ? `Installed: ${voice.runtime.variant.toUpperCase()} build ${voice.runtime.tag}` : 'Official Windows builds from ggml-org/whisper.cpp on GitHub.'}>
-        {WHISPER_BUILDS.map((b) => (
+      <SpokenReplies s={s} update={update} bar={bar} run={run} busy={busy} />
+      <Card
+        title="whisper.cpp"
+        description={
+          voice.runtime
+            ? `Installed: ${voice.runtime.variant.toUpperCase()} build ${voice.runtime.tag}${voice.runtime.updateAvailable ? ` — ${voice.runtime.updateAvailable} is available` : ''}`
+            : `Official Windows builds from ggml-org/whisper.cpp on GitHub${voice.latestTag ? ` (latest: ${voice.latestTag})` : ''}.`
+        }
+      >
+        {WHISPER_BUILDS.filter((b) => voice.availableVariants.includes(b.variant)).map((b) => (
           <div key={b.variant} className="py-3">
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
@@ -257,11 +272,12 @@ function Voice() {
                   {b.label}
                   {voice.recommendedVariant === b.variant && <Badge tone="brand">Recommended for your GPU</Badge>}
                   {voice.runtime?.variant === b.variant && <Badge tone="success">Installed</Badge>}
+                  {voice.runtime?.variant === b.variant && voice.runtime.updateAvailable && <Badge tone="warning">Update available</Badge>}
                 </div>
                 <div className="text-[12px] text-muted-foreground">{b.description}</div>
               </div>
               <Button size="sm" variant={voice.runtime ? 'outline' : voice.recommendedVariant === b.variant ? 'primary' : 'outline'} disabled={busy(`runtime:${b.variant}`)} onClick={() => void run(() => invoke('voice:installRuntime', b.variant), 'whisper.cpp installed')}>
-                {voice.runtime?.variant === b.variant ? 'Reinstall' : 'Install'}
+                {voice.runtime?.variant === b.variant ? (voice.runtime.updateAvailable ? 'Update' : 'Reinstall') : 'Install'}
               </Button>
             </div>
             {bar(`runtime:${b.variant}`)}
@@ -313,20 +329,79 @@ const WHISPER_BUILDS: Array<{ variant: WhisperVariant; label: string; descriptio
     label: 'NVIDIA CUDA 12',
     description: 'About 675 MB including the CUDA runtime. For NVIDIA GPUs up to the RTX 40 series — on an RTX 50 series card this build falls back to slow JIT compilation and ends up slower than the CPU build.',
   },
+  {
+    variant: 'cuda-13',
+    label: 'NVIDIA CUDA 13',
+    description: 'For the RTX 50 series (Blackwell), which the CUDA 12 build has no compiled kernels for. Needs an R580 or newer driver. Shown only while whisper.cpp is publishing a Windows x64 build of it.',
+  },
 ];
 
-function SpokenReplies({ s, update }: { s: AppSettings; update: ReturnType<typeof useUpdateSettings> }) {
+function SpokenReplies({ s, update, bar, run, busy }: {
+  s: AppSettings;
+  update: ReturnType<typeof useUpdateSettings>;
+  /** Download progress bar for a `kind:id` key, shared with the whisper.cpp cards. */
+  bar: (key: string) => ReactNode;
+  run: (fn: () => Promise<unknown>, success: string) => Promise<void>;
+  busy: (key: string) => boolean;
+}) {
   const voices = useSpeechVoices();
+  const { data: tts } = useTts();
   const options: Array<{ value: string; label: string }> = [{ value: '', label: 'System default' }, ...voices.map((v) => ({ value: v.name, label: `${v.name} (${v.lang})` }))];
   return (
-    <Card title="Spoken replies" description="Cellar reads finished replies aloud with your operating system's built-in voices — offline, no download, nothing sent anywhere.">
-      <Field label="Read replies aloud">
+    <Card title="Spoken replies" description="Cellar reads finished replies aloud on this computer — offline, nothing sent anywhere. The system voices need no download; piper sounds better but is a ~20 MB program plus a voice of its own.">
+      <Field label="Speak replies">
         <Switch checked={s.voiceReplies} onCheckedChange={(voiceReplies) => update.mutate({ voiceReplies })} />
       </Field>
-      {s.voiceReplies && (
+      <Field label="Engine">
+        <Segmented
+          value={s.ttsEngine}
+          onChange={(ttsEngine) => update.mutate({ ttsEngine })}
+          options={[
+            { value: 'system', label: 'System voices' },
+            { value: 'piper', label: 'Piper' },
+          ]}
+        />
+      </Field>
+      {s.ttsEngine === 'system' ? (
         <Field label="Voice" description={voices.length === 0 ? 'No system voices were found.' : undefined}>
           <Select value={s.voiceReplyVoice} onChange={(voiceReplyVoice) => update.mutate({ voiceReplyVoice })} options={options} className="w-64" disabled={voices.length === 0} />
         </Field>
+      ) : (
+        <>
+          <Field label="Piper" description={tts?.piperInstalled ? 'Installed.' : 'A small offline neural voice engine from rhasspy/piper.'}>
+            <Button size="sm" variant={tts?.piperInstalled ? 'outline' : 'primary'} disabled={busy('tts:piper')} onClick={() => void run(() => invoke('tts:installPiper'), 'Piper installed')}>
+              {tts?.piperInstalled ? 'Reinstall' : 'Install'}
+            </Button>
+          </Field>
+          {bar('tts:piper')}
+          {(tts?.voices ?? []).map((v) => (
+            <div key={v.id} className="py-2">
+              <div className="flex items-center gap-3">
+                <button
+                  aria-label={`Use ${v.label}`}
+                  disabled={!v.installed}
+                  onClick={() => update.mutate({ piperVoice: v.id })}
+                  className={cn('flex size-4 shrink-0 items-center justify-center rounded-full border border-composer-border disabled:opacity-40', s.piperVoice === v.id && v.installed && 'border-brand bg-brand')}
+                >
+                  {s.piperVoice === v.id && v.installed && <span className="size-1.5 rounded-full bg-white" />}
+                </button>
+                <div className="min-w-0 flex-1 text-[13.5px]">
+                  {v.label} <span className="text-[12px] text-muted-foreground">≈ {formatBytes(v.sizeBytes)}</span>
+                </div>
+                {v.installed ? (
+                  <Button size="sm" variant="ghost" onClick={() => void run(() => invoke('tts:deleteVoice', v.id), `${v.label} removed`)}>
+                    <Trash className="size-3.5" />
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" disabled={busy(`tts:${v.id}`)} onClick={() => void run(() => invoke('tts:downloadVoice', v.id), `${v.label} downloaded`)}>
+                    Download
+                  </Button>
+                )}
+              </div>
+              {bar(`tts:${v.id}`)}
+            </div>
+          ))}
+        </>
       )}
     </Card>
   );

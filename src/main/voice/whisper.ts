@@ -28,15 +28,69 @@ export const WHISPER_MODELS: Array<Omit<WhisperModelInfo, 'installed'>> = [
   { id: 'ggml-large-v3-turbo-q5_0.bin', label: 'Large v3 Turbo (Q5)', sizeBytes: 574_041_195, multilingual: true, description: 'Best accuracy; slower on CPU. Any language.' },
 ];
 
+/**
+ * Windows x64 assets in the official ggml-org/whisper.cpp releases. CUDA 13 is what Blackwell
+ * (RTX 50 series) needs; the project did not ship an x64 CUDA 13 build for a long time, so Cellar
+ * asks GitHub which of these actually exist in a recent release instead of assuming.
+ */
 const VARIANT_ASSETS: Record<WhisperVariant, RegExp> = {
   cpu: /^whisper-bin-x64\.zip$/,
   blas: /^whisper-blas-bin-x64\.zip$/,
   'cuda-12': /^whisper-cublas-12[\d.]*-bin-x64\.zip$/,
+  'cuda-13': /^whisper-cublas-13[\d.]*-bin-x64\.zip$/,
 };
+
+const ALL_VARIANTS = Object.keys(VARIANT_ASSETS) as WhisperVariant[];
 
 interface RuntimeRecord {
   variant: WhisperVariant;
   tag: string;
+}
+
+interface ReleaseInfo {
+  tag_name: string;
+  assets: Array<{ name: string; browser_download_url: string; size: number }>;
+}
+
+/** GitHub's release list, cached: `status()` is called often and must not hit the network each time. */
+const RELEASES_TTL_MS = 6 * 60 * 60 * 1000;
+let releaseCache: { at: number; releases: ReleaseInfo[] } | null = null;
+let releasesInFlight: Promise<ReleaseInfo[]> | null = null;
+
+async function fetchReleases(): Promise<ReleaseInfo[]> {
+  const res = await fetchWithTimeout('https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=30', {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Cellar' },
+    timeoutMs: 15_000,
+  });
+  if (!res.ok) throw new Error(`GitHub API error ${res.status}`);
+  const releases = (await res.json()) as ReleaseInfo[];
+  releaseCache = { at: Date.now(), releases };
+  return releases;
+}
+
+/** Cached releases, refreshing in the background when stale. `null` when nothing has been fetched yet. */
+function releases(options: { refresh?: boolean } = {}): ReleaseInfo[] | null {
+  const stale = !releaseCache || Date.now() - releaseCache.at > RELEASES_TTL_MS;
+  if ((stale || options.refresh) && !releasesInFlight) {
+    releasesInFlight = fetchReleases()
+      .catch((err) => {
+        log.warn('could not list whisper.cpp releases', errorMessage(err));
+        return releaseCache?.releases ?? [];
+      })
+      .finally(() => {
+        releasesInFlight = null;
+      });
+  }
+  return releaseCache?.releases ?? null;
+}
+
+/** The newest release that ships this build, or null when none of the recent ones do. */
+function newestWith(variant: WhisperVariant, list: ReleaseInfo[]): { release: ReleaseInfo; asset: ReleaseInfo['assets'][number] } | null {
+  for (const release of list) {
+    const asset = release.assets.find((a) => VARIANT_ASSETS[variant].test(a.name));
+    if (asset) return { release, asset };
+  }
+  return null;
 }
 
 const runtimeRoot = () => join(paths().whisper, 'runtime');
@@ -76,8 +130,21 @@ class VoiceService {
     const app = settings.get();
     const models = WHISPER_MODELS.map((m) => ({ ...m, installed: existsSync(join(modelsDir(), m.id)) }));
     const model = app.voiceModel;
-    const recommendedVariant = recommendedWhisperVariant(await detectHardware());
-    return { runtime, models, model, language: app.voiceLanguage, ready: !!runtime && existsSync(join(modelsDir(), model)), recommendedVariant };
+    // Kicks off a background refresh when stale; whatever is cached answers this call.
+    const list = releases();
+    const availableVariants = list ? ALL_VARIANTS.filter((v) => !!newestWith(v, list)) : ALL_VARIANTS;
+    const recommendedVariant = recommendedWhisperVariant(await detectHardware(), availableVariants);
+    const newest = runtime && list ? newestWith(runtime.variant, list) : null;
+    return {
+      runtime: runtime && newest && newest.release.tag_name !== runtime.tag ? { ...runtime, updateAvailable: newest.release.tag_name } : runtime,
+      models,
+      model,
+      language: app.voiceLanguage,
+      ready: !!runtime && existsSync(join(modelsDir(), model)),
+      recommendedVariant,
+      availableVariants,
+      latestTag: list?.[0]?.tag_name,
+    };
   }
 
   async installRuntime(variant: WhisperVariant): Promise<WhisperRuntime> {
@@ -86,21 +153,20 @@ class VoiceService {
     installing.add(key);
     const progress = progressEmitter('runtime', variant);
     try {
-      const res = await fetchWithTimeout('https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=10', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Cellar' }, timeoutMs: 15_000 });
-      if (!res.ok) throw new Error(`GitHub API error ${res.status}`);
-      const releases = (await res.json()) as Array<{ tag_name: string; assets: Array<{ name: string; browser_download_url: string; size: number }> }>;
-      let asset: { name: string; browser_download_url: string; size: number } | undefined;
-      let tag = '';
-      for (const release of releases) {
-        asset = release.assets.find((a) => VARIANT_ASSETS[variant].test(a.name));
-        if (asset) {
-          tag = release.tag_name;
-          break;
-        }
+      // Always look at the live list: installing is exactly when a stale cache would be wrong.
+      const list = await fetchReleases();
+      const found = newestWith(variant, list);
+      if (!found) {
+        throw new Error(
+          variant === 'cuda-13'
+            ? 'whisper.cpp does not currently publish a Windows x64 CUDA 13 build. Install the CPU build instead — on an RTX 50 series card it is faster than the CUDA 12 one anyway.'
+            : 'No whisper.cpp release with Windows binaries was found.',
+        );
       }
-      if (!asset) throw new Error('No whisper.cpp release with Windows binaries was found.');
+      const { asset } = found;
+      const tag = found.release.tag_name;
       const zip = join(paths().tmp, asset.name);
-      await downloadFile({ url: asset.browser_download_url, dest: zip, expectedSize: asset.size, onProgress: (r) => progress('downloading', r, asset!.size) });
+      await downloadFile({ url: asset.browser_download_url, dest: zip, expectedSize: asset.size, onProgress: (r) => progress('downloading', r, asset.size) });
       progress('extracting', asset.size, asset.size);
       progress.flush();
       const target = join(runtimeRoot(), variant);

@@ -25,6 +25,8 @@ export interface CellarPaths {
   commands: string;
   /** whisper.cpp builds and models. */
   whisper: string;
+  /** The piper build and its downloaded voices, for spoken replies. */
+  piper: string;
   /** Working folders of Design sessions. */
   designs: string;
   /** Working folders of Math sessions. */
@@ -65,6 +67,7 @@ export function initPaths(userData: string, artifactRuntimeDir: string): CellarP
     plugins: join(cellarHome, 'plugins'),
     commands: join(cellarHome, 'commands'),
     whisper: join(cellarHome, 'whisper'),
+    piper: join(cellarHome, 'piper'),
     designs: join(cellarHome, 'designs'),
     boards: join(cellarHome, 'boards'),
     claudeDesktopConfig: join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json'),

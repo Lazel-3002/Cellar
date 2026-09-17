@@ -13,6 +13,7 @@ import { embeddingIndex } from '../rag/embeddings';
 import { previewCron } from '../scheduled/cron';
 import { scheduler } from '../scheduled/scheduler';
 import { paths } from '../system/paths';
+import { tts } from '../voice/tts';
 import { voice } from '../voice/whisper';
 import { handle } from './register';
 
@@ -121,7 +122,7 @@ export function registerM4Handlers(): void {
 
   handle('voice:status', () => voice.status());
   handle('voice:installRuntime', async (variant) => {
-    await voice.installRuntime(z.enum(['cpu', 'blas', 'cuda-12']).parse(variant));
+    await voice.installRuntime(z.enum(['cpu', 'blas', 'cuda-12', 'cuda-13']).parse(variant));
   });
   handle('voice:downloadModel', (id) => voice.downloadModel(id));
   handle('voice:deleteModel', (id) => voice.deleteModel(id));
@@ -129,6 +130,12 @@ export function registerM4Handlers(): void {
     if (!(wav instanceof Uint8Array) || wav.byteLength > 200 * 1024 * 1024) throw new Error('The recording could not be read.');
     return voice.transcribe(wav, language ? z.string().regex(/^(auto|[a-z]{2,3})$/).parse(language) : undefined, !!partial);
   });
+
+  handle('tts:status', () => tts.status());
+  handle('tts:installPiper', () => tts.installPiper());
+  handle('tts:downloadVoice', (id) => tts.downloadVoice(z.string().regex(/^[\w-]{1,60}$/).parse(id)));
+  handle('tts:deleteVoice', (id) => tts.deleteVoice(z.string().regex(/^[\w-]{1,60}$/).parse(id)));
+  handle('tts:synthesize', (text) => tts.synthesize(z.string().min(1).max(8000).parse(text)));
 
   handle('projects:indexStatus', (projectId) => embeddingIndex.status(projectId));
   handle('projects:reindex', async (projectId) => {

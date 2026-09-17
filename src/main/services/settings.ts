@@ -66,6 +66,9 @@ function defaults(): StoredSettings {
     autoUpdateCheck: true,
     voiceReplies: false,
     voiceReplyVoice: '',
+    ttsEngine: 'system',
+    piperVoice: 'en_US-amy-medium',
+    voiceStreaming: true,
     // Off by default: ten more tool schemas are a real slice of a 16K context window, and browsing
     // on the user's own logged-in session is something to opt into rather than inherit.
     browserEnabled: false,
@@ -170,6 +173,9 @@ class SettingsService {
     if (patch.autoUpdateCheck !== undefined) set('autoUpdateCheck', !!patch.autoUpdateCheck);
     if (patch.voiceReplies !== undefined) set('voiceReplies', !!patch.voiceReplies);
     if (patch.voiceReplyVoice !== undefined) set('voiceReplyVoice', patch.voiceReplyVoice.trim().slice(0, 200));
+    if (patch.ttsEngine !== undefined && ['system', 'piper'].includes(patch.ttsEngine)) set('ttsEngine', patch.ttsEngine);
+    if (patch.piperVoice !== undefined && /^[\w-]{1,60}$/.test(patch.piperVoice)) set('piperVoice', patch.piperVoice);
+    if (patch.voiceStreaming !== undefined) set('voiceStreaming', !!patch.voiceStreaming);
     if (patch.browserEnabled !== undefined) set('browserEnabled', !!patch.browserEnabled);
     if (patch.moduleCalls !== undefined) set('moduleCalls', !!patch.moduleCalls);
     if (patch.moduleCallsPerMinute !== undefined) set('moduleCallsPerMinute', clamp(patch.moduleCallsPerMinute, 1, 60));

@@ -114,19 +114,24 @@ export function recommendedVariant(hw: HardwareInfo): RuntimeVariant {
 }
 
 /**
- * Pick the whisper.cpp build that best matches the primary GPU. Unlike llama.cpp, whisper.cpp's
- * official Windows x64 releases only ship a CUDA 12.4 build (no x64 CUDA 13 asset exists yet — only
- * an arm64 one), and that build's compiled kernels stop at compute capability 9.0. On a Blackwell
- * GPU (RTX 50 series, compute 10.0+/12.0) it still runs — the driver falls back to slow PTX JIT —
- * but measured on an RTX 5060 that made a 2s clip take ~34s (vs ~0.5s on the CPU build), a ~70x
- * regression that makes "GPU-accelerated" dictation worse than no GPU at all. Recommend CPU there
- * until whisper.cpp ships Blackwell SASS or a CUDA 13 x64 build (recheck VARIANT_ASSETS in voice/whisper.ts).
+ * Pick the whisper.cpp build that best matches the primary GPU, from the ones that actually exist in
+ * a recent release (`available`, which voice/whisper.ts reads off GitHub).
+ *
+ * The CUDA 12 build's compiled kernels stop at compute capability 9.0. On a Blackwell GPU (RTX 50
+ * series, compute 10.0+/12.0) it still runs — the driver falls back to PTX JIT — but measured on an
+ * RTX 5060 that made a 2s clip take ~34s against ~0.5s on the CPU build, a ~70x regression that
+ * makes "GPU-accelerated" dictation worse than no GPU at all. So Blackwell wants the CUDA 13 build,
+ * and falls back to CPU (not CUDA 12) when whisper.cpp is not publishing one.
  */
-export function recommendedWhisperVariant(hw: HardwareInfo): WhisperVariant {
+export function recommendedWhisperVariant(hw: HardwareInfo, available: WhisperVariant[] = ['cpu', 'blas', 'cuda-12', 'cuda-13']): WhisperVariant {
   const gpu = hw.gpus[0];
   if (!gpu || gpu.vendor !== 'nvidia') return 'cpu';
   const cap = Number(gpu.computeCapability ?? '0');
-  return cap > 0 && cap < 10 ? 'cuda-12' : 'cpu';
+  const driverMajor = Number((gpu.driverVersion ?? '0').split('.')[0]);
+  // CUDA 13 needs an R580+ driver; Blackwell needs CUDA >= 12.8, so 13 is the only build that fits it.
+  if (cap >= 10 && driverMajor >= 580 && available.includes('cuda-13')) return 'cuda-13';
+  if (cap > 0 && cap < 10 && available.includes('cuda-12')) return 'cuda-12';
+  return 'cpu';
 }
 
 /** VRAM budget for fit badges: total VRAM minus what the desktop typically holds. */

@@ -180,7 +180,7 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
     requestAnimationFrame(() => textarea.current?.focus());
   }, []);
   const dictationError = useCallback((message: string) => toast.error('Dictation failed', { description: message }), []);
-  const dictation = useDictation(insertDictation, dictationError);
+  const dictation = useDictation(insertDictation, dictationError, { streaming: settings?.voiceStreaming !== false });
   const toggleDictation = () => {
     if (dictation.state === 'recording') return dictation.stop();
     if (dictation.state !== 'idle') return;

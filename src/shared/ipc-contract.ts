@@ -67,7 +67,7 @@ import type { ProviderConfig, ProviderConfigInput, ProviderStatus } from './type
 import type { CronPreview, ScheduledRun, ScheduledTask, ScheduledTaskInput } from './types/scheduled';
 import type { AppSettings, AppSettingsPatch } from './types/settings';
 import type { HardwareInfo, RuntimeInfo, RuntimeInstallProgress, RuntimeRelease, RuntimeVariant } from './types/system';
-import type { TranscriptionResult, VoiceProgress, VoiceStatus, WhisperVariant } from './types/voice';
+import type { TranscriptionResult, TtsStatus, VoiceProgress, VoiceStatus, WhisperVariant } from './types/voice';
 import type { AppUpdateState } from './types/update';
 import type { LspCompletionItem, LspDiagnosticsEvent, LspLanguage, LspLocation, LspPosition } from './types/lsp';
 
@@ -300,6 +300,13 @@ export interface IpcInvokeMap {
   /** 16 kHz mono 16-bit WAV. */
   /** partial=true trades accuracy for speed (greedy decoding) for a live preview while still recording. */
   'voice:transcribe': Handler<[wav: Uint8Array, language?: string, partial?: boolean], TranscriptionResult>;
+
+  'tts:status': Handler<[], TtsStatus>;
+  'tts:installPiper': Handler<[], void>;
+  'tts:downloadVoice': Handler<[id: string], void>;
+  'tts:deleteVoice': Handler<[id: string], void>;
+  /** A WAV rendered by piper, or null when the system engine is selected (the renderer speaks it itself). */
+  'tts:synthesize': Handler<[text: string], Uint8Array | null>;
 
   /** The built-in Chromium browser (`main/browser/browser.ts`); the view is painted over `browser:setBounds`. */
   'browser:state': Handler<[], BrowserState>;
@@ -545,6 +552,11 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'voice:downloadModel': true,
   'voice:deleteModel': true,
   'voice:transcribe': true,
+  'tts:status': true,
+  'tts:installPiper': true,
+  'tts:downloadVoice': true,
+  'tts:deleteVoice': true,
+  'tts:synthesize': true,
   'browser:state': true,
   'browser:open': true,
   'browser:navigate': true,
