@@ -343,14 +343,14 @@ export function ScheduledPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[14.5px] font-medium">{task.name}</span>
-                      <Badge tone="outline">{task.kind === 'task' ? 'Cowork' : 'Chat'}</Badge>
+                      <Badge tone="outline">{task.reminder ? 'Reminder' : task.kind === 'task' ? 'Cowork' : 'Chat'}</Badge>
                       {task.lastStatus === 'error' && <Badge tone="danger">Last run failed</Badge>}
                       {task.lastStatus === 'running' && <Badge tone="brand">Running</Badge>}
                     </div>
                     <p className="mt-0.5 line-clamp-1 text-[12.5px] text-muted-foreground">{task.prompt}</p>
                     <div className="mt-1 text-[12px] text-muted-foreground">
-                      <CronLabel cron={task.cron} />
-                      {task.enabled && task.nextRunAt ? ` · next ${formatWhen(task.nextRunAt)}` : task.enabled ? '' : ' · paused'}
+                      {task.oneShot ? (task.enabled ? 'Once' : 'Once · already fired') : <CronLabel cron={task.cron} />}
+                      {task.enabled && task.nextRunAt ? ` · ${task.oneShot ? 'at' : 'next'} ${formatWhen(task.nextRunAt)}` : task.enabled || task.oneShot ? '' : ' · paused'}
                       {task.lastRunAt ? ` · last ran ${relativeTime(task.lastRunAt)}` : ''}
                     </div>
                   </div>
@@ -365,15 +365,18 @@ export function ScheduledPage() {
                       </button>
                     </MenuTrigger>
                     <MenuContent align="end">
-                      <MenuItem
-                        icon={<Pencil />}
-                        onSelect={() => {
-                          setEditing(task);
-                          setOpen(true);
-                        }}
-                      >
-                        Edit
-                      </MenuItem>
+                      {/* A reminder's schedule is a single instant, not a cron expression, so the editor has nothing to edit. */}
+                      {!task.oneShot && (
+                        <MenuItem
+                          icon={<Pencil />}
+                          onSelect={() => {
+                            setEditing(task);
+                            setOpen(true);
+                          }}
+                        >
+                          Edit
+                        </MenuItem>
+                      )}
                       <MenuItem icon={<Clock />} onSelect={() => setHistoryFor(historyFor === task.id ? undefined : task.id)}>
                         {historyFor === task.id ? 'Hide history' : 'Run history'}
                       </MenuItem>

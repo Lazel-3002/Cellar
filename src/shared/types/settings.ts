@@ -88,6 +88,8 @@ export interface AppSettings {
   moduleCalls: boolean;
   /** How many `call` requests each module accepts per minute. */
   moduleCallsPerMinute: number;
+  /** Let models set their own reminders with `create_reminder`; they fire through the scheduled-task machinery. */
+  selfScheduling: boolean;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

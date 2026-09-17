@@ -263,4 +263,9 @@ export const migrations: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  /* 7: reminders a model sets for itself (one-shot scheduled tasks) */ `
+  ALTER TABLE scheduled_tasks ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE scheduled_tasks ADD COLUMN fire_at INTEGER;
+  ALTER TABLE scheduled_tasks ADD COLUMN reminder TEXT;
+  `,
 ];

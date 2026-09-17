@@ -417,6 +417,7 @@ export class TaskRunner {
         incognito: store.incognito,
         readOnly: task.permissionMode === 'plan' && !run.chat,
         browser: !task.math && !task.design,
+        reminders: !task.math && !task.design,
       });
       const tools = [...baseTools, ...extras];
       const schemas = tools.map(toolSchema);

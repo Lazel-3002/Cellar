@@ -18,7 +18,8 @@ const { providers } = await import('../../src/main/providers/registry');
 const { chat } = await import('../../src/main/chat/orchestrator');
 const diagnostics = await import('../../src/main/code/diagnostics');
 const { describeCron, nextFire, previewCron } = await import('../../src/main/scheduled/cron');
-const { scheduler } = await import('../../src/main/scheduled/scheduler');
+const { emailCheckPrompt, scheduler } = await import('../../src/main/scheduled/scheduler');
+const { parseDelaySeconds } = await import('../../src/main/agent/tools/reminder');
 const rag = await import('../../src/main/rag/embeddings');
 const { addProjectFiles, createProject, projectKnowledge } = await import('../../src/main/services/projects');
 const { cleanTranscript } = await import('../../src/main/voice/whisper');
@@ -196,6 +197,50 @@ describe('scheduled tasks', () => {
 
     await expect(scheduler.runNow(task.id)).resolves.toMatchObject({ conversationId: expect.any(String) });
     expect(() => scheduler.save({ ...task, cron: 'every day' })).toThrow('five fields');
+  });
+
+  it('delivers a reminder a model set for itself and then disarms it', async () => {
+    const { conversationId } = await chat.send({ content: 'Remind me later', attachmentIds: [], model: { providerId: 'fake', modelId: 'chatty' }, thinking: 'off' });
+    await sleep(60);
+    const reminder = scheduler.createReminder({ conversationId, delaySeconds: 30, message: 'The pasta is ready.' });
+    expect(reminder.oneShot).toBe(true);
+    expect(reminder.reminder).toMatchObject({ conversationId, message: 'The pasta is ready.' });
+    expect(reminder.nextRunAt).toBe(reminder.fireAt);
+
+    // Not due yet.
+    await scheduler.tick();
+    expect(scheduler.runs(reminder.id)).toHaveLength(0);
+
+    run('UPDATE scheduled_tasks SET fire_at = ? WHERE id = ?', Date.now() - 1000, reminder.id);
+    await scheduler.tick();
+    // A second tick must not fire it again.
+    await scheduler.tick();
+    expect(scheduler.runs(reminder.id)).toHaveLength(1);
+    expect(scheduler.get(reminder.id).enabled).toBe(false);
+    expect(chat.getConversation(conversationId).messages.at(-1)?.content).toBe('The pasta is ready.');
+  });
+
+  it('refuses a reminder with nothing to do, and clamps a too-short delay', async () => {
+    const { conversationId } = await chat.send({ content: 'Another chat', attachmentIds: [], model: { providerId: 'fake', modelId: 'chatty' }, thinking: 'off' });
+    await sleep(60);
+    expect(() => scheduler.createReminder({ conversationId, delaySeconds: 60 })).toThrow(/message, a task, or an inbox/);
+    const soon = scheduler.createReminder({ conversationId, delaySeconds: 1, message: 'now' });
+    expect(soon.fireAt! - Date.now()).toBeGreaterThan(5000);
+    scheduler.delete(soon.id);
+  });
+
+  it('reads the delays models write', () => {
+    expect(parseDelaySeconds(600)).toBe(600);
+    expect(parseDelaySeconds('600')).toBe(600);
+    expect(parseDelaySeconds('10 minutes')).toBe(600);
+    expect(parseDelaySeconds('1h 30m')).toBe(5400);
+    expect(parseDelaySeconds('tomorrow')).toBeNull();
+  });
+
+  it('asks a model to read a real inbox rather than invent one', () => {
+    const prompt = emailCheckPrompt('work@example.com', Date.now());
+    expect(prompt).toContain('work@example.com');
+    expect(prompt).toMatch(/do not invent messages/i);
   });
 });
 

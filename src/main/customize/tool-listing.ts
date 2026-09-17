@@ -46,6 +46,7 @@ const GROUPS: Record<string, string> = {
   browse_scroll: 'Built-in browser',
   browse_tabs: 'Built-in browser',
   call: 'Modules',
+  create_reminder: 'Planning',
   skill: 'Skills',
   read_skill_file: 'Skills',
   remember: 'Memory',
@@ -110,6 +111,7 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
     incognito,
     readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && permissionMode === 'plan',
     browser: scope !== 'math' && scope !== 'design',
+    reminders: scope !== 'math' && scope !== 'design',
   });
   const tools = [...base, ...extras].map(describe);
   const connectorPolicies = new Map<string, string>();

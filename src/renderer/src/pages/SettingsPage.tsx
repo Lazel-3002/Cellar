@@ -130,6 +130,12 @@ function General() {
             <NumberInput value={s.moduleCallsPerMinute} min={1} max={60} onChange={(v) => v && update.mutate({ moduleCallsPerMinute: v })} />
           </Field>
         )}
+        <Field
+          label="Reminders models set themselves"
+          description="Let a model schedule its own follow-up with create_reminder — a note back to you, work to pick up later, or an inbox to check. Reminders run through the same machinery as scheduled tasks, so they fire even if the chat is closed or Cellar is quit, and they appear under Scheduled where you can cancel them. Anything that runs work asks you first."
+        >
+          <Switch checked={s.selfScheduling} onCheckedChange={(v) => update.mutate({ selfScheduling: v })} />
+        </Field>
       </Card>
       <DesktopCard />
     </>

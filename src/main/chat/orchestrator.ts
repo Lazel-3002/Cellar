@@ -301,6 +301,35 @@ class ChatOrchestrator {
     return { conversationId: copy.conversationId };
   }
 
+  conversationExists(conversationId: string): boolean {
+    return !!this.store(conversationId).getConversation(conversationId);
+  }
+
+  /**
+   * Append a note from Cellar itself to a conversation (a fired reminder). It is written as an
+   * assistant message so it reads in place and stays in the branch the model sees next turn.
+   */
+  postNote(conversationId: string, text: string): Message {
+    const store = this.store(conversationId);
+    const conversation = store.getConversation(conversationId);
+    if (!conversation) throw new Error('Conversation not found');
+    const note: Message = {
+      id: newId(),
+      conversationId,
+      parentId: conversation.currentLeafId,
+      role: 'assistant',
+      content: text.trim(),
+      attachments: [],
+      status: 'complete',
+      createdAt: Date.now(),
+    };
+    store.insertMessage(note);
+    store.indexMessage(note);
+    store.updateConversation(conversationId, { currentLeafId: note.id });
+    this.notify(conversationId);
+    return note;
+  }
+
   approve(messageId: string, toolCallId: string, decision: ApprovalDecision): void {
     this.tasks.approve(messageId, toolCallId, decision);
   }

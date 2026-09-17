@@ -10,6 +10,7 @@ import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFil
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
 import { mcpGetPromptTool, mcpPromptsTool, mcpReadResourceTool, mcpResourcesTool } from './mcp';
 import { createDocx, createPdf, createPptx, createXlsx, normalizeTodoArgs, todoWrite } from './plan-docs';
+import { createReminderTool } from './reminder';
 import type { AgentTool } from './types';
 import { webFetch, webSearch } from './web';
 
@@ -32,11 +33,21 @@ export const ALL_TOOLS: AgentTool[] = [
   calculateTool,
 ] as AgentTool[];
 
-/** Tools that do not depend on the working folder: skills, memory, past chats, the built-in browser and `call`. */
-export const ASSISTANT_TOOLS: AgentTool[] = [skillTool, readSkillFileTool, rememberTool, forgetTool, searchChatsTool, readChatTool, ...BROWSER_TOOLS, callTool] as AgentTool[];
+/** Tools that do not depend on the working folder: skills, memory, past chats, the built-in browser, `call` and reminders. */
+export const ASSISTANT_TOOLS: AgentTool[] = [
+  skillTool,
+  readSkillFileTool,
+  rememberTool,
+  forgetTool,
+  searchChatsTool,
+  readChatTool,
+  ...BROWSER_TOOLS,
+  callTool,
+  createReminderTool,
+] as AgentTool[];
 
 export interface ExtraToolOptions {
-  settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats' | 'browserEnabled'>;
+  settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats' | 'browserEnabled' | 'selfScheduling'>;
   /** At least one skill is enabled. */
   skills: boolean;
   incognito: boolean;
@@ -44,15 +55,18 @@ export interface ExtraToolOptions {
   readOnly: boolean;
   /** Offer the built-in browser here (chats, Cowork tasks and Code sessions; not Math or Design). */
   browser?: boolean;
+  /** Offer `create_reminder` here. Incognito chats never get it: they have nowhere to fire. */
+  reminders?: boolean;
 }
 
-/** Skills, memory, past-chat search, the built-in browser and connector tools, as the settings allow. */
+/** Skills, memory, past-chat search, the built-in browser, reminders and connector tools, as the settings allow. */
 export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]> {
   const tools: AgentTool[] = [];
   if (options.skills) tools.push(skillTool as AgentTool, readSkillFileTool as AgentTool);
   if (options.browser && options.settings.browserEnabled) {
     tools.push(...(BROWSER_TOOLS.filter((t) => !options.readOnly || (t.name !== 'browse_click' && t.name !== 'browse_fill')) as AgentTool[]));
   }
+  if (options.reminders && options.settings.selfScheduling && !options.incognito) tools.push(createReminderTool as AgentTool);
   if (options.settings.memoryEnabled && !options.incognito) tools.push(rememberTool as AgentTool, forgetTool as AgentTool);
   if (options.settings.searchPastChats && !options.incognito) tools.push(searchChatsTool as AgentTool, readChatTool as AgentTool);
   if (connectors.connectorsWithResources().length) tools.push(mcpResourcesTool as AgentTool, mcpReadResourceTool as AgentTool);

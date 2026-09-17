@@ -71,6 +71,7 @@ function defaults(): StoredSettings {
     browserEnabled: false,
     moduleCalls: true,
     moduleCallsPerMinute: 5,
+    selfScheduling: true,
   };
 }
 
@@ -172,6 +173,7 @@ class SettingsService {
     if (patch.browserEnabled !== undefined) set('browserEnabled', !!patch.browserEnabled);
     if (patch.moduleCalls !== undefined) set('moduleCalls', !!patch.moduleCalls);
     if (patch.moduleCallsPerMinute !== undefined) set('moduleCallsPerMinute', clamp(patch.moduleCallsPerMinute, 1, 60));
+    if (patch.selfScheduling !== undefined) set('selfScheduling', !!patch.selfScheduling);
 
     if (changes.length) {
       transaction(() => {
