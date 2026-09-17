@@ -59,7 +59,8 @@ export const browseOpen = defineTool({
 
 export const browseRead = defineTool({
   name: 'browse_read',
-  description: 'Read the page open in the built-in browser: its readable text and the links on it. Use this after browse_open, a click, or a form submission.',
+  description:
+    'Read the page open in the built-in browser: its readable text and the links on it. Use this after browse_open, a click, or a form submission. Prefer this (and browse_get_elements for clickable targets) over browse_screenshot for ordinary text pages — it\'s cheaper and usually all you need. Reach for browse_screenshot only when you actually need to see the visual layout.',
   category: 'browser',
   input: z.object({
     tab_id: tabId,
@@ -182,7 +183,7 @@ export const browseTabs = defineTool({
 export const browseScreenshot = defineTool({
   name: 'browse_screenshot',
   description:
-    'See the page open in the built-in browser: a screenshot plus the clickable elements on it (with their positions), so you can decide what to click without guessing selectors. Use browse_mouse_click with the coordinates of an element this returns.',
+    'See the page open in the built-in browser: a screenshot plus the clickable elements on it (with their positions), so you can decide what to click without guessing selectors. Use browse_mouse_click with the coordinates of an element this returns. Prefer browse_read or browse_get_elements first for text pages and CSS-selector clicks — reach for this when you need the actual visual layout. If the page hasn\'t changed since your last screenshot, don\'t take another one: use browse_wait if it\'s still loading, or try a different action.',
   category: 'browser',
   input: z.object({ tab_id: tabId }),
   async run(args, ctx) {

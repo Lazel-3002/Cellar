@@ -108,6 +108,8 @@ export interface AppSettings {
   moduleCallsPerMinute: number;
   /** Let models set their own reminders with `create_reminder`; they fire through the scheduled-task machinery. */
   selfScheduling: boolean;
+  /** Pause a run when the model repeats one identical tool call 4 times in a row. Off lets it keep retrying unattended. */
+  pauseOnRepeatedCalls: boolean;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

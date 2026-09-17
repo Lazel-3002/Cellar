@@ -78,6 +78,7 @@ function defaults(): StoredSettings {
     moduleCalls: true,
     moduleCallsPerMinute: 5,
     selfScheduling: true,
+    pauseOnRepeatedCalls: true,
   };
 }
 
@@ -186,6 +187,7 @@ class SettingsService {
     if (patch.moduleCalls !== undefined) set('moduleCalls', !!patch.moduleCalls);
     if (patch.moduleCallsPerMinute !== undefined) set('moduleCallsPerMinute', clamp(patch.moduleCallsPerMinute, 1, 60));
     if (patch.selfScheduling !== undefined) set('selfScheduling', !!patch.selfScheduling);
+    if (patch.pauseOnRepeatedCalls !== undefined) set('pauseOnRepeatedCalls', !!patch.pauseOnRepeatedCalls);
 
     if (changes.length) {
       transaction(() => {

@@ -149,6 +149,12 @@ function General() {
           />
         </Field>
         <Field
+          label="Pause on repeated tool calls"
+          description="Stop a run when the model calls the exact same tool with the exact same arguments 4 times in a row (for example, taking the same screenshot repeatedly). It already gets a warning on the 2nd and 3rd try. Turn this off to let it keep retrying unattended — useful for a model that's slow to notice a page hasn't changed, at the cost of it being able to loop until you stop it yourself."
+        >
+          <Switch checked={s.pauseOnRepeatedCalls} onCheckedChange={(v) => update.mutate({ pauseOnRepeatedCalls: v })} />
+        </Field>
+        <Field
           label="Delegate to other modules"
           description="Give chats a call(module, task) tool so they can hand work to Code, Math, Design, Cowork or Voice instead of redoing it. Work that needs a model runs in its own conversation you can watch, and anything that changes files asks you first."
         >

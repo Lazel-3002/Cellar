@@ -849,7 +849,7 @@ export class TaskRunner {
     const key = `${tool.name}:${stableJson(args)}`;
     const repeats = counts.get(key) ?? 0;
     counts.set(key, repeats + 1);
-    if (repeats >= MAX_IDENTICAL_CALLS) {
+    if (repeats >= MAX_IDENTICAL_CALLS && ctx.settings.pauseOnRepeatedCalls) {
       call.status = 'cancelled';
       call.finishedAt = Date.now();
       throw new RepeatedCallLimitError(`the model repeated the same ${tool.name} call ${MAX_IDENTICAL_CALLS + 1} times in a row`);
