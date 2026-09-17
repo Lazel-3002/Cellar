@@ -12,6 +12,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M5 Design** | Canvas for mockups and slides, better-designed documents | ✅ Done 2026-09-15 |
 | **M6 Math** | Study boards: exact calculator, worked steps, figures, graphs, practice tests, whiteboard | ✅ Done 2026-09-16 |
 | **M7 Inline capabilities** | Inline visualizations (sandboxed HTML rendered live in chat) and inline images ([[image: query]] via DuckDuckGo search) | ✅ Done 2026-09-16 |
+| **M8 Tier 3 wishlist** | Built-in Chromium browser, `call(module, task)` delegation, self-scheduling reminders, streaming dictation + spoken replies | ✅ Done 2026-09-17 |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -531,3 +532,109 @@ The M7 blocks rendered, but they read as *panels pasted into* a message rather t
 - **`sanitizeSvg` keeps in-document `url(#id)` references**, so `<marker>` arrowheads and gradients survive; only external ones are dropped.
 - **Playwright:** `[data-viz="…"] svg` also matches the Lucide icon in the hover menu — filter with `:not(.lucide)` (same trap as the Math figure toolbar). An element `.screenshot()` scrolls, which drops `:hover`, so re-hover immediately before clicking hover-revealed chrome.
 - **Mock server:** a fixture prompt keyed on a word like `viz` will also match a test that *pastes markup containing that word*. The paste-through branch (a prompt that is itself a fenced block comes back verbatim) has to be checked first.
+
+## M8 Tier 3 wishlist — delivered
+
+Four capabilities from the Tier 3 list, each opt-in and each reusing machinery the app already had
+rather than growing a parallel one.
+
+### 3.1 Built-in Chromium browser (`src/main/browser/`)
+
+The "browser extension" idea is replaced by a browser Cellar owns. Each tab is a `WebContentsView`
+parented to the app window and painted over a rectangle the new side panel reports, so pages share
+the app's **default session** — its cookies, its logins, its proxy — with no second sign-in and no
+extension to install.
+
+- **Panel** (`BrowserPanel.tsx`): tab strip, address bar, back/forward/reload, resizable, with a
+  `ResizeObserver` keeping the native view over the panel's rectangle (scaled by the window's zoom
+  factor, since the panel measures in CSS pixels and view bounds are window pixels). Openable by hand
+  from the composer tools menu; a browser tool also reveals it, so the user watches what the model does.
+- **Tools:** `browse_open`, `browse_read`, `browse_url`, `browse_back`, `browse_forward`,
+  `browse_reload`, `browse_click`, `browse_fill`, `browse_scroll`, `browse_tabs` (8 tabs max).
+  `browse_read` runs the page's `outerHTML` through the same `htmlToText` reader `web_fetch` uses.
+- **Containment:** pages load sandboxed, context-isolated, with no preload and node integration off;
+  permission requests (camera, microphone, location, notifications) are denied; navigation is
+  http(s) only, so a page can never hand a URL to the operating system; a window-open becomes a new
+  tab. Opening a host the user did not name asks first, and "always allow" remembers that host for
+  the task. Plan and Ask modes drop `browse_click` and `browse_fill`.
+- **Off by default** (Settings → Capabilities): ten tool schemas are a real slice of a 16K context,
+  and browsing the user's own logged-in session is something to opt into. The panel itself is always
+  available.
+
+### 3.2 `call(module, task)` (`src/main/modules/`)
+
+One interface for a chat to hand work to the rest of Cellar. Every module takes `{ action, params }`
+and answers `{ status, result, stdout? }`.
+
+- `cellar-math` (`calculate` / `solve` / `quiz` answered by Cellar's own exact calculator, plus
+  `create_board` and `export`), `cellar-design` (`create`, `export`), `cellar-code` (`run`,
+  `diagnostics`), `cellar-cowork` (`run`), `cellar-voice` (`info`, `transcribe`, `speak`).
+- **Long-running work** cannot finish inside a tool call, so those actions start a real conversation,
+  answer with a `task_id`, and the caller polls `{ action: "status", params: { task_id } }`
+  (`cancel` and `actions` too). The delegated conversation appears in the sidebar, so the user can
+  watch it and answer its approval cards. Delegated exports land in `~/.cellar/chat/exports`.
+- **Rate limited** per module on a sliding one-minute window (5 by default, Settings →
+  Capabilities); polling a job is never limited. Anything not read-only asks the user first.
+- `normalizeCallArgs` absorbs the shapes models actually send: a flattened `{module, action, params}`,
+  a `task` that arrived as a JSON string, a bare action name, `arguments` instead of `params`, and a
+  module name without the `cellar-` prefix.
+
+### 3.3 Self-scheduling (`create_reminder`)
+
+A reminder is a **one-shot row in the scheduled-task table** with a `fire_at` instant instead of a
+cron schedule (migration 7 adds `one_shot`, `fire_at`, `reminder`). Riding on 1.3's machinery is the
+point: the reminder survives the session that made it, the app being quit and the machine sleeping,
+and the same OS wake job relaunches Cellar for it.
+
+- `create_reminder(delay_seconds, message?, task?, email_check?)`: `message` posts a note into the
+  conversation, `task` comes back to the model as a new request in it, `email_check` asks the model
+  to read a named inbox **through whatever email connector the user has** and summarize what is new —
+  Cellar has no mail client of its own, and the prompt says plainly not to invent messages when no
+  connector offers email.
+- The tick disarms a one-shot before running it, so a slow run can never fire it twice, and an exact
+  timer covers reminders due sooner than the next 20s tick. Delays are parsed the way models write
+  them ("10 minutes", "1h 30m", 600) and clamped to 10s–31 days.
+- Reminders that run work ask first; a plain note does not. Incognito chats cannot set one (nowhere
+  to fire). They show under Scheduled as "Once · at <time>", where they can be cancelled.
+
+### 3.4 Voice: streaming transcription and spoken replies
+
+- **Newer whisper.cpp builds.** `VARIANT_ASSETS` learns the CUDA 13 Windows x64 asset, and Cellar
+  asks GitHub which builds a recent release actually ships (cached 6h) instead of assuming: Settings
+  lists only those, and says when a newer release exists for the installed build.
+  `recommendedWhisperVariant` sends Blackwell (compute ≥ 10 with an R580+ driver) to CUDA 13 and,
+  when there is no CUDA 13 to send it to, to **CPU** rather than CUDA 12 — whose kernels stop at
+  compute 9.0 and JIT into the ~70× regression measured on the RTX 5060.
+- **Streaming transcription.** Dictation used to re-transcribe the whole clip every 2.5s, so each
+  tick got slower as you talked. Now the tail past the last commit is re-transcribed every ~1.2s for
+  the preview, and once that tail passes ~8s the text up to the last natural pause is transcribed at
+  full quality and *frozen* — `findSilenceBoundary` (`src/shared/audio.ts`) picks the cut, keeping
+  clear of the first 2s and last 0.9s so it never splits a word. Work per tick is bounded however
+  long someone talks; stopping transcribes only what is uncommitted. A short recording commits
+  nothing and is still transcribed whole in one pass.
+- **Spoken replies.** "Speak replies" stays off by default and the system voices stay the default
+  engine; picking piper downloads the rhasspy build and one voice, and main renders each utterance
+  to a WAV the renderer plays (it owns the audio output). If piper is missing or fails, speech falls
+  back to the system voices instead of going silent.
+
+### Technical notes learned in M8
+
+- **`WebContentsView` bounds are window pixels, the renderer measures CSS pixels.** They differ by
+  `webContents.getZoomFactor()`, so a zoomed window puts the page in the wrong place unless the
+  panel's rectangle is scaled by it.
+- **A native view floats above the whole renderer.** Leaving the browser panel open changes every
+  later layout — an end-to-end test that opened it and walked away made a *different* test's approval
+  button unclickable. The panel closes the artifact panel and vice versa for the same reason.
+- **`executeJavaScriptInIsolatedWorld` shares the DOM but not the JavaScript context**, which is what
+  makes `click`/`fill`/`read` safe against a page that has redefined `Element.prototype.click` or
+  `JSON.stringify`.
+- **A circular import bites at module-evaluation time, not at call time.** `tools/index.ts` →
+  `call.ts` → `modules/registry.ts` → `chat/orchestrator.ts` → `runner.ts` → `tools/index.ts` left
+  `MODULE_IDS` undefined inside `z.enum(...)`, which fails with "Cannot convert undefined or null to
+  object" from zod rather than anything about imports. The fix is a leaf module (`modules/catalog.ts`)
+  holding what both ends need at load time; function bodies can keep the cycle.
+- **`tsconfig.node.json` does not include `src/renderer`**, so a unit test cannot import a renderer
+  module even when the code in it is pure. Pure helpers that tests want belong in `src/shared`.
+- **A one-shot schedule needs an instant, not a cron expression.** Five-field cron has minute
+  granularity and repeats yearly, so `fire_at` plus `one_shot` is simpler than trying to express
+  "once, in 90 seconds" as a pattern — and the row still feeds the existing OS wake job unchanged.
