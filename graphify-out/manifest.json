@@ -75,8 +75,8 @@
     "semantic_hash": ""
   },
   "src/main/chat/prompts.ts": {
-    "mtime": 1789591333.6042247,
-    "ast_hash": "c022a9162973480246a08d4b21482b72",
+    "mtime": 1789631140.2253296,
+    "ast_hash": "a1ad1ba44eebcb4b7366681aa4e1013c",
     "semantic_hash": ""
   },
   "src/main/db/chat-store.ts": {
@@ -260,8 +260,8 @@
     "semantic_hash": ""
   },
   "src/main/services/settings.ts": {
-    "mtime": 1789630525.5484862,
-    "ast_hash": "5db7531718ae098ad827179822c20914",
+    "mtime": 1789631064.6622963,
+    "ast_hash": "bd5a5f06c24628cc9c2252cf84bf950f",
     "semantic_hash": ""
   },
   "src/main/system/hardware.ts": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/SettingsPage.tsx": {
-    "mtime": 1789630661.3793702,
-    "ast_hash": "1dcb4c12cda2cb54edcc609f2af0e71d",
+    "mtime": 1789631196.9822576,
+    "ast_hash": "e6aa8159691a6c7894f26101ea10ac8b",
     "semantic_hash": ""
   },
   "src/renderer/src/router.tsx": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "src/shared/types/settings.ts": {
-    "mtime": 1789630520.0513113,
-    "ast_hash": "04978d2cf7b83022dbb7302b02f59ed7",
+    "mtime": 1789631058.4221027,
+    "ast_hash": "1e6e0617a455ef75518568e43ad2a1bc",
     "semantic_hash": ""
   },
   "src/shared/types/system.ts": {
@@ -625,8 +625,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/runner.ts": {
-    "mtime": 1789630583.5232677,
-    "ast_hash": "7f8b6ec08e3358396ce6a01d283a74af",
+    "mtime": 1789631090.4888103,
+    "ast_hash": "a3d2ce53673aeb3beb67c4368b8c9b08",
     "semantic_hash": ""
   },
   "src/main/agent/text-protocol.ts": {
@@ -645,8 +645,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/tools/index.ts": {
-    "mtime": 1789626271.1813152,
-    "ast_hash": "e6a1a15e130f0f2f7c6ab806047f3982",
+    "mtime": 1789631111.2229774,
+    "ast_hash": "0b52ca6708c4e062fb0ac36cdefeb7c4",
     "semantic_hash": ""
   },
   "src/main/agent/tools/plan-docs.ts": {
@@ -655,8 +655,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/tools/types.ts": {
-    "mtime": 1789630529.689401,
-    "ast_hash": "838aac01c914158b6fbe885e90da4d0f",
+    "mtime": 1789631068.55661,
+    "ast_hash": "0ad0ad494abcbe000057084e65d9bb99",
     "semantic_hash": ""
   },
   "src/main/agent/tools/web.ts": {
@@ -1000,8 +1000,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/composer/ToolsMenu.tsx": {
-    "mtime": 1789630631.0254917,
-    "ast_hash": "1752c22444a375430b1d2221fb93cb8f",
+    "mtime": 1789631172.5176141,
+    "ast_hash": "746316cc6bfcdf885b053e422716d5e6",
     "semantic_hash": ""
   },
   "src/renderer/src/components/task/AgentParts.tsx": {
@@ -1340,8 +1340,8 @@
     "semantic_hash": ""
   },
   "tests/unit/math.test.ts": {
-    "mtime": 1789625940.2627711,
-    "ast_hash": "f3cdd45becc9be25f0b5b6771428f5bd",
+    "mtime": 1789631130.7900312,
+    "ast_hash": "9c1120b1a385ed6a6055f8d9925fdf5c",
     "semantic_hash": ""
   },
   "docs/Creator Ideas - important things/Desgin needs to havee web search and should have a folder so it can browse and dowland.png": {

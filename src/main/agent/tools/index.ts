@@ -74,11 +74,12 @@ export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]
   return [...tools, ...(await connectorTools(options.readOnly))];
 }
 
-/** Chat: the calculator, `call` (delegation to the other modules), web tools (when turned on) and the extras. */
-export function chatBaseTools(settings: Pick<AppSettings, 'chatWebSearch' | 'moduleCalls'>): AgentTool[] {
+/** Chat: the calculator, `call` (delegation to the other modules), web tools, commands (all when turned on) and the extras. */
+export function chatBaseTools(settings: Pick<AppSettings, 'chatWebSearch' | 'moduleCalls' | 'chatCommands'>): AgentTool[] {
   const tools: AgentTool[] = [calculateTool as AgentTool];
   if (settings.moduleCalls) tools.push(callTool as AgentTool);
   if (settings.chatWebSearch) tools.push(webSearch as AgentTool, webFetch as AgentTool);
+  if (settings.chatCommands) tools.push(runCommand as AgentTool);
   return tools;
 }
 

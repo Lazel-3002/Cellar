@@ -72,8 +72,9 @@ function defaults(): StoredSettings {
     // Off by default: ten more tool schemas are a real slice of a 16K context window, and browsing
     // on the user's own logged-in session is something to opt into rather than inherit.
     browserEnabled: false,
-    browserApprovalMode: 'manual',
+    approvalMode: 'manual',
     browserMaxSteps: 25,
+    chatCommands: false,
     moduleCalls: true,
     moduleCallsPerMinute: 5,
     selfScheduling: true,
@@ -179,8 +180,9 @@ class SettingsService {
     if (patch.piperVoice !== undefined && /^[\w-]{1,60}$/.test(patch.piperVoice)) set('piperVoice', patch.piperVoice);
     if (patch.voiceStreaming !== undefined) set('voiceStreaming', !!patch.voiceStreaming);
     if (patch.browserEnabled !== undefined) set('browserEnabled', !!patch.browserEnabled);
-    if (patch.browserApprovalMode !== undefined && ['manual', 'auto', 'bypass'].includes(patch.browserApprovalMode)) set('browserApprovalMode', patch.browserApprovalMode);
+    if (patch.approvalMode !== undefined && ['manual', 'auto', 'bypass'].includes(patch.approvalMode)) set('approvalMode', patch.approvalMode);
     if (patch.browserMaxSteps !== undefined) set('browserMaxSteps', clamp(patch.browserMaxSteps, 5, 200));
+    if (patch.chatCommands !== undefined) set('chatCommands', !!patch.chatCommands);
     if (patch.moduleCalls !== undefined) set('moduleCalls', !!patch.moduleCalls);
     if (patch.moduleCallsPerMinute !== undefined) set('moduleCallsPerMinute', clamp(patch.moduleCallsPerMinute, 1, 60));
     if (patch.selfScheduling !== undefined) set('selfScheduling', !!patch.selfScheduling);

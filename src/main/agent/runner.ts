@@ -88,11 +88,12 @@ function hostOf(raw: string): string | null {
 }
 
 /**
- * 'auto' browser approval mode: reviews one pending browser action with a fresh, single-turn call
- * to the same model — no conversation history, so it can't be talked into approving by the same
- * context that led the acting call astray. Denies by default if the reviewer can't be reached.
+ * 'auto' approval mode: reviews one pending tool call (opening a page, editing a file, running a
+ * command, calling a connector, …) with a fresh, single-turn call to the same model — no
+ * conversation history, so it can't be talked into approving by the same context that led the
+ * acting call astray. Denies by default if the reviewer can't be reached.
  */
-async function autoApproveBrowser(provider: Provider, entry: ModelEntry, load: LoadConfig, request: ApprovalRequest): Promise<{ allow: boolean; note?: string }> {
+async function autoApproveAction(provider: Provider, entry: ModelEntry, load: LoadConfig, request: ApprovalRequest): Promise<{ allow: boolean; note?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('auto-approval timeout')), 20_000);
   let verdict = '';
@@ -103,9 +104,12 @@ async function autoApproveBrowser(provider: Provider, entry: ModelEntry, load: L
         {
           role: 'system',
           content:
-            'You are a fast, strict safety reviewer for a single automated action an AI assistant wants to take in a web browser. You see only this one action, nothing else about the task it is part of. Reply with ALLOW or DENY on the first line, then a short reason on the next line. DENY anything that touches money, purchases, account or security settings, deleting or sending something, or signing into/out of an account, unless it is unmistakably harmless browsing (following a link, filling a search box, reading a page). When unsure, DENY.',
+            'You are a fast, strict safety reviewer for a single automated action another AI assistant wants to take — opening a web page, filling a field, editing a file, running a shell/PowerShell command, or calling a connector. You see only this one action, nothing else about the task it is part of. Reply with ALLOW or DENY on the first line, then a short reason on the next line. DENY anything that touches money or purchases, account or security settings, credentials, deleting or overwriting something irreplaceable, installing or removing software, changing system settings, sending something on the user\'s behalf, or signing into/out of an account — unless it is unmistakably low-risk (reading, searching, listing, a harmless edit or command clearly scoped to the task). When unsure, DENY.',
         },
-        { role: 'user', content: `Action: ${request.title}${request.url ? `\nURL: ${request.url}` : ''}${request.preview ? `\nDetails:\n${request.preview.slice(0, 1500)}` : ''}` },
+        {
+          role: 'user',
+          content: `Action (${request.kind}): ${request.title}${request.url ? `\nURL: ${request.url}` : ''}${request.path ? `\nPath: ${request.path}` : ''}${request.preview ? `\nDetails:\n${request.preview.slice(0, 1500)}` : ''}`,
+        },
       ],
       params: { ...DEFAULT_INFERENCE_PARAMS, temperature: 0, maxTokens: 60 },
       thinking: 'off',
@@ -116,7 +120,7 @@ async function autoApproveBrowser(provider: Provider, entry: ModelEntry, load: L
       if (event.type === 'text') verdict += event.delta;
     }
   } catch (err) {
-    log.warn('browser auto-approval could not reach the model; denying', errorMessage(err));
+    log.warn('auto-approval could not reach the model; denying', errorMessage(err));
     return { allow: false, note: 'The automatic reviewer could not be reached, so the action was denied.' };
   } finally {
     clearTimeout(timer);
@@ -428,8 +432,8 @@ export class TaskRunner {
       setTodos: (todos) => {
         task.todos = todos;
       },
-      browserApprovalMode: app.browserApprovalMode,
-      autoApproveBrowser: (request) => autoApproveBrowser(provider, entry, preset.load, request),
+      approvalMode: app.approvalMode,
+      autoApprove: (request) => autoApproveAction(provider, entry, preset.load, request),
     };
 
     const callCounts = new Map<string, number>();
@@ -853,17 +857,18 @@ export class TaskRunner {
 
     try {
       const request = tool.approval ? await tool.approval(args, ctx) : null;
-      const browserMode = tool.category === 'browser' ? (ctx.browserApprovalMode ?? 'manual') : undefined;
-      const needsApproval =
+      const mode = ctx.approvalMode ?? 'manual';
+      const needsApprovalBase =
         !!request &&
         (tool.category === 'web' ||
-          (tool.category === 'browser' && browserMode !== 'bypass') ||
+          tool.category === 'browser' ||
           tool.category === 'connector' ||
           (tool.category === 'edit' && task.permissionMode !== 'auto-edits') ||
           (tool.category === 'command' && !task.allowCommands));
-      if (request && needsApproval && browserMode === 'auto' && ctx.autoApproveBrowser) {
+      const needsApproval = needsApprovalBase && mode !== 'bypass';
+      if (request && needsApproval && mode === 'auto' && ctx.autoApprove) {
         call.approval = request;
-        const verdict = await ctx.autoApproveBrowser(request);
+        const verdict = await ctx.autoApprove(request);
         if (!verdict.allow) {
           call.status = 'denied';
           call.feedback = verdict.note;

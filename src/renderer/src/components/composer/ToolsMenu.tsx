@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AppWindow, Brain, Globe, Info, ListChecks, Plug, Settings2, ShieldCheck, Sparkles } from 'lucide-react';
+import { AppWindow, Brain, Globe, Info, ListChecks, Plug, Settings2, ShieldCheck, Sparkles, SquareTerminal } from 'lucide-react';
 import type { ToolScope } from '@shared/types/customize';
 import type { ModelRef } from '@shared/types/models';
 import type { AppSettings } from '@shared/types/settings';
@@ -20,24 +20,24 @@ function Toggle({ on }: { on: boolean }) {
   );
 }
 
-const BROWSER_APPROVAL_MODES: Array<{ value: AppSettings['browserApprovalMode']; label: string; hint: string }> = [
+const APPROVAL_MODES: Array<{ value: AppSettings['approvalMode']; label: string; hint: string }> = [
   { value: 'manual', label: 'Manual', hint: 'Ask me every time' },
   { value: 'auto', label: 'Auto', hint: 'A quick, context-free model review decides' },
-  { value: 'bypass', label: 'Bypass', hint: 'Never ask — every action runs' },
+  { value: 'bypass', label: 'Bypass', hint: 'Never ask — everything runs' },
 ];
 
-/** How the model's built-in-browser actions get approved, plus the step cap that pauses a runaway task. */
-function BrowserApprovalSubmenu({ settings, keepOpen }: { settings: AppSettings; keepOpen: (e: Event) => void }) {
+/** How any tool call that would normally ask first gets approved, plus the browser's own step cap. */
+function ApprovalSubmenu({ settings, keepOpen }: { settings: AppSettings; keepOpen: (e: Event) => void }) {
   const setSteps = (delta: number) => void invoke('settings:update', { browserMaxSteps: Math.min(200, Math.max(5, settings.browserMaxSteps + delta)) });
   return (
-    <MenuSub label="Browser approval" icon={<ShieldCheck />}>
-      {BROWSER_APPROVAL_MODES.map((mode) => (
+    <MenuSub label="Action approval" icon={<ShieldCheck />}>
+      {APPROVAL_MODES.map((mode) => (
         <MenuCheckItem
           key={mode.value}
-          checked={settings.browserApprovalMode === mode.value}
+          checked={settings.approvalMode === mode.value}
           onSelect={(e) => {
             keepOpen(e);
-            void invoke('settings:update', { browserApprovalMode: mode.value });
+            void invoke('settings:update', { approvalMode: mode.value });
           }}
         >
           <span className="flex flex-col">
@@ -48,7 +48,7 @@ function BrowserApprovalSubmenu({ settings, keepOpen }: { settings: AppSettings;
       ))}
       <MenuSeparator />
       <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-        <span className="text-[12.5px] text-muted-foreground">Max steps</span>
+        <span className="text-[12.5px] text-muted-foreground">Browser max steps</span>
         <div className="flex items-center gap-1.5">
           <button type="button" className="flex size-5 items-center justify-center rounded text-foreground hover:bg-hover" onClick={() => setSteps(-5)}>
             −
@@ -108,6 +108,21 @@ export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTool
             <Toggle on={settings.memoryEnabled} />
           </span>
         </MenuItem>
+        {scope === 'chat' && (
+          <MenuItem
+            icon={<SquareTerminal />}
+            onSelect={(e) => {
+              keepOpen(e);
+              void invoke('settings:update', { chatCommands: !settings.chatCommands });
+            }}
+          >
+            <span className="flex w-full items-center gap-2">
+              Run commands
+              <Toggle on={settings.chatCommands} />
+            </span>
+          </MenuItem>
+        )}
+        <ApprovalSubmenu settings={settings} keepOpen={keepOpen} />
         <MenuItem
           icon={<AppWindow />}
           onSelect={(e) => {
@@ -123,7 +138,6 @@ export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTool
         <MenuItem icon={<AppWindow />} onSelect={() => setBrowserOpen(!browserOpen)}>
           {browserOpen ? 'Hide the browser panel' : 'Open the browser panel'}
         </MenuItem>
-        {settings.browserEnabled && <BrowserApprovalSubmenu settings={settings} keepOpen={keepOpen} />}
         <MenuSeparator />
         <MenuLabel>Connectors</MenuLabel>
         {connectors.length === 0 && <div className="px-2 pb-1 text-[12.5px] text-muted-foreground">No connectors yet.</div>}

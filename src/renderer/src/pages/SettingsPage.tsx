@@ -108,6 +108,9 @@ function General() {
         <Field label="Web search in chats" description="Models with native tool calling can search the web and read pages while they answer. Search queries go to the provider set in Cowork settings.">
           <Switch checked={s.chatWebSearch} onCheckedChange={(v) => update.mutate({ chatWebSearch: v })} />
         </Field>
+        <Field label="Run commands in chats" description="Let ordinary chats run terminal/PowerShell commands with run_command, sandboxed to their own folder (~/.cellar/chat). Cowork and Code already have this; off by default here since a chat is easy to open by accident.">
+          <Switch checked={s.chatCommands} onCheckedChange={(v) => update.mutate({ chatCommands: v })} />
+        </Field>
         <Field label="Inline visualizations" description="Let models draw charts, diagrams and small interactive widgets straight into the conversation, themed to match it. Charts and diagrams are drawn by Cellar; anything interactive runs sandboxed. Skipped automatically for models under 3B parameters.">
           <Switch checked={s.inlineVisualizations} onCheckedChange={(v) => update.mutate({ inlineVisualizations: v })} />
         </Field>
@@ -121,32 +124,30 @@ function General() {
           <Switch checked={s.browserEnabled} onCheckedChange={(v) => update.mutate({ browserEnabled: v })} />
         </Field>
         {s.browserEnabled && (
-          <>
-            <Field
-              label="Browser approval"
-              description={
-                s.browserApprovalMode === 'auto'
-                  ? 'A quick, separate model call reviews each browser action with no memory of the rest of the task and allows or denies it on its own.'
-                  : s.browserApprovalMode === 'bypass'
-                    ? 'Every browser action runs without asking. Only turn this on for tasks you trust.'
-                    : 'You approve every browser action before it runs.'
-              }
-            >
-              <Segmented
-                value={s.browserApprovalMode}
-                onChange={(browserApprovalMode) => update.mutate({ browserApprovalMode })}
-                options={[
-                  { value: 'manual', label: 'Manual' },
-                  { value: 'auto', label: 'Auto' },
-                  { value: 'bypass', label: 'Bypass' },
-                ]}
-              />
-            </Field>
-            <Field label="Built-in-browser steps" description="Browser tool calls per task turn before Cellar pauses the agent — a separate, usually lower cap than the overall step limit in Cowork settings.">
-              <NumberInput value={s.browserMaxSteps} min={5} max={200} onChange={(v) => v && update.mutate({ browserMaxSteps: v })} />
-            </Field>
-          </>
+          <Field label="Built-in-browser steps" description="Browser tool calls per task turn before Cellar pauses the agent — a separate, usually lower cap than the overall step limit in Cowork settings.">
+            <NumberInput value={s.browserMaxSteps} min={5} max={200} onChange={(v) => v && update.mutate({ browserMaxSteps: v })} />
+          </Field>
         )}
+        <Field
+          label="Action approval"
+          description={
+            s.approvalMode === 'auto'
+              ? 'Any tool call that would normally ask first (opening a page, editing a file, running a command, calling a connector, …) instead gets reviewed by a quick, separate model call with no memory of the rest of the task, which allows or denies it on its own.'
+              : s.approvalMode === 'bypass'
+                ? 'Every tool call that would normally ask first runs without asking. Only turn this on for tasks you trust.'
+                : 'You approve every tool call that would normally ask first, as usual.'
+          }
+        >
+          <Segmented
+            value={s.approvalMode}
+            onChange={(approvalMode) => update.mutate({ approvalMode })}
+            options={[
+              { value: 'manual', label: 'Manual' },
+              { value: 'auto', label: 'Auto' },
+              { value: 'bypass', label: 'Bypass' },
+            ]}
+          />
+        </Field>
         <Field
           label="Delegate to other modules"
           description="Give chats a call(module, task) tool so they can hand work to Code, Math, Design, Cowork or Voice instead of redoing it. Work that needs a model runs in its own conversation you can watch, and anything that changes files asks you first."

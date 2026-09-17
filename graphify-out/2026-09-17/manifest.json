@@ -260,8 +260,8 @@
     "semantic_hash": ""
   },
   "src/main/services/settings.ts": {
-    "mtime": 1789626572.345169,
-    "ast_hash": "6456d1331d9a1e316c7a42341b080be4",
+    "mtime": 1789630525.5484862,
+    "ast_hash": "5db7531718ae098ad827179822c20914",
     "semantic_hash": ""
   },
   "src/main/system/hardware.ts": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/SettingsPage.tsx": {
-    "mtime": 1789626873.644637,
-    "ast_hash": "2e4b50e0ac3b2c955c9f7a82a1d1275f",
+    "mtime": 1789630661.3793702,
+    "ast_hash": "1dcb4c12cda2cb54edcc609f2af0e71d",
     "semantic_hash": ""
   },
   "src/renderer/src/router.tsx": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "src/shared/types/settings.ts": {
-    "mtime": 1789626565.6420178,
-    "ast_hash": "a3cfd00fe4feb9cb51f780231401045a",
+    "mtime": 1789630520.0513113,
+    "ast_hash": "04978d2cf7b83022dbb7302b02f59ed7",
     "semantic_hash": ""
   },
   "src/shared/types/system.ts": {
@@ -625,8 +625,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/runner.ts": {
-    "mtime": 1789626274.6936035,
-    "ast_hash": "c891f8fa4fb7374a966b4edc47854af5",
+    "mtime": 1789630583.5232677,
+    "ast_hash": "7f8b6ec08e3358396ce6a01d283a74af",
     "semantic_hash": ""
   },
   "src/main/agent/text-protocol.ts": {
@@ -655,8 +655,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/tools/types.ts": {
-    "mtime": 1789623301.8738174,
-    "ast_hash": "4c5e946d270db9ef355c1d68dfd918e2",
+    "mtime": 1789630529.689401,
+    "ast_hash": "838aac01c914158b6fbe885e90da4d0f",
     "semantic_hash": ""
   },
   "src/main/agent/tools/web.ts": {
@@ -705,8 +705,8 @@
     "semantic_hash": ""
   },
   "tests/unit/agent-runner.test.ts": {
-    "mtime": 1789329016.880079,
-    "ast_hash": "408149957c9797fd885574a3301e8955",
+    "mtime": 1789630384.2550352,
+    "ast_hash": "5ad8c79c1327c6b6bbee7a26adf6d9cf",
     "semantic_hash": ""
   },
   "tests/unit/agent-tools.test.ts": {
@@ -1000,8 +1000,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/composer/ToolsMenu.tsx": {
-    "mtime": 1789625488.1001997,
-    "ast_hash": "f2a3835d3ea17068b16526b7561c11f4",
+    "mtime": 1789630631.0254917,
+    "ast_hash": "1752c22444a375430b1d2221fb93cb8f",
     "semantic_hash": ""
   },
   "src/renderer/src/components/task/AgentParts.tsx": {
@@ -1450,8 +1450,8 @@
     "semantic_hash": ""
   },
   "src/main/agent/tools/browser.ts": {
-    "mtime": 1789629730.344313,
-    "ast_hash": "a4f0abb2145ea57178bba82216b702b2",
+    "mtime": 1789630411.6817443,
+    "ast_hash": "0693460369acbaab555cd28313e4bbb4",
     "semantic_hash": ""
   },
   "src/main/agent/tools/call.ts": {
@@ -1465,8 +1465,8 @@
     "semantic_hash": ""
   },
   "src/main/browser/browser.ts": {
-    "mtime": 1789629751.6413486,
-    "ast_hash": "8dc6b67c6de905b6530b2c9e5c10f532",
+    "mtime": 1789630406.2541444,
+    "ast_hash": "2c0fe343c6a7a791bb7e5d5f7645d671",
     "semantic_hash": ""
   },
   "src/main/browser/ipc.ts": {
