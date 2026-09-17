@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BrowserWindow, dialog, nativeImage, screen, session } from 'electron';
-import { designHtml } from '@shared/design/render';
+import { artboardSvg, designHtml } from '@shared/design/render';
 import type { Design, DesignExportRequest } from '@shared/types/design';
 import { newId } from '../lib/util';
 import { paths } from '../system/paths';
@@ -148,6 +148,38 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
     return path;
   }
 
+  if (request.format === 'html') {
+    const path = await ask(`${title}.html`, [{ name: 'HTML page', extensions: ['html'] }]);
+    if (!path) return null;
+    await writeFile(path, designHtml(design, ids, { mode: 'html', imageUrl }), 'utf8');
+    return path;
+  }
+
+  const askFolder = async (dialogTitle: string) => {
+    if (target.path) return target.path;
+    const options = { title: dialogTitle, properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> };
+    const result = target.window ? await dialog.showOpenDialog(target.window, options) : await dialog.showOpenDialog(options);
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  };
+
+  if (request.format === 'svg') {
+    if (boards.length === 1) {
+      const board = boards[0];
+      const path = await ask(`${title} - ${fileSafe(board.name)}.svg`, [{ name: 'SVG image', extensions: ['svg'] }]);
+      if (!path) return null;
+      await writeFile(path, artboardSvg(board, design.theme, { imageUrl }), 'utf8');
+      return path;
+    }
+    const folder = await askFolder('Choose a folder for the SVG files');
+    if (!folder) return null;
+    await mkdir(folder, { recursive: true });
+    for (const [i, board] of boards.entries()) {
+      const name = `${String(i + 1).padStart(2, '0')} ${fileSafe(board.name)}.svg`;
+      await writeFile(join(folder, name), artboardSvg(board, design.theme, { imageUrl }), 'utf8');
+    }
+    return folder;
+  }
+
   const scale = Math.min(4, Math.max(0.25, request.scale ?? 2));
   if (boards.length === 1) {
     const board = boards[0];
@@ -156,12 +188,7 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
     await writeFile(path, await renderPng(designHtml(design, [board.id], { mode: 'png', imageUrl }), board.width, board.height, scale));
     return path;
   }
-  let folder = target.path ?? null;
-  if (!folder) {
-    const options = { title: 'Choose a folder for the PNG files', properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> };
-    const result = target.window ? await dialog.showOpenDialog(target.window, options) : await dialog.showOpenDialog(options);
-    folder = result.canceled ? null : result.filePaths[0] ?? null;
-  }
+  const folder = await askFolder('Choose a folder for the PNG files');
   if (!folder) return null;
   await mkdir(folder, { recursive: true });
   for (const [i, board] of boards.entries()) {

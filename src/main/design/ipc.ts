@@ -27,7 +27,7 @@ export function registerDesignHandlers(): void {
   });
   handle('design:duplicate', (conversationId) => chat.duplicateDesign(z.string().min(1).parse(conversationId)));
   handle('design:export', (request) => {
-    const input = z.object({ designId: z.string().min(1), format: z.enum(['png', 'pdf', 'pptx']), artboardIds: z.array(z.string().max(60)).max(200).optional(), scale: z.number().min(0.25).max(4).optional() }).parse(request);
+    const input = z.object({ designId: z.string().min(1), format: z.enum(['png', 'pdf', 'pptx', 'svg', 'html']), artboardIds: z.array(z.string().max(60)).max(200).optional(), scale: z.number().min(0.25).max(4).optional() }).parse(request);
     return exportDesign(input, { window: BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] });
   });
 }

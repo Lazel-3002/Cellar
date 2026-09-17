@@ -10,6 +10,7 @@ import {
   Copy,
   Download,
   Ellipsis,
+  FileCode,
   FileImage,
   FileText,
   Hand,
@@ -263,7 +264,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 const menuOpen = () => !!document.querySelector('[role="menu"], [role="dialog"], [role="listbox"]');
 
 async function exportDesign(design: Design, format: DesignExportFormat, artboardIds?: string[]) {
-  const id = toast.loading(format === 'pptx' ? 'Building the PowerPoint file…' : format === 'pdf' ? 'Rendering the PDF…' : 'Rendering images…');
+  const id = toast.loading(format === 'pptx' ? 'Building the PowerPoint file…' : format === 'pdf' ? 'Rendering the PDF…' : format === 'html' || format === 'svg' ? 'Building the file…' : 'Rendering images…');
   try {
     const path = await invoke('design:export', { designId: design.id, format, artboardIds });
     if (!path) return toast.dismiss(id);
@@ -424,6 +425,13 @@ function DesignHeader({ conversationId, status, onPresent, canvasRef }: { conver
           </MenuItem>
           <MenuItem icon={<FileImage />} onSelect={() => void exportDesign(design, 'png')}>
             PNG (every artboard)
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={<FileCode />} disabled={!current} onSelect={() => current && void exportDesign(design, 'svg', [current])}>
+            SVG (selected artboard)
+          </MenuItem>
+          <MenuItem icon={<FileCode />} onSelect={() => void exportDesign(design, 'html')}>
+            HTML page (every artboard)
           </MenuItem>
         </MenuContent>
       </Menu>

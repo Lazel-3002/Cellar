@@ -223,7 +223,7 @@ export interface DesignStartOptions {
   themeId: string;
 }
 
-export type DesignExportFormat = 'png' | 'pdf' | 'pptx';
+export type DesignExportFormat = 'png' | 'pdf' | 'pptx' | 'svg' | 'html';
 
 export interface DesignExportRequest {
   designId: string;

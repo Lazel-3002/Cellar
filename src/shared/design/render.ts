@@ -147,21 +147,30 @@ export function artboardHtml(artboard: Artboard, theme: DesignTheme, options: Ht
 }
 
 /**
- * A static page with the chosen artboards: one per PDF page (each page sized to its artboard), or a
- * single artboard at the top-left for PNG capture.
+ * A static page with the chosen artboards: one per PDF page (each page sized to its artboard), a
+ * single artboard at the top-left for PNG capture, or every artboard stacked with a gap for a
+ * portable HTML export.
  */
-export function designHtml(design: Pick<Design, 'title' | 'theme' | 'artboards'>, artboardIds: string[] | undefined, options: HtmlOptions & { mode: 'pdf' | 'png' }): string {
+export function designHtml(design: Pick<Design, 'title' | 'theme' | 'artboards'>, artboardIds: string[] | undefined, options: HtmlOptions & { mode: 'pdf' | 'png' | 'html' }): string {
   const boards = design.artboards.filter((a) => !artboardIds?.length || artboardIds.includes(a.id));
   const pages = boards
     .map((a, i) => {
       const inner = artboardHtml(a, design.theme, options);
-      return options.mode === 'pdf' ? `<section class="page" style="page:p${i};width:${a.width}px;height:${a.height}px">${inner}</section>` : inner;
+      return options.mode === 'pdf' ? `<section class="page" style="page:p${i};width:${a.width}px;height:${a.height}px">${inner}</section>` : options.mode === 'html' ? `<section class="board">${inner}</section>` : inner;
     })
     .join('');
   const pageRules = options.mode === 'pdf' ? boards.map((a, i) => `@page p${i}{size:${a.width}px ${a.height}px;margin:0}`).join('') : '';
+  const bodyRules = options.mode === 'html' ? 'body{display:flex;flex-direction:column;align-items:center;gap:32px;padding:32px;background:#e9e9e9}.board{box-shadow:0 4px 24px rgba(0,0,0,0.18)}' : '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeXml(design.title)}</title><style>${pageRules}
 html,body{margin:0;padding:0;background:transparent;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page{overflow:hidden;break-after:page}.page:last-child{break-after:auto}
 .artboard *{margin:0}
+${bodyRules}
 </style></head><body>${pages}</body></html>`;
+}
+
+/** A single artboard as a standalone SVG document: the same markup as the HTML export, embedded via foreignObject so fonts, gradients and images render identically. */
+export function artboardSvg(artboard: Artboard, theme: DesignTheme, options: HtmlOptions): string {
+  const inner = artboardHtml(artboard, theme, options);
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${artboard.width}" height="${artboard.height}" viewBox="0 0 ${artboard.width} ${artboard.height}"><foreignObject width="100%" height="100%"><xhtml:div xmlns="http://www.w3.org/1999/xhtml" style="width:${artboard.width}px;height:${artboard.height}px;position:relative;overflow:hidden">${inner}</xhtml:div></foreignObject></svg>`;
 }
