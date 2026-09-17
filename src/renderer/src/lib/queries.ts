@@ -7,7 +7,7 @@ import type { ModelRef } from '@shared/types/models';
 import type { AppSettings, AppSettingsPatch } from '@shared/types/settings';
 import { useStreams } from '../stores/streams';
 import { invoke, onEvent } from './ipc';
-import { speakReply } from './tts';
+import { speak, speakReply } from './tts';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -154,6 +154,8 @@ export function useIpcSync(): void {
         void qc.invalidateQueries({ queryKey: ['scheduled-runs'] });
       }),
       onEvent('update:changed', (state) => qc.setQueryData(keys.update, state)),
+      // A module asked for something to be read aloud, whether or not spoken replies are on.
+      onEvent('voice:speak', ({ text }) => speak(text, qc.getQueryData<AppSettings>(keys.settings)?.voiceReplyVoice ?? '')),
     ];
     void invoke('chat:activeStreams').then((streams) => streams.forEach(applyStream));
     return () => offs.forEach((off) => off());

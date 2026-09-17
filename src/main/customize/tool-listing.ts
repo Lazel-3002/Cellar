@@ -45,6 +45,7 @@ const GROUPS: Record<string, string> = {
   browse_fill: 'Built-in browser',
   browse_scroll: 'Built-in browser',
   browse_tabs: 'Built-in browser',
+  call: 'Modules',
   skill: 'Skills',
   read_skill_file: 'Skills',
   remember: 'Memory',

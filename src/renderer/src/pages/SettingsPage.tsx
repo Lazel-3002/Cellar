@@ -119,6 +119,17 @@ function General() {
         >
           <Switch checked={s.browserEnabled} onCheckedChange={(v) => update.mutate({ browserEnabled: v })} />
         </Field>
+        <Field
+          label="Delegate to other modules"
+          description="Give chats a call(module, task) tool so they can hand work to Code, Math, Design, Cowork or Voice instead of redoing it. Work that needs a model runs in its own conversation you can watch, and anything that changes files asks you first."
+        >
+          <Switch checked={s.moduleCalls} onCheckedChange={(v) => update.mutate({ moduleCalls: v })} />
+        </Field>
+        {s.moduleCalls && (
+          <Field label="Module calls per minute" description="Per module. Keeps a model that decides to poll from starting work faster than you can read it.">
+            <NumberInput value={s.moduleCallsPerMinute} min={1} max={60} onChange={(v) => v && update.mutate({ moduleCallsPerMinute: v })} />
+          </Field>
+        )}
       </Card>
       <DesktopCard />
     </>

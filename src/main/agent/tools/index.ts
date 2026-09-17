@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/types/settings';
 import { connectors } from '../../connectors/manager';
 import { calculateTool } from '../../math/tools';
 import { BROWSER_TOOLS } from './browser';
+import { callTool, normalizeCallArgs } from './call';
 import { runCommand } from './command';
 import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFileTool, rememberTool, searchChatsTool, skillTool } from './extra';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
@@ -31,8 +32,8 @@ export const ALL_TOOLS: AgentTool[] = [
   calculateTool,
 ] as AgentTool[];
 
-/** Tools that do not depend on the working folder: skills, memory, past chats and the built-in browser. */
-export const ASSISTANT_TOOLS: AgentTool[] = [skillTool, readSkillFileTool, rememberTool, forgetTool, searchChatsTool, readChatTool, ...BROWSER_TOOLS] as AgentTool[];
+/** Tools that do not depend on the working folder: skills, memory, past chats, the built-in browser and `call`. */
+export const ASSISTANT_TOOLS: AgentTool[] = [skillTool, readSkillFileTool, rememberTool, forgetTool, searchChatsTool, readChatTool, ...BROWSER_TOOLS, callTool] as AgentTool[];
 
 export interface ExtraToolOptions {
   settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats' | 'browserEnabled'>;
@@ -59,9 +60,12 @@ export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]
   return [...tools, ...(await connectorTools(options.readOnly))];
 }
 
-/** Chat: the calculator, web tools (when turned on) and the extras. */
-export function chatBaseTools(settings: Pick<AppSettings, 'chatWebSearch'>): AgentTool[] {
-  return settings.chatWebSearch ? ([calculateTool, webSearch, webFetch] as AgentTool[]) : ([calculateTool] as AgentTool[]);
+/** Chat: the calculator, `call` (delegation to the other modules), web tools (when turned on) and the extras. */
+export function chatBaseTools(settings: Pick<AppSettings, 'chatWebSearch' | 'moduleCalls'>): AgentTool[] {
+  const tools: AgentTool[] = [calculateTool as AgentTool];
+  if (settings.moduleCalls) tools.push(callTool as AgentTool);
+  if (settings.chatWebSearch) tools.push(webSearch as AgentTool, webFetch as AgentTool);
+  return tools;
 }
 
 export interface ToolAvailability {
@@ -145,6 +149,7 @@ export function findTool(tools: AgentTool[], name: string): AgentTool | undefine
 export function normalizeArgs(tool: AgentTool, args: Record<string, unknown>): Record<string, unknown> {
   if (tool.category === 'connector') return args;
   if (tool.name === 'todo_write') return normalizeTodoArgs(args);
+  if (tool.name === 'call') return normalizeCallArgs(args);
   const out = { ...args };
   if (typeof out.path !== 'string') {
     const alias = out.file_path ?? out.filepath ?? out.filename ?? out.file ?? out.folder ?? out.directory ?? out.dir;

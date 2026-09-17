@@ -370,6 +370,8 @@ export interface IpcEventMap {
   'connectors:changed': ConnectorStatus[];
   'scheduled:changed': Record<string, never>;
   'voice:progress': VoiceProgress;
+  /** Main asks the renderer to read something aloud (it owns speech synthesis and audio output). */
+  'voice:speak': { text: string };
   'browser:changed': BrowserState;
   /** A browser tool ran: open the panel so the user sees what the model is doing. */
   'browser:reveal': Record<string, never>;
@@ -595,6 +597,7 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'connectors:changed': true,
   'scheduled:changed': true,
   'voice:progress': true,
+  'voice:speak': true,
   'browser:changed': true,
   'browser:reveal': true,
   'projects:index': true,

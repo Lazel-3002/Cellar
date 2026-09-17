@@ -84,6 +84,10 @@ export interface AppSettings {
   voiceReplyVoice: string;
   /** Let models open, read and click pages in Cellar's built-in browser. The panel itself is always available to the user. */
   browserEnabled: boolean;
+  /** Offer the `call(module, task)` tool in chats, so a chat can hand work to Code, Math, Design, Cowork or Voice. */
+  moduleCalls: boolean;
+  /** How many `call` requests each module accepts per minute. */
+  moduleCallsPerMinute: number;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

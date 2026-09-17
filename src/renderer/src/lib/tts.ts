@@ -33,17 +33,23 @@ function stripForSpeech(text: string): string {
 
 let lastSpokenMessageId: string | null = null;
 
-/** Speaks a finished assistant reply once per message id; cancels anything still speaking first. */
-export function speakReply(messageId: string, text: string, voiceName: string): void {
-  if (typeof speechSynthesis === 'undefined' || lastSpokenMessageId === messageId) return;
+/** Reads text aloud now, cancelling anything still speaking. */
+export function speak(text: string, voiceName: string): void {
+  if (typeof speechSynthesis === 'undefined') return;
   const spoken = stripForSpeech(text);
   if (!spoken) return;
-  lastSpokenMessageId = messageId;
   speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(spoken);
   const voice = voiceName ? speechSynthesis.getVoices().find((v) => v.name === voiceName) : undefined;
   if (voice) utterance.voice = voice;
   speechSynthesis.speak(utterance);
+}
+
+/** Speaks a finished assistant reply once per message id. */
+export function speakReply(messageId: string, text: string, voiceName: string): void {
+  if (lastSpokenMessageId === messageId) return;
+  lastSpokenMessageId = messageId;
+  speak(text, voiceName);
 }
 
 export function stopSpeaking(): void {

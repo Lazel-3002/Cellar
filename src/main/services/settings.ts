@@ -69,6 +69,8 @@ function defaults(): StoredSettings {
     // Off by default: ten more tool schemas are a real slice of a 16K context window, and browsing
     // on the user's own logged-in session is something to opt into rather than inherit.
     browserEnabled: false,
+    moduleCalls: true,
+    moduleCallsPerMinute: 5,
   };
 }
 
@@ -168,6 +170,8 @@ class SettingsService {
     if (patch.voiceReplies !== undefined) set('voiceReplies', !!patch.voiceReplies);
     if (patch.voiceReplyVoice !== undefined) set('voiceReplyVoice', patch.voiceReplyVoice.trim().slice(0, 200));
     if (patch.browserEnabled !== undefined) set('browserEnabled', !!patch.browserEnabled);
+    if (patch.moduleCalls !== undefined) set('moduleCalls', !!patch.moduleCalls);
+    if (patch.moduleCallsPerMinute !== undefined) set('moduleCallsPerMinute', clamp(patch.moduleCallsPerMinute, 1, 60));
 
     if (changes.length) {
       transaction(() => {

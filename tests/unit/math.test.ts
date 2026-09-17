@@ -607,8 +607,9 @@ describe('math sessions', () => {
   });
 
   it('offers the calculator in ordinary chats too', () => {
-    expect(chatBaseTools({ chatWebSearch: false }).map((tool) => tool.name)).toEqual(['calculate']);
-    expect(chatBaseTools({ chatWebSearch: true }).map((tool) => tool.name)).toContain('calculate');
+    expect(chatBaseTools({ chatWebSearch: false, moduleCalls: false }).map((tool) => tool.name)).toEqual(['calculate']);
+    expect(chatBaseTools({ chatWebSearch: true, moduleCalls: false }).map((tool) => tool.name)).toContain('calculate');
+    expect(chatBaseTools({ chatWebSearch: false, moduleCalls: true }).map((tool) => tool.name)).toEqual(['calculate', 'call']);
   });
 });
 
