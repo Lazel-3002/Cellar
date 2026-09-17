@@ -33,3 +33,16 @@ export interface BrowserPageContent {
   text: string;
   links: Array<{ url: string; text: string }>;
 }
+
+/** A clickable/interactive element found on the page, in viewport CSS pixels. */
+export interface BrowserElement {
+  tag: string;
+  type: 'link' | 'button' | 'input' | 'image' | 'other';
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type BrowserLoginStatus = 'logged_in' | 'not_logged_in';

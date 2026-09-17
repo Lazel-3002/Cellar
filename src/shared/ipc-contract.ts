@@ -34,7 +34,7 @@ import type {
   SendMessageResult,
   ThinkingLevel,
 } from './types/chat';
-import type { BrowserBounds, BrowserState, BrowserTab } from './types/browser';
+import type { BrowserBounds, BrowserLoginStatus, BrowserState, BrowserTab } from './types/browser';
 import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary } from './types/design';
 import type { MathBoard, MathBoardSummary, MathChangedEvent, MathExportRequest, MathStartOptions } from './types/math';
 import type { DownloadJob, HfModelSummary, HfRepoDetail, HfSearchQuery, QuantFit, StartDownloadInput } from './types/hub';
@@ -321,6 +321,8 @@ export interface IpcInvokeMap {
   /** Where the panel wants the page painted; null parks it off-screen. */
   'browser:setBounds': Handler<[bounds: BrowserBounds | null], void>;
   'browser:setVisible': Handler<[visible: boolean], void>;
+  /** For the tab strip's per-domain signed-in indicator; a live check, not the saved snapshot. */
+  'browser:loginStatus': Handler<[domain: string], BrowserLoginStatus>;
 
   'projects:indexStatus': Handler<[projectId: string], ProjectIndexStatus>;
   'projects:reindex': Handler<[projectId: string], void>;
@@ -568,6 +570,7 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'browser:close': true,
   'browser:setBounds': true,
   'browser:setVisible': true,
+  'browser:loginStatus': true,
   'projects:indexStatus': true,
   'projects:reindex': true,
   'design:list': true,

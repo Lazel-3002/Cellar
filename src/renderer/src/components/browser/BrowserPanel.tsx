@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, X } from 'lucide-react';
-import type { BrowserState } from '@shared/types/browser';
+import type { BrowserLoginStatus, BrowserState } from '@shared/types/browser';
 import { IconButton } from '@/components/ui/button';
 import { invoke, onEvent } from '@/lib/ipc';
 import { cn } from '@/lib/utils';
@@ -12,18 +12,38 @@ import { useUi } from '@/stores/ui';
  * keep main told where the page rectangle sits on screen (`browser:setBounds`). The empty div below
  * is that rectangle: nothing renders into it here.
  */
+function hostOf(url: string): string {
+  try {
+    return url ? new URL(url).hostname : '';
+  } catch {
+    return '';
+  }
+}
+
 export function BrowserPanel() {
   const { setBrowserOpen, browserWidth, setBrowserWidth } = useUi();
   const [state, setState] = useState<BrowserState>({ tabs: [], activeTabId: null, visible: false });
   const [address, setAddress] = useState('');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
+  const [loginByHost, setLoginByHost] = useState<Record<string, BrowserLoginStatus>>({});
+  const queriedHosts = useRef(new Set<string>());
   const surface = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
   const active = state.tabs.find((t) => t.id === state.activeTabId);
 
   useEffect(() => onEvent('browser:changed', setState), []);
+
+  // One-time-per-host lookup for the tab strip's signed-in dot; a tab's login state rarely flips mid-session.
+  useEffect(() => {
+    for (const tab of state.tabs) {
+      const host = hostOf(tab.url);
+      if (!host || queriedHosts.current.has(host)) continue;
+      queriedHosts.current.add(host);
+      void invoke('browser:loginStatus', host).then((status) => setLoginByHost((prev) => ({ ...prev, [host]: status })));
+    }
+  }, [state.tabs]);
   useEffect(() => {
     void invoke('browser:state').then(setState);
     void invoke('browser:setVisible', true);
@@ -103,7 +123,12 @@ export function BrowserPanel() {
                 tab.id === state.activeTabId ? 'bg-selected text-foreground' : 'text-muted-foreground hover:bg-hover',
               )}
             >
-              <Globe className={cn('size-3 shrink-0', tab.loading && 'animate-pulse')} />
+              <span className="relative shrink-0">
+                <Globe className={cn('size-3', tab.loading && 'animate-pulse')} />
+                {loginByHost[hostOf(tab.url)] === 'logged_in' && (
+                  <span className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-success ring-1 ring-background" title="Signed in" />
+                )}
+              </span>
               <span className="truncate">{tab.title || tab.url || 'New tab'}</span>
               <span
                 role="button"

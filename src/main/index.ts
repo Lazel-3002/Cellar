@@ -3,6 +3,7 @@ import { app, BrowserWindow, safeStorage } from 'electron';
 import { installPdfRenderer, installTaskNotifications } from './agent/desktop';
 import { attachCloseToTray, backgroundActive, installBackground, isQuitting, markQuitting, showMainWindow } from './app/background';
 import { browser, installBrowser } from './browser/browser';
+import { loadAllSessions } from './browser/sessions';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
 import { configure as configureLsp, lsp } from './code/lsp';
@@ -76,6 +77,7 @@ if (!app.requestSingleInstanceLock()) {
       decrypt: (data) => safeStorage.decryptString(data),
     });
     openDatabase(paths().db);
+    void loadAllSessions().catch((err) => log.error('could not load saved browser sessions', err));
 
     providers.init();
     chat.init();

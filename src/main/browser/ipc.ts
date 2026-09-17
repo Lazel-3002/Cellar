@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { handle } from '../ipc/register';
 import { browser } from './browser';
+import { loginStatus } from './sessions';
 
 const tabId = z.string().min(1);
 const url = z.string().min(1).max(4096);
@@ -22,4 +23,5 @@ export function registerBrowserHandlers(): void {
   handle('browser:close', (id) => browser.close(tabId.parse(id)));
   handle('browser:setBounds', (bounds) => browser.setBounds(boundsSchema.parse(bounds ?? null)));
   handle('browser:setVisible', (visible) => browser.setVisible(!!visible));
+  handle('browser:loginStatus', (domain) => loginStatus(z.string().min(1).parse(domain)));
 }
