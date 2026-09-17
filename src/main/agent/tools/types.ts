@@ -30,6 +30,10 @@ export interface ToolContext {
   afterChange?(absolutePath: string): Promise<string>;
   /** Connector tools: saves image content a tool result carried, so the model can see it (vision models only). */
   recordResultImages?(images: Array<{ mime: string; base64: string }>): Promise<void>;
+  /** How browser-category approvals are handled this turn; see AppSettings.browserApprovalMode. */
+  browserApprovalMode?: 'manual' | 'auto' | 'bypass';
+  /** 'auto' browser approval mode: a quick, context-free model call reviews one pending browser action. */
+  autoApproveBrowser?(request: ApprovalRequest): Promise<{ allow: boolean; note?: string }>;
 }
 
 export interface AgentTool<S extends z.ZodType = z.ZodType> {

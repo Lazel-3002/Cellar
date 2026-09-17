@@ -120,6 +120,33 @@ function General() {
         >
           <Switch checked={s.browserEnabled} onCheckedChange={(v) => update.mutate({ browserEnabled: v })} />
         </Field>
+        {s.browserEnabled && (
+          <>
+            <Field
+              label="Browser approval"
+              description={
+                s.browserApprovalMode === 'auto'
+                  ? 'A quick, separate model call reviews each browser action with no memory of the rest of the task and allows or denies it on its own.'
+                  : s.browserApprovalMode === 'bypass'
+                    ? 'Every browser action runs without asking. Only turn this on for tasks you trust.'
+                    : 'You approve every browser action before it runs.'
+              }
+            >
+              <Segmented
+                value={s.browserApprovalMode}
+                onChange={(browserApprovalMode) => update.mutate({ browserApprovalMode })}
+                options={[
+                  { value: 'manual', label: 'Manual' },
+                  { value: 'auto', label: 'Auto' },
+                  { value: 'bypass', label: 'Bypass' },
+                ]}
+              />
+            </Field>
+            <Field label="Built-in-browser steps" description="Browser tool calls per task turn before Cellar pauses the agent — a separate, usually lower cap than the overall step limit in Cowork settings.">
+              <NumberInput value={s.browserMaxSteps} min={5} max={200} onChange={(v) => v && update.mutate({ browserMaxSteps: v })} />
+            </Field>
+          </>
+        )}
         <Field
           label="Delegate to other modules"
           description="Give chats a call(module, task) tool so they can hand work to Code, Math, Design, Cowork or Voice instead of redoing it. Work that needs a model runs in its own conversation you can watch, and anything that changes files asks you first."

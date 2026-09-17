@@ -91,6 +91,14 @@ export interface AppSettings {
   voiceStreaming: boolean;
   /** Let models open, read and click pages in Cellar's built-in browser. The panel itself is always available to the user. */
   browserEnabled: boolean;
+  /**
+   * How browser actions (opening a page, filling a field, clearing a session, …) get approved.
+   * manual: the user approves each one, as today. auto: a quick, context-free model call reviews
+   * and allows or denies it on its own. bypass: every browser action runs without asking.
+   */
+  browserApprovalMode: 'manual' | 'auto' | 'bypass';
+  /** Built-in-browser tool calls per task turn before Cellar pauses the agent, separate from the overall step limit. */
+  browserMaxSteps: number;
   /** Offer the `call(module, task)` tool in chats, so a chat can hand work to Code, Math, Design, Cowork or Voice. */
   moduleCalls: boolean;
   /** How many `call` requests each module accepts per minute. */

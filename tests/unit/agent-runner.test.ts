@@ -240,10 +240,12 @@ describe('TaskRunner', () => {
     settings.update({ coworkMaxSteps: 40 });
     fake.script = () => [call('list_dir', {})];
     const looping = await startTask('Repeat', 'ask');
-    const failed = await finished(looping.conversationId, looping.assistantMessageId);
-    expect(failed.status).toBe('error');
-    expect(failed.error).toContain('kept repeating the same list_dir call');
-    expect(tools(failed.parts)[1].result).toContain('You already made this exact call');
+    const paused2 = await finished(looping.conversationId, looping.assistantMessageId);
+    expect(paused2.status).toBe('complete');
+    expect(paused2.content).toContain('repeated the same list_dir call');
+    expect(paused2.content).toContain('Reply "continue"');
+    expect(chat.getConversation(looping.conversationId).conversation.task?.status).toBe('stopped');
+    expect(tools(paused2.parts)[1].result).toContain('You already made this exact call');
   });
 
   it('allows reading a file again after changing it', async () => {

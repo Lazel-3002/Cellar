@@ -150,7 +150,8 @@ export const browseFill = defineTool({
 
 export const browseScroll = defineTool({
   name: 'browse_scroll',
-  description: 'Scroll the page in the built-in browser by a number of pixels (negative scrolls up).',
+  description:
+    'Scroll the page in the built-in browser by a number of pixels (negative scrolls up), using a real mouse-wheel gesture like a human would. Works on custom scrolling feeds (like a video feed), not just ordinary pages.',
   category: 'browser',
   input: z.object({ delta: z.coerce.number().int().describe('Pixels to scroll; negative goes up. About 800 is one screen.'), tab_id: tabId }),
   async run(args) {

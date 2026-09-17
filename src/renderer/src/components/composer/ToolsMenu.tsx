@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AppWindow, Brain, Globe, Info, ListChecks, Plug, Settings2, Sparkles } from 'lucide-react';
+import { AppWindow, Brain, Globe, Info, ListChecks, Plug, Settings2, ShieldCheck, Sparkles } from 'lucide-react';
 import type { ToolScope } from '@shared/types/customize';
 import type { ModelRef } from '@shared/types/models';
+import type { AppSettings } from '@shared/types/settings';
 import { Dialog } from '@/components/ui/dialog';
-import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
+import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
 import { Badge, Spinner, StatusDot } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useConnectors, useSettings, useSkills } from '@/lib/queries';
@@ -16,6 +17,49 @@ function Toggle({ on }: { on: boolean }) {
     <span className={cn('relative ml-auto h-4 w-7 shrink-0 rounded-full transition-colors', on ? 'bg-brand' : 'bg-track')}>
       <span className={cn('absolute top-0.5 size-3 rounded-full bg-white shadow transition-transform', on ? 'translate-x-[14px]' : 'translate-x-0.5')} />
     </span>
+  );
+}
+
+const BROWSER_APPROVAL_MODES: Array<{ value: AppSettings['browserApprovalMode']; label: string; hint: string }> = [
+  { value: 'manual', label: 'Manual', hint: 'Ask me every time' },
+  { value: 'auto', label: 'Auto', hint: 'A quick, context-free model review decides' },
+  { value: 'bypass', label: 'Bypass', hint: 'Never ask — every action runs' },
+];
+
+/** How the model's built-in-browser actions get approved, plus the step cap that pauses a runaway task. */
+function BrowserApprovalSubmenu({ settings, keepOpen }: { settings: AppSettings; keepOpen: (e: Event) => void }) {
+  const setSteps = (delta: number) => void invoke('settings:update', { browserMaxSteps: Math.min(200, Math.max(5, settings.browserMaxSteps + delta)) });
+  return (
+    <MenuSub label="Browser approval" icon={<ShieldCheck />}>
+      {BROWSER_APPROVAL_MODES.map((mode) => (
+        <MenuCheckItem
+          key={mode.value}
+          checked={settings.browserApprovalMode === mode.value}
+          onSelect={(e) => {
+            keepOpen(e);
+            void invoke('settings:update', { browserApprovalMode: mode.value });
+          }}
+        >
+          <span className="flex flex-col">
+            <span>{mode.label}</span>
+            <span className="text-[11.5px] text-muted-foreground">{mode.hint}</span>
+          </span>
+        </MenuCheckItem>
+      ))}
+      <MenuSeparator />
+      <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+        <span className="text-[12.5px] text-muted-foreground">Max steps</span>
+        <div className="flex items-center gap-1.5">
+          <button type="button" className="flex size-5 items-center justify-center rounded text-foreground hover:bg-hover" onClick={() => setSteps(-5)}>
+            −
+          </button>
+          <span className="w-6 text-center text-[12.5px] text-foreground tabular-nums">{settings.browserMaxSteps}</span>
+          <button type="button" className="flex size-5 items-center justify-center rounded text-foreground hover:bg-hover" onClick={() => setSteps(5)}>
+            +
+          </button>
+        </div>
+      </div>
+    </MenuSub>
   );
 }
 
@@ -79,6 +123,7 @@ export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTool
         <MenuItem icon={<AppWindow />} onSelect={() => setBrowserOpen(!browserOpen)}>
           {browserOpen ? 'Hide the browser panel' : 'Open the browser panel'}
         </MenuItem>
+        {settings.browserEnabled && <BrowserApprovalSubmenu settings={settings} keepOpen={keepOpen} />}
         <MenuSeparator />
         <MenuLabel>Connectors</MenuLabel>
         {connectors.length === 0 && <div className="px-2 pb-1 text-[12.5px] text-muted-foreground">No connectors yet.</div>}

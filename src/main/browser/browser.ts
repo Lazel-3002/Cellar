@@ -16,7 +16,7 @@ import type { BrowserBounds, BrowserElement, BrowserPageContent, BrowserState, B
 import { htmlToText } from '../agent/html';
 import { bus } from '../lib/events';
 import { logger } from '../lib/log';
-import { errorMessage, newId, throttle } from '../lib/util';
+import { errorMessage, newId, sleep, throttle } from '../lib/util';
 import { saveDomainSession } from './sessions';
 
 const log = logger('browser');
@@ -508,13 +508,24 @@ class BrowserService {
     return `Clicked the link "${result.label}". Now at ${tab.view.webContents.getURL()}.`;
   }
 
+  /**
+   * Scrolls with a real mouse-wheel input event (not `window.scrollBy`), so it reaches whatever
+   * actually owns scrolling under the pointer — including a custom feed like YouTube Shorts that
+   * listens for wheel gestures on its own container and ignores window scroll entirely.
+   */
   async scroll(delta: number, tabId?: string | null): Promise<string> {
     const tab = this.find(tabId);
-    const position = await this.run<{ y: number; height: number }>(
-      tab,
-      `(() => { window.scrollBy(0, ${Number(delta) || 0}); return { y: Math.round(window.scrollY), height: Math.round(document.documentElement.scrollHeight) }; })()`,
-    );
-    return `Scrolled to ${position.y} of ${position.height} pixels.`;
+    const wc = tab.view.webContents;
+    const amount = Math.round(Number(delta) || 0);
+    const viewport = await this.run<{ width: number; height: number }>(tab, `({ width: window.innerWidth, height: window.innerHeight })`);
+    const x = Math.round(viewport.width / 2);
+    const y = Math.round(viewport.height / 2);
+    wc.sendInputEvent({ type: 'mouseMove', x, y });
+    // Electron's mouseWheel deltaY runs opposite the DOM WheelEvent convention: negative scrolls the page down.
+    wc.sendInputEvent({ type: 'mouseWheel', x, y, deltaX: 0, deltaY: -amount, wheelTicksX: 0, wheelTicksY: -amount / 53, hasPreciseScrollingDeltas: true, canScroll: true });
+    await sleep(80);
+    const position = await this.run<{ y: number; height: number }>(tab, `(() => ({ y: Math.round(window.scrollY), height: Math.round(document.documentElement.scrollHeight) }))()`);
+    return `Scrolled. Window is now at ${position.y} of ${position.height} pixels (a page with its own scrolling feed, like a video feed, may not move this number even though the view changed — check with browse_screenshot).`;
   }
 
   /** A PNG of the viewport (or `rect` of it), capped to `MAX_SCREENSHOT_WIDTH` wide. */

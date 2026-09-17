@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { codePermissionMode } from '@shared/code-commands';
 import { branchPath } from '@shared/message-tree';
-import type { AgentPart, ApprovalDecision, ConversationKind, PermissionMode, ReasoningPart, TaskStartOptions, TaskState, TextPart, ToolPart } from '@shared/types/agent';
+import type { AgentPart, ApprovalDecision, ApprovalRequest, ConversationKind, PermissionMode, ReasoningPart, TaskStartOptions, TaskState, TextPart, ToolPart } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
 import type { ChatStreamEvent, GenerationStats, Message, ThinkingLevel } from '@shared/types/chat';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams, type LoadConfig, type ModelEntry } from '@shared/types/models';
@@ -50,6 +50,9 @@ const LIVE_RESULT_CHARS = 1500;
 /** Output kept while a command runs (its tail is shown live). */
 const LIVE_OUTPUT_CHARS = 8000;
 const MAX_IDENTICAL_CALLS = 3;
+
+/** Raised when the model repeats one call too many times; caught in `loop()` as a resumable pause, not a hard failure. */
+class RepeatedCallLimitError extends Error {}
 /** Model calls per chat turn: chats use tools for lookups, not long projects. */
 export const CHAT_MAX_STEPS = 16;
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -82,6 +85,43 @@ function hostOf(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 'auto' browser approval mode: reviews one pending browser action with a fresh, single-turn call
+ * to the same model — no conversation history, so it can't be talked into approving by the same
+ * context that led the acting call astray. Denies by default if the reviewer can't be reached.
+ */
+async function autoApproveBrowser(provider: Provider, entry: ModelEntry, load: LoadConfig, request: ApprovalRequest): Promise<{ allow: boolean; note?: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('auto-approval timeout')), 20_000);
+  let verdict = '';
+  try {
+    for await (const event of provider.chat({
+      entry,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a fast, strict safety reviewer for a single automated action an AI assistant wants to take in a web browser. You see only this one action, nothing else about the task it is part of. Reply with ALLOW or DENY on the first line, then a short reason on the next line. DENY anything that touches money, purchases, account or security settings, deleting or sending something, or signing into/out of an account, unless it is unmistakably harmless browsing (following a link, filling a search box, reading a page). When unsure, DENY.',
+        },
+        { role: 'user', content: `Action: ${request.title}${request.url ? `\nURL: ${request.url}` : ''}${request.preview ? `\nDetails:\n${request.preview.slice(0, 1500)}` : ''}` },
+      ],
+      params: { ...DEFAULT_INFERENCE_PARAMS, temperature: 0, maxTokens: 60 },
+      thinking: 'off',
+      load,
+      signal: controller.signal,
+      onStatus: () => undefined,
+    })) {
+      if (event.type === 'text') verdict += event.delta;
+    }
+  } catch (err) {
+    log.warn('browser auto-approval could not reach the model; denying', errorMessage(err));
+    return { allow: false, note: 'The automatic reviewer could not be reached, so the action was denied.' };
+  } finally {
+    clearTimeout(timer);
+  }
+  return { allow: /^\s*ALLOW/i.test(verdict), note: verdict.split('\n').slice(1).join(' ').trim().slice(0, 300) || undefined };
 }
 
 function stableJson(value: unknown): string {
@@ -388,17 +428,25 @@ export class TaskRunner {
       setTodos: (todos) => {
         task.todos = todos;
       },
+      browserApprovalMode: app.browserApprovalMode,
+      autoApproveBrowser: (request) => autoApproveBrowser(provider, entry, preset.load, request),
     };
 
     const callCounts = new Map<string, number>();
     let round = 0;
     let nudged = false;
+    let browserSteps = 0;
     for (;;) {
       if (signal.aborted) throw signal.reason;
       if (task.steps >= task.maxSteps) {
         const where = run.chat ? '' : `, or raise the step limit in ${agentNoun(conversation.kind).settings}`;
         parts.push({ type: 'text', round, text: `*Paused after ${task.maxSteps} steps. Reply "continue" to keep going${where}.*` });
         stats.stopReason = 'step-limit';
+        return;
+      }
+      if (browserSteps >= app.browserMaxSteps) {
+        parts.push({ type: 'text', round, text: `*Paused after ${app.browserMaxSteps} built-in-browser actions. Reply "continue" to keep going, or raise the limit in the tools menu.*` });
+        stats.stopReason = 'browser-step-limit';
         return;
       }
       // Mode changes during a run apply from the next step.
@@ -530,7 +578,17 @@ export class TaskRunner {
       nudged = false;
       for (const call of result.calls) {
         if (signal.aborted) throw signal.reason;
-        await this.executeCall(run, call, tools, ctx, callCounts);
+        try {
+          await this.executeCall(run, call, tools, ctx, callCounts);
+        } catch (err) {
+          if (!(err instanceof RepeatedCallLimitError)) throw err;
+          parts.push({ type: 'text', round, text: `*Paused: ${err.message}. Reply "continue" to let it keep trying, ideally after rephrasing the request, or switch to a larger model first.*` });
+          stats.stopReason = 'repeated-calls';
+          this.persist(run);
+          run.emit();
+          return;
+        }
+        if (call.category === 'browser') browserSteps++;
         this.persist(run);
         run.emit();
       }
@@ -789,19 +847,31 @@ export class TaskRunner {
     counts.set(key, repeats + 1);
     if (repeats >= MAX_IDENTICAL_CALLS) {
       call.status = 'cancelled';
-      throw new Error(`The model kept repeating the same ${tool.name} call, so Cellar stopped the task. Try rephrasing the request or a larger model.`);
+      call.finishedAt = Date.now();
+      throw new RepeatedCallLimitError(`the model repeated the same ${tool.name} call ${MAX_IDENTICAL_CALLS + 1} times in a row`);
     }
 
     try {
       const request = tool.approval ? await tool.approval(args, ctx) : null;
+      const browserMode = tool.category === 'browser' ? (ctx.browserApprovalMode ?? 'manual') : undefined;
       const needsApproval =
         !!request &&
         (tool.category === 'web' ||
-          tool.category === 'browser' ||
+          (tool.category === 'browser' && browserMode !== 'bypass') ||
           tool.category === 'connector' ||
           (tool.category === 'edit' && task.permissionMode !== 'auto-edits') ||
           (tool.category === 'command' && !task.allowCommands));
-      if (request && needsApproval) {
+      if (request && needsApproval && browserMode === 'auto' && ctx.autoApproveBrowser) {
+        call.approval = request;
+        const verdict = await ctx.autoApproveBrowser(request);
+        if (!verdict.allow) {
+          call.status = 'denied';
+          call.feedback = verdict.note;
+          call.result = `An automatic reviewer denied this action.${verdict.note ? ` Reason: "${verdict.note}"` : ''} Do not retry it; continue another way or ask the user.`;
+          call.finishedAt = Date.now();
+          return;
+        }
+      } else if (request && needsApproval) {
         call.approval = request;
         call.status = 'awaiting-approval';
         const decision = await this.waitForApproval(run, call);
@@ -897,7 +967,8 @@ export class TaskRunner {
     if (final.ttftMs === undefined && firstToken) final.ttftMs = firstToken - startedAt;
     if (!final.tokensPerSecond && final.completionTokens && firstToken && end > firstToken) final.tokensPerSecond = final.completionTokens / ((end - firstToken) / 1000);
     if (status === 'stopped') final.stopReason = 'stopped';
-    run.task.status = status === 'error' ? 'error' : status === 'stopped' || final.stopReason === 'step-limit' ? 'stopped' : 'done';
+    const resumableStop = final.stopReason === 'step-limit' || final.stopReason === 'repeated-calls' || final.stopReason === 'browser-step-limit';
+    run.task.status = status === 'error' ? 'error' : status === 'stopped' || resumableStop ? 'stopped' : 'done';
 
     store.updateMessage(assistant.id, {
       parts: run.parts,
