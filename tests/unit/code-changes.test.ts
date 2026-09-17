@@ -11,7 +11,9 @@ process.env.CELLAR_HOME = join(tmpdir(), `cellar-changes-home-${process.pid}`);
 const { initPaths } = await import('../../src/main/system/paths');
 const { snapshotBeforeChange, readManifest } = await import('../../src/main/code/snapshots');
 const { Workspace } = await import('../../src/main/agent/workspace');
-const { commitAll, gitChangeSet, gitDiscardFile, gitFileDiff, mergeSession } = await import('../../src/main/code/changes-git');
+const { abortMerge, commitAll, conflictedFiles, continueMerge, fileHasConflictMarkers, gitChangeSet, gitDiscardFile, gitFileDiff, mergeInProgress, mergeSession, readRepoFile, writeRepoFile } =
+  await import('../../src/main/code/changes-git');
+const { gitFailureLine, isGitHubRemote, pushBranch, remoteUrl } = await import('../../src/main/code/git');
 const { listDirectory, readWorkspaceFile, snapshotChangeSet, snapshotDiscardFile, snapshotFileDiff, writeWorkspaceFile } = await import('../../src/main/code/changes-files');
 const { countLineChanges, countLines } = await import('../../src/main/code/changes-text');
 
@@ -259,7 +261,7 @@ describe('merging a worktree session', () => {
     expect(again.message).toContain('already has everything');
   });
 
-  it('cancels a conflicting merge and names the conflicting files', async () => {
+  it('leaves a conflicting merge in progress, naming the conflicting files', async () => {
     await put(worktree, 'shared.txt', 'first from session\nsecond\n');
     await commitAll(worktree, 'Session edit');
     await put(repo, 'shared.txt', 'first from main\nsecond\n');
@@ -267,13 +269,76 @@ describe('merging a worktree session', () => {
     const result = await mergeSession(code, worktree);
     expect(result.merged).toBe(false);
     expect(result.message).toContain('shared.txt');
+    expect(result.conflicted).toEqual(['shared.txt']);
+    expect(existsSync(join(repo, '.git', 'MERGE_HEAD'))).toBe(true);
+    expect(await mergeInProgress(repo)).toBe(true);
+    expect(await conflictedFiles(repo)).toEqual(['shared.txt']);
+    expect(await fileHasConflictMarkers(repo, 'shared.txt')).toBe(true);
+
+    // Resolving by hand, the way the "Resolve conflicts" dialog edits the file, then continuing.
+    await expect(continueMerge(repo)).rejects.toThrow(/conflict markers/);
+    await writeRepoFile(repo, 'shared.txt', 'first resolved\nsecond\n');
+    expect(await fileHasConflictMarkers(repo, 'shared.txt')).toBe(false);
+    expect(await readRepoFile(repo, 'shared.txt')).toBe('first resolved\nsecond\n');
+    const finished = await continueMerge(repo);
+    expect(finished.commit).toMatch(/^[0-9a-f]{7,}$/);
+    expect(await mergeInProgress(repo)).toBe(false);
+    expect(await readFile(join(repo, 'shared.txt'), 'utf8')).toBe('first resolved\nsecond\n');
+  });
+
+  it('aborts a conflicting merge, restoring the base branch untouched', async () => {
+    await put(worktree, 'other.txt', 'from session\n');
+    await commitAll(worktree, 'Another session edit');
+    await put(repo, 'other.txt', 'from main\n');
+    commit(repo, 'Another main edit');
+    const result = await mergeSession(code, worktree);
+    expect(result.merged).toBe(false);
+    expect(result.conflicted).toEqual(['other.txt']);
+    await abortMerge(repo);
+    expect(await mergeInProgress(repo)).toBe(false);
     expect(sh(repo, 'status', '--porcelain', '--untracked-files=no')).toBe('');
-    expect(existsSync(join(repo, '.git', 'MERGE_HEAD'))).toBe(false);
-    expect(await readFile(join(repo, 'shared.txt'), 'utf8')).toBe('first from main\nsecond\n');
+    expect(await readFile(join(repo, 'other.txt'), 'utf8')).toBe('from main\n');
   });
 
   it('only merges worktree sessions', async () => {
     await expect(mergeSession({ ...code, worktree: false }, repo)).rejects.toThrow('own worktree');
+  });
+});
+
+describe('pushing and remotes', () => {
+  it('recognizes GitHub remote URLs in every common form', () => {
+    expect(isGitHubRemote('git@github.com:user/repo.git')).toBe(true);
+    expect(isGitHubRemote('https://github.com/user/repo.git')).toBe(true);
+    expect(isGitHubRemote('ssh://git@github.com/user/repo.git')).toBe(true);
+    expect(isGitHubRemote('https://gitlab.com/user/repo.git')).toBe(false);
+    expect(isGitHubRemote(undefined)).toBe(false);
+  });
+
+  it('picks the first fatal/error line out of noisy git output', () => {
+    expect(gitFailureLine('Some notice\nfatal: authentication failed\nmore stuff', 'fallback')).toBe('authentication failed');
+    expect(gitFailureLine('', 'fallback')).toBe('fallback');
+  });
+
+  it('has no remote configured until one is added, then pushes and sets the upstream', async () => {
+    const bare = await mkdtemp(join(root, 'origin-'));
+    sh(bare, 'init', '-q', '--bare', '-b', 'main');
+    const local = await makeRepo('push-source');
+    await put(local, 'a.txt', 'a\n');
+    commit(local, 'initial');
+
+    expect(await remoteUrl(local)).toBeUndefined();
+    sh(local, 'remote', 'add', 'origin', bare);
+    expect(await remoteUrl(local)).toBe(bare);
+
+    const first = await pushBranch(local, 'main');
+    expect(first.pushed).toBe(true);
+    expect(sh(local, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', 'main@{u}')).toBe('origin/main');
+
+    // Pushing again (already tracking) must not need -u a second time.
+    await put(local, 'a.txt', 'a\nb\n');
+    commit(local, 'second');
+    const second = await pushBranch(local, 'main');
+    expect(second.pushed).toBe(true);
   });
 });
 

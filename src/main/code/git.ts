@@ -165,6 +165,35 @@ export async function branchExists(cwd: string, branch: string): Promise<boolean
   return r.exitCode === 0;
 }
 
+/** The most useful line of a failed git command's output. */
+export function gitFailureLine(output: string, fallback: string): string {
+  const lines = output
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const line = lines.find((l) => /^(fatal|error):/.test(l)) ?? lines[0];
+  return line ? line.replace(/^(fatal|error):\s*/, '') : fallback;
+}
+
+/** The fetch URL of a remote, or undefined when it is not configured. */
+export async function remoteUrl(cwd: string, remote = 'origin'): Promise<string | undefined> {
+  const r = await git(cwd, ['remote', 'get-url', remote], { allowFailure: true });
+  return r.exitCode === 0 ? r.stdout.trim() || undefined : undefined;
+}
+
+export function isGitHubRemote(url?: string): boolean {
+  return !!url && /^(git@github\.com:|https?:\/\/github\.com\/|ssh:\/\/git@github\.com\/)/i.test(url);
+}
+
+/** Push a branch to a remote, setting the upstream the first time. */
+export async function pushBranch(cwd: string, branch: string, remote = 'origin'): Promise<{ pushed: boolean; message: string }> {
+  const upstream = await git(cwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch}@{u}`], { allowFailure: true });
+  const args = upstream.exitCode === 0 ? ['push', remote, branch] : ['push', '-u', remote, branch];
+  const r = await git(cwd, args, { allowFailure: true, timeoutMs: 120_000 });
+  if (r.exitCode !== 0) throw new GitError(gitFailureLine(`${r.stderr}\n${r.stdout}`, 'git push failed.'), r.exitCode, r.stderr);
+  return { pushed: true, message: `Pushed ${branch} to ${remote}.` };
+}
+
 export interface WorktreeInput {
   repoRoot: string;
   /** Where the worktree goes; must not exist yet. */

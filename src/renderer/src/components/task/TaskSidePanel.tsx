@@ -1,11 +1,14 @@
-import type { ReactNode } from 'react';
-import { CircleCheck, Circle, CircleDot, Copy, Download, ExternalLink, FolderOpen, Globe, Search } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, CircleCheck, Circle, CircleDot, Copy, Download, ExternalLink, FolderOpen, Globe, Search, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { TaskState } from '@shared/types/agent';
-import { Badge, Tip } from '@/components/ui/misc';
-import { invoke } from '@/lib/ipc';
+import { Button } from '@/components/ui/button';
+import { Badge, Spinner, Tip } from '@/components/ui/misc';
+import { invoke, onEvent } from '@/lib/ipc';
 import { fileIcon, hostOf } from '@/lib/tasks';
 import { cn, copyText, formatBytes } from '@/lib/utils';
+import { DiffView } from './ToolStep';
 
 function Section({ title, count, children }: { title: string; count?: string; children: ReactNode }) {
   return (
@@ -19,10 +22,132 @@ function Section({ title, count, children }: { title: string; count?: string; ch
   );
 }
 
-const run = (p: Promise<unknown>) => void p.catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+const run = (p: Promise<unknown>) => void p.catch((err) => toast.error(errorText(err)));
 
 const SOURCE_LABELS: Record<string, string> = { duckduckgo: 'DuckDuckGo', brave: 'Brave Search', searxng: 'SearXNG' };
 const searchLabel = (provider?: string) => (provider ? (SOURCE_LABELS[provider] ?? provider) : 'Search result');
+
+/** Files the task changed, undoable one at a time (Cowork tasks keep a snapshot of the original). */
+function ChangesSection({ conversationId, running }: { conversationId: string; running: boolean }) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [reverting, setReverting] = useState<string | null>(null);
+
+  const changes = useQuery({
+    queryKey: ['task-changes', conversationId],
+    queryFn: () => invoke('tasks:changes', conversationId),
+    staleTime: 0,
+    refetchInterval: running ? 3000 : false,
+  });
+
+  useEffect(
+    () =>
+      onEvent('chat:changed', ({ conversationId: id }) => {
+        if (id && id !== conversationId) return;
+        void qc.invalidateQueries({ queryKey: ['task-changes', conversationId] });
+        void qc.invalidateQueries({ queryKey: ['task-diff', conversationId] });
+      }),
+    [conversationId, qc],
+  );
+
+  const files = changes.data?.files ?? [];
+  if (files.length === 0) return null;
+
+  const revert = async (path: string) => {
+    setConfirming(null);
+    setReverting(path);
+    try {
+      await invoke('tasks:revertFile', conversationId, path);
+      void qc.invalidateQueries({ queryKey: ['task-changes', conversationId] });
+    } catch (err) {
+      toast.error(errorText(err));
+    } finally {
+      setReverting(null);
+    }
+  };
+
+  return (
+    <Section title="Changes" count={String(files.length)}>
+      <ul className="space-y-1">
+        {files.map((file) => {
+          const Icon = fileIcon(file.path);
+          const open = expanded === file.path;
+          return (
+            <li key={file.path} data-testid="task-change" data-path={file.path} className="rounded-lg">
+              <div className="group flex items-center gap-2 rounded-lg px-1.5 py-1.5 hover:bg-hover">
+                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                <button
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                  onClick={() => setExpanded(open ? null : file.path)}
+                  disabled={file.binary}
+                  title={file.path}
+                >
+                  <span className="block min-w-0 flex-1 truncate text-[13px] text-foreground">{file.path.split('/').pop()}</span>
+                  {!file.binary && (
+                    <span className="shrink-0 text-[11.5px] tabular-nums">
+                      <span className="text-success">+{file.additions}</span> <span className="text-danger">−{file.deletions}</span>
+                    </span>
+                  )}
+                  {!file.binary && <ChevronDown className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />}
+                </button>
+                {confirming === file.path ? (
+                  <span className="flex shrink-0 items-center gap-1">
+                    <Button size="sm" variant="danger" className="h-6 px-2 text-[12px]" onClick={() => void revert(file.path)} autoFocus>
+                      Undo
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" onClick={() => setConfirming(null)}>
+                      Cancel
+                    </Button>
+                  </span>
+                ) : reverting === file.path ? (
+                  <Spinner className="size-3.5 shrink-0" />
+                ) : (
+                  <Tip label={running ? 'Wait for Cellar to finish' : 'Undo this change'}>
+                    <span>
+                      <button
+                        className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+                        disabled={running}
+                        onClick={() => setConfirming(file.path)}
+                        aria-label="Undo this change"
+                      >
+                        <Undo2 className="size-3.5" />
+                      </button>
+                    </span>
+                  </Tip>
+                )}
+              </div>
+              {open && !file.binary && <ChangeDiff conversationId={conversationId} path={file.path} />}
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
+  );
+}
+
+function ChangeDiff({ conversationId, path }: { conversationId: string; path: string }) {
+  const diff = useQuery({
+    queryKey: ['task-diff', conversationId, path],
+    queryFn: () => invoke('tasks:fileDiff', conversationId, path),
+    staleTime: 0,
+  });
+  if (diff.isPending) {
+    return (
+      <div className="flex justify-center py-3">
+        <Spinner className="size-3.5" />
+      </div>
+    );
+  }
+  if (diff.isError) return <p className="px-1.5 py-2 text-[12px] text-danger">{errorText(diff.error)}</p>;
+  if (diff.data.binary || diff.data.tooLarge) return null;
+  return (
+    <div className="pb-1">
+      <DiffView before={diff.data.oldText} after={diff.data.newText} />
+    </div>
+  );
+}
 
 export function TaskSidePanel({ conversationId, task, running }: { conversationId: string; task: TaskState; running: boolean }) {
   const done = task.todos.filter((t) => t.status === 'completed').length;
@@ -110,7 +235,9 @@ export function TaskSidePanel({ conversationId, task, running }: { conversationI
             </ul>
           )}
         </Section>
-  
+
+        <ChangesSection conversationId={conversationId} running={running} />
+
         {sources.length > 0 && (
           <Section title="Sources" count={String(sources.length)}>
             <ul className="space-y-1">

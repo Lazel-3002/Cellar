@@ -118,6 +118,35 @@ export interface CommitResult {
 export interface MergeResult {
   merged: boolean;
   message: string;
+  /** Files with unresolved conflicts; when present the merge was left in progress to fix them. */
+  conflicted?: string[];
+}
+
+export interface RemoteInfo {
+  hasRemote: boolean;
+  isGitHub: boolean;
+}
+
+export interface PushResult {
+  pushed: boolean;
+  message: string;
+}
+
+export interface PullRequestResult {
+  url: string;
+}
+
+export interface MergeStatus {
+  /** A merge is waiting to be resolved (`git merge --abort` or continued). */
+  inProgress: boolean;
+  conflicted: string[];
+}
+
+export interface ConflictFile {
+  path: string;
+  content: string;
+  /** No `<<<<<<<` markers left. */
+  resolved: boolean;
 }
 
 export interface TerminalInfo {

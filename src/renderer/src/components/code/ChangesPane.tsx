@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FileCode, FileDiff as FileDiffIcon, FolderOpen, GitCommitHorizontal, GitMerge, RefreshCw, Undo2 } from 'lucide-react';
+import { ChevronRight, ExternalLink, FileCode, FileDiff as FileDiffIcon, FolderOpen, GitCommitHorizontal, GitMerge, GitPullRequest, RefreshCw, TriangleAlert, Undo2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ChangedFile, ChangeStatus } from '@shared/types/code';
 import { Button, IconButton } from '@/components/ui/button';
-import { Input, Segmented } from '@/components/ui/form';
+import { Dialog } from '@/components/ui/dialog';
+import { Input, Segmented, Textarea } from '@/components/ui/form';
 import { EmptyState, Spinner, Tip } from '@/components/ui/misc';
 import { invoke, onEvent } from '@/lib/ipc';
 import { useConversation } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { useCodeUi } from '@/stores/code';
+import { MergeConflictsDialog } from './MergeConflictsDialog';
 import { DiffEditor } from './MonacoEditor';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -62,6 +64,10 @@ export function ChangesPane({ conversationId, running }: { conversationId: strin
   const [mergeStep, setMergeStep] = useState<'idle' | 'confirm' | 'busy'>('idle');
   const [confirmDiscard, setConfirmDiscard] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [creatingPr, setCreatingPr] = useState(false);
+  /** The conflict dialog opens by itself only for a merge started here, never for one already in the checkout. */
+  const [resolving, setResolving] = useState(false);
 
   const changes = useQuery({
     queryKey: ['code-changes', conversationId],
@@ -84,11 +90,33 @@ export function ChangesPane({ conversationId, running }: { conversationId: strin
   /** The diff of the selected file (not a previous file's diff kept while the new one loads). */
   const currentDiff = diff.data && diff.data.path === selectedFile?.path ? diff.data : undefined;
 
+  const remoteInfo = useQuery({
+    queryKey: ['code-remote-info', conversationId],
+    queryFn: () => invoke('code:remoteInfo', conversationId),
+    enabled: !!code?.isGit,
+    staleTime: 30_000,
+  });
+
+  const mergeStatus = useQuery({
+    queryKey: ['code-merge-status', conversationId],
+    queryFn: () => invoke('code:mergeStatus', conversationId),
+    enabled: !!code?.isGit && !!code.worktree,
+    staleTime: 0,
+  });
+
+  const pullRequestUrl = useQuery({
+    queryKey: ['code-pr-url', conversationId, code?.branch],
+    queryFn: () => invoke('code:pullRequestUrl', conversationId),
+    enabled: !!code?.isGit && !!code.worktree && !!remoteInfo.data?.isGitHub,
+    staleTime: 15_000,
+  });
+
   const reveal = (path: string) => void invoke('tasks:revealFile', conversationId, path).catch((err) => toast.error(errorText(err)));
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['code-changes', conversationId] });
     void qc.invalidateQueries({ queryKey: ['code-diff', conversationId] });
+    void qc.invalidateQueries({ queryKey: ['code-merge-status', conversationId] });
   };
 
   useEffect(
@@ -97,6 +125,7 @@ export function ChangesPane({ conversationId, running }: { conversationId: strin
         if (id !== conversationId) return;
         void qc.invalidateQueries({ queryKey: ['code-changes', conversationId] });
         void qc.invalidateQueries({ queryKey: ['code-diff', conversationId] });
+        void qc.invalidateQueries({ queryKey: ['code-merge-status', conversationId] });
       }),
     [conversationId, qc],
   );
@@ -134,12 +163,40 @@ export function ChangesPane({ conversationId, running }: { conversationId: strin
     try {
       const result = await invoke('code:merge', conversationId);
       if (result.merged) toast.success(result.message);
+      else if (result.conflicted?.length) setResolving(true);
       else toast.warning(result.message);
       refresh();
     } catch (err) {
       toast.error(errorText(err));
     } finally {
       setMergeStep('idle');
+    }
+  };
+
+  const push = async () => {
+    setPushing(true);
+    try {
+      const result = await invoke('code:push', conversationId);
+      toast.success(result.message);
+      void qc.invalidateQueries({ queryKey: ['code-pr-url', conversationId] });
+    } catch (err) {
+      toast.error(errorText(err));
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const createPr = async (title: string, body: string) => {
+    try {
+      const result = await invoke('code:createPullRequest', conversationId, title, body);
+      setCreatingPr(false);
+      toast.success('Pull request opened', {
+        description: result.url,
+        action: { label: 'Open', onClick: () => void invoke('system:openExternal', result.url) },
+      });
+      void qc.invalidateQueries({ queryKey: ['code-pr-url', conversationId] });
+    } catch (err) {
+      toast.error(errorText(err));
     }
   };
 
@@ -222,9 +279,57 @@ export function ChangesPane({ conversationId, running }: { conversationId: strin
                 )}
               </div>
             )}
+            {code?.branch && remoteInfo.data?.hasRemote && (
+              <Tip label={`Push ${code.branch} to origin`}>
+                <Button size="sm" variant="outline" disabled={pushing} onClick={() => void push()}>
+                  {pushing ? <Spinner className="size-3.5" /> : <UploadCloud className="size-3.5" />}
+                  Push
+                </Button>
+              </Tip>
+            )}
+            {code?.worktree && code.baseBranch && code.branch && code.branch !== code.baseBranch && remoteInfo.data?.isGitHub && (
+              <>
+                {pullRequestUrl.data ? (
+                  <Button size="sm" variant="outline" onClick={() => void invoke('system:openExternal', pullRequestUrl.data!)}>
+                    <ExternalLink className="size-3.5" />
+                    View pull request
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setCreatingPr(true)}>
+                    <GitPullRequest className="size-3.5" />
+                    Create pull request
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         )}
       </header>
+
+      {mergeStatus.data?.inProgress && mergeStatus.data.conflicted.length > 0 && !resolving && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-divider bg-warning/10 px-3 py-1.5 text-[12.5px] text-fg-2">
+          <TriangleAlert className="size-3.5 shrink-0 text-warning" />
+          <span className="min-w-0 flex-1">
+            A merge is waiting to be resolved in {code?.repoName ?? 'the repository'} ({mergeStatus.data.conflicted.length} conflicted).
+          </span>
+          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px]" onClick={() => setResolving(true)}>
+            Resolve
+          </Button>
+        </div>
+      )}
+      {resolving && mergeStatus.data?.inProgress && mergeStatus.data.conflicted.length > 0 && (
+        <MergeConflictsDialog
+          conversationId={conversationId}
+          conflicted={mergeStatus.data.conflicted}
+          onDone={() => {
+            setResolving(false);
+            refresh();
+          }}
+        />
+      )}
+      {creatingPr && code?.branch && (
+        <CreatePrDialog defaultTitle={code.branch.replace(/^cellar\//, '').replace(/-[a-f0-9]{6}$/, '').replace(/-/g, ' ')} onCancel={() => setCreatingPr(false)} onSubmit={createPr} />
+      )}
 
       {changes.isPending ? (
         <div className="flex flex-1 items-center justify-center">
@@ -319,6 +424,48 @@ export function ChangesPane({ conversationId, running }: { conversationId: strin
         </div>
       )}
     </div>
+  );
+}
+
+function CreatePrDialog({ defaultTitle, onCancel, onSubmit }: { defaultTitle: string; onCancel: () => void; onSubmit: (title: string, body: string) => Promise<void> }) {
+  const [title, setTitle] = useState(defaultTitle.charAt(0).toUpperCase() + defaultTitle.slice(1));
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try {
+      await onSubmit(title.trim(), body);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onCancel()}
+      title="Create pull request"
+      description="Opens the pull request with the GitHub CLI (gh), using your own sign-in."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="brand" form="create-pr-form" type="submit" disabled={busy || !title.trim()}>
+            {busy ? <Spinner className="size-3.5" /> : <GitPullRequest className="size-3.5" />}
+            Create
+          </Button>
+        </>
+      }
+    >
+      <form id="create-pr-form" onSubmit={(e) => void submit(e)} className="space-y-3">
+        <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" aria-label="Pull request title" />
+        <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Description (optional)" rows={6} aria-label="Pull request description" />
+      </form>
+    </Dialog>
   );
 }
 

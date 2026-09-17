@@ -1,4 +1,4 @@
-import { readdir, rm, rmdir } from 'node:fs/promises';
+import { readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { ChangedFile, ChangeSet, ChangeStatus, CodeSessionInfo, CommitResult, FileDiff, MergeResult } from '@shared/types/code';
 import { countLines, decodeText, isBinary, MAX_DIFF_BYTES, readLimited } from './changes-text';
@@ -237,15 +237,74 @@ export async function mergeSession(code: CodeSessionInfo, workDir: string): Prom
     const how = /fast-forward/i.test(r.stdout) ? ' (fast-forward)' : '';
     return { merged: true, message: `Merged ${plural(count, 'commit')} from ${branch} into ${baseBranch}${how}.` };
   }
-  const conflicted = await git(repoRoot, ['diff', '--name-only', '--diff-filter=U', '-z'], { allowFailure: true });
-  const files = conflicted.stdout.split('\0').filter(Boolean);
-  const inProgress = await git(repoRoot, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFailure: true });
-  if (inProgress.exitCode === 0) await git(repoRoot, ['merge', '--abort'], { allowFailure: true });
-  const output = `${r.stderr}\n${r.stdout}`;
+  const files = await conflictedFiles(repoRoot);
   if (files.length > 0) {
+    // Left in progress (MERGE_HEAD stays) so the conflicts can be resolved and the merge continued.
     const shown = files.slice(0, 8).join(', ') + (files.length > 8 ? ` and ${files.length - 8} more` : '');
-    return { merged: false, message: `Merging ${branch} into ${baseBranch} conflicts in ${shown}. The merge was cancelled and nothing changed.` };
+    return { merged: false, conflicted: files, message: `Merging ${branch} into ${baseBranch} conflicts in ${shown}. Resolve the conflicts, then continue or abort the merge.` };
   }
+  const inProgress = await mergeInProgress(repoRoot);
+  if (inProgress) await abortMerge(repoRoot);
+  const output = `${r.stderr}\n${r.stdout}`;
   if (missingIdentity(output)) throw new Error(IDENTITY_HELP);
   throw new GitError(gitFailure(output, 'git merge failed.'), r.exitCode, r.stderr);
+}
+
+/** Whether the working folder has a merge waiting to be resolved (or aborted). */
+export async function mergeInProgress(repoRoot: string): Promise<boolean> {
+  const r = await git(repoRoot, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFailure: true });
+  return r.exitCode === 0;
+}
+
+/** Paths with unresolved (unmerged) conflicts. */
+export async function conflictedFiles(repoRoot: string): Promise<string[]> {
+  const r = await git(repoRoot, ['diff', '--name-only', '--diff-filter=U', '-z'], { allowFailure: true });
+  return r.stdout.split('\0').filter(Boolean);
+}
+
+export async function abortMerge(repoRoot: string): Promise<void> {
+  await git(repoRoot, ['merge', '--abort'], { allowFailure: true });
+}
+
+const CONFLICT_MARKER = /^<{7}(?!<)/m;
+
+/** Whether a conflicted file still has `<<<<<<<` markers in it. */
+export async function fileHasConflictMarkers(repoRoot: string, rel: string): Promise<boolean> {
+  const read = await readLimited(join(repoRoot, rel), MAX_DIFF_BYTES);
+  if (!read.content || isBinary(read.content)) return false;
+  return CONFLICT_MARKER.test(decodeText(read.content));
+}
+
+/** Read one file straight from the repository checkout (for editing a merge conflict). */
+export async function readRepoFile(repoRoot: string, rel: string): Promise<string> {
+  const read = await readLimited(join(repoRoot, rel), MAX_DIFF_BYTES);
+  if (!read.isFile || !read.content) throw new Error(`${rel} could not be read.`);
+  if (isBinary(read.content)) throw new Error(`${rel} is a binary file, so it cannot be edited here.`);
+  return decodeText(read.content);
+}
+
+export async function writeRepoFile(repoRoot: string, rel: string, content: string): Promise<void> {
+  await writeFile(join(repoRoot, rel), content, 'utf8');
+}
+
+/** Stage the resolved files and finish an in-progress merge; throws while any conflict marker remains. */
+export async function continueMerge(repoRoot: string): Promise<CommitResult> {
+  if (!(await mergeInProgress(repoRoot))) throw new Error('There is no merge in progress.');
+  const remaining = await conflictedFiles(repoRoot);
+  const stillConflicted: string[] = [];
+  for (const rel of remaining) if (await fileHasConflictMarkers(repoRoot, rel)) stillConflicted.push(rel);
+  if (stillConflicted.length > 0) {
+    const shown = stillConflicted.slice(0, 5).join(', ') + (stillConflicted.length > 5 ? ` and ${stillConflicted.length - 5} more` : '');
+    throw new Error(`${shown} still ${stillConflicted.length === 1 ? 'has' : 'have'} conflict markers (<<<<<<<). Resolve them before continuing.`);
+  }
+  // Stage only what was conflicted, so unrelated files in the checkout stay out of the merge commit.
+  if (remaining.length > 0) await git(repoRoot, ['--literal-pathspecs', 'add', '-A', '--', ...remaining], { timeoutMs: 120_000 });
+  const r = await git(repoRoot, ['commit', '--no-edit'], { allowFailure: true, timeoutMs: 300_000 });
+  if (r.exitCode !== 0) {
+    const output = `${r.stderr}\n${r.stdout}`;
+    if (missingIdentity(output)) throw new Error(IDENTITY_HELP);
+    throw new GitError(gitFailure(output, 'git commit failed.'), r.exitCode, r.stderr);
+  }
+  const [commit, summary] = (await git(repoRoot, ['log', '-1', '--format=%h%x00%s'])).stdout.trim().split('\0');
+  return { commit, summary: summary ?? 'Merge' };
 }

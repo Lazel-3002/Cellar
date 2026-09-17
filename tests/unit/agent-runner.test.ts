@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,6 +16,7 @@ const { settings } = await import('../../src/main/services/settings');
 const { providers } = await import('../../src/main/providers/registry');
 const { chat } = await import('../../src/main/chat/orchestrator');
 const { COMPACTION_SYSTEM } = await import('../../src/main/agent/prompt');
+const { snapshotChangeSet, snapshotDiscardFile } = await import('../../src/main/code/changes-files');
 type ChatRequest = import('../../src/main/providers/types').ChatRequest;
 type Provider = import('../../src/main/providers/types').Provider;
 
@@ -305,5 +307,38 @@ describe('TaskRunner', () => {
     expect(reply.content).toBe('Done.');
     const history = fake.requests.at(-1)!.messages.map((m) => m.role);
     expect(history).toEqual(['system', 'user', 'assistant', 'tool', 'assistant', 'user']);
+  });
+
+  it('keeps a snapshot of every file it changes, so each change can be undone', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'cellar-runner-undo-'));
+    await writeFile(join(folder, 'existing.md'), 'original\n');
+    fake.script = (req) => {
+      switch (toolTurns(req)) {
+        case 0:
+          return [call('edit_file', { path: 'existing.md', old_string: 'original', new_string: 'changed' })];
+        case 1:
+          return [call('write_file', { path: 'made-up.txt', content: 'brand new\n' })];
+        default:
+          return [{ type: 'text', delta: 'Done.' }];
+      }
+    };
+    const { conversationId, assistantMessageId } = await startTask('Change my files', 'auto-edits', folder);
+    await finished(conversationId, assistantMessageId);
+    expect(await readFile(join(folder, 'existing.md'), 'utf8')).toBe('changed\n');
+
+    const changes = await snapshotChangeSet(conversationId, folder);
+    expect(changes.source).toBe('snapshots');
+    expect(changes.files.map((f) => [f.path, f.status])).toEqual([
+      ['existing.md', 'modified'],
+      ['made-up.txt', 'added'],
+    ]);
+
+    // Undoing an edit brings the original back; undoing a created file removes it.
+    await snapshotDiscardFile(conversationId, folder, 'existing.md');
+    expect(await readFile(join(folder, 'existing.md'), 'utf8')).toBe('original\n');
+    await snapshotDiscardFile(conversationId, folder, 'made-up.txt');
+    expect(existsSync(join(folder, 'made-up.txt'))).toBe(false);
+    expect((await snapshotChangeSet(conversationId, folder)).files).toEqual([]);
+    await rm(folder, { recursive: true, force: true });
   });
 });

@@ -9,6 +9,8 @@ import { registerChangesHandlers } from '../code/changes';
 import { registerCodeHandlers } from '../code/ipc';
 import { registerPreviewHandlers } from '../code/preview';
 import { registerSideChatHandlers } from '../code/side-chat';
+import { snapshotChangeSet, snapshotDiscardFile, snapshotFileDiff } from '../code/changes-files';
+import { deleteSnapshots } from '../code/snapshots';
 import { registerTerminalHandlers, terminals } from '../code/terminal';
 import { attachmentFromBytes, attachmentsFromPaths } from '../chat/attachments';
 import { chat } from '../chat/orchestrator';
@@ -260,6 +262,7 @@ export function registerIpcHandlers(): void {
       chat.stopConversation(id);
       chat.discardIncognito(id);
       terminals.killForConversation(id);
+      void deleteSnapshots(id).catch(() => undefined);
     }
     deleteConversations(ids);
     bus.emit('chat:changed', {});
@@ -283,6 +286,19 @@ export function registerIpcHandlers(): void {
     if (error) throw new Error(error);
   });
   handle('tasks:revealFile', async (conversationId, path) => shell.showItemInFolder(await taskFile(conversationId, path)));
+  // Cowork tasks never use git, so "changes" always means files saved in a pre-edit snapshot.
+  handle('tasks:changes', async (conversationId) => snapshotChangeSet(conversationId, chat.taskWorkDir(conversationId)));
+  handle('tasks:fileDiff', async (conversationId, path) => {
+    const workspace = await Workspace.open(chat.taskWorkDir(conversationId));
+    const rel = workspace.relative(await workspace.resolve(path));
+    return snapshotFileDiff(conversationId, workspace.root, rel);
+  });
+  handle('tasks:revertFile', async (conversationId, path) => {
+    const workspace = await Workspace.open(chat.taskWorkDir(conversationId));
+    const rel = workspace.relative(await workspace.resolve(path));
+    await snapshotDiscardFile(conversationId, workspace.root, rel);
+    bus.emit('chat:changed', { conversationId });
+  });
   handle('tasks:saveFileAs', async (conversationId, path) => {
     const source = await taskFile(conversationId, path);
     const win = focusedWindow();

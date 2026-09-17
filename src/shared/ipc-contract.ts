@@ -3,11 +3,16 @@ import type {
   ChangeSet,
   CodeMode,
   CommitResult,
+  ConflictFile,
   FileContent,
   FileDiff,
   FileEntry,
   MemoryFile,
   MergeResult,
+  MergeStatus,
+  PullRequestResult,
+  PushResult,
+  RemoteInfo,
   RepoInfo,
   SideChatEvent,
   SideChatRequest,
@@ -171,6 +176,11 @@ export interface IpcInvokeMap {
   'tasks:openFile': Handler<[conversationId: string, path: string], void>;
   'tasks:revealFile': Handler<[conversationId: string, path: string], void>;
   'tasks:saveFileAs': Handler<[conversationId: string, path: string], string | null>;
+  /** Cowork tasks: files changed from their saved snapshot (undo, outside git). */
+  'tasks:changes': Handler<[conversationId: string], ChangeSet>;
+  'tasks:fileDiff': Handler<[conversationId: string, path: string], FileDiff>;
+  /** Restore one file to how it was before the task first changed it. */
+  'tasks:revertFile': Handler<[conversationId: string, path: string], void>;
 
   /** Repository details for the new-session screen. */
   'code:repoInfo': Handler<[folder: string], RepoInfo>;
@@ -182,6 +192,22 @@ export interface IpcInvokeMap {
   'code:commit': Handler<[conversationId: string, message: string], CommitResult>;
   /** Merge a worktree session's branch into the branch it started from. */
   'code:merge': Handler<[conversationId: string], MergeResult>;
+  /** Whether a remote is configured, and whether it looks like GitHub (for the "Create pull request" button). */
+  'code:remoteInfo': Handler<[conversationId: string], RemoteInfo>;
+  /** Pushes the session's branch, setting the upstream the first time. */
+  'code:push': Handler<[conversationId: string], PushResult>;
+  /** Opens a pull request with the GitHub CLI (`gh`); throws with install/sign-in instructions when it is not ready. */
+  'code:createPullRequest': Handler<[conversationId: string, title: string, body: string], PullRequestResult>;
+  /** An existing pull request for the session's branch, if `gh` knows of one. */
+  'code:pullRequestUrl': Handler<[conversationId: string], string | undefined>;
+  /** Whether a merge is waiting to be resolved in the repository (not the worktree). */
+  'code:mergeStatus': Handler<[conversationId: string], MergeStatus>;
+  /** One conflicted file's current content, and whether its markers are already resolved. */
+  'code:conflictFile': Handler<[conversationId: string, path: string], ConflictFile>;
+  'code:writeConflictFile': Handler<[conversationId: string, path: string, content: string], void>;
+  /** Stages the resolved files and finishes an in-progress merge. */
+  'code:continueMerge': Handler<[conversationId: string], CommitResult>;
+  'code:abortMerge': Handler<[conversationId: string], void>;
   'code:listDir': Handler<[conversationId: string, path: string], FileEntry[]>;
   'code:readFile': Handler<[conversationId: string, path: string], FileContent>;
   'code:writeFile': Handler<[conversationId: string, path: string, content: string], void>;
@@ -470,6 +496,9 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'tasks:openFile': true,
   'tasks:revealFile': true,
   'tasks:saveFileAs': true,
+  'tasks:changes': true,
+  'tasks:fileDiff': true,
+  'tasks:revertFile': true,
   'code:repoInfo': true,
   'code:setMode': true,
   'code:changes': true,
@@ -477,6 +506,15 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'code:discardFile': true,
   'code:commit': true,
   'code:merge': true,
+  'code:remoteInfo': true,
+  'code:push': true,
+  'code:createPullRequest': true,
+  'code:pullRequestUrl': true,
+  'code:mergeStatus': true,
+  'code:conflictFile': true,
+  'code:writeConflictFile': true,
+  'code:continueMerge': true,
+  'code:abortMerge': true,
   'code:listDir': true,
   'code:readFile': true,
   'code:writeFile': true,

@@ -4,8 +4,9 @@ import { join, relative, sep } from 'node:path';
 import { paths } from '../system/paths';
 
 /**
- * Original file contents for Code sessions outside git, saved before the agent first changes a
- * file. They let the Changes panel show diffs and restore files without a repository.
+ * Original file contents saved before the agent first changes a file: Code sessions outside git,
+ * and Cowork tasks (which never use git). They let a Changes panel show diffs and undo edits
+ * without a repository.
  */
 export interface SnapshotEntry {
   /** False when the agent created the file. */

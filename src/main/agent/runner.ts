@@ -417,7 +417,9 @@ export class TaskRunner {
       conversationId,
       incognito: store.incognito,
       shell: code ? powershell.exe : undefined,
-      beforeChange: code && !code.isGit ? (abs) => snapshotBeforeChange(conversationId, workspace.root, abs) : undefined,
+      // Cowork tasks and Code sessions outside git keep the original so an edit can be undone;
+      // git Code sessions already have that in the checkout's history.
+      beforeChange: !code || !code.isGit ? (abs) => snapshotBeforeChange(conversationId, workspace.root, abs) : undefined,
       afterChange: run.chat || task.design || task.math ? undefined : (abs) => problemsAfterChange(abs, workspace.root),
       recordFile: (file) => {
         const path = workspace.relative(file.absolutePath);

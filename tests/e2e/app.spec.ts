@@ -306,6 +306,18 @@ test('cowork works through a task in a chosen folder, asking before it writes', 
     expect(String(agentRequest?.messages[0].content)).toContain(`Working folder: ${folder}`);
     await win.screenshot({ path: join(project, 'test-results', 'e2e-cowork-done.png') });
 
+    // The Changes section lists what the task changed, shows its diff, and can undo it.
+    const panel = win.getByTestId('task-panel');
+    const change = panel.getByTestId('task-change');
+    await expect(change).toHaveAttribute('data-path', 'report.md', { timeout: 10_000 });
+    await change.getByRole('button').first().click();
+    await expect(panel.getByText('ship milestone two')).toBeVisible();
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-cowork-changes.png') });
+    await change.getByRole('button', { name: 'Undo this change' }).click();
+    await change.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect.poll(() => existsSync(join(folder, 'report.md')), { timeout: 10_000 }).toBe(false);
+    await expect(panel.getByTestId('task-change')).toHaveCount(0);
+
     const tasks = await ipc<Array<{ kind: string; taskStatus?: string }>>('chat:list', { kind: 'task' });
     expect(tasks[0]).toMatchObject({ kind: 'task', taskStatus: 'done' });
   } finally {
@@ -404,6 +416,91 @@ test('code fixes a bug in its own worktree, with changes, terminal, side chat an
     await win.getByRole('button', { name: 'Chat and Cowork' }).click().catch(() => undefined);
     rmSync(repo, { recursive: true, force: true });
     if (workDir) rmSync(workDir, { recursive: true, force: true });
+  }
+});
+
+test('code pushes its branch to a remote and resolves a merge conflict by hand', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'cellar-e2e-push-'));
+  const origin = mkdtempSync(join(tmpdir(), 'cellar-e2e-origin-'));
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8', windowsHide: true });
+  let workDir = '';
+  try {
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin], { windowsHide: true });
+    writeFileSync(join(repo, 'app.js'), 'export function add(a, b) {\n  return a - b;\n}\n');
+    git('init', '-q', '-b', 'main');
+    // Cellar runs git itself, so the identity has to live in the repository's own config.
+    git('config', 'user.name', 'E2E');
+    git('config', 'user.email', 'e2e@cellar.local');
+    git('config', 'commit.gpgsign', 'false');
+    git('remote', 'add', 'origin', origin);
+    git('add', '-A');
+    git('commit', '-q', '-m', 'initial');
+    await ipc('settings:update', { recentRepos: [repo], codeMode: 'code', codeAutoAcceptEdits: true, codeUseWorktrees: true });
+
+    await win.locator('button[aria-label="Code"]').click();
+    await expect(win.getByTestId('code-sidebar')).toBeVisible();
+    await win.getByTestId('code-repo').click();
+    await win.getByRole('menuitem', { name: basename(repo) }).click();
+    await expect(win.getByTestId('code-worktree')).toBeVisible();
+    await selectModel('mock-coder');
+    await send('Fix the add function');
+    await expect(win.getByTestId('task-turn').last()).toHaveAttribute('data-status', 'complete', { timeout: 30_000 });
+
+    const conversationId = await win.evaluate(() => location.hash.split('/').pop()!);
+    const session = await ipc<{ conversation: { task: { workDir: string; code: { branch: string } } } }>('chat:get', conversationId);
+    workDir = session.conversation.task.workDir;
+    const branch = session.conversation.task.code.branch;
+
+    // Commit the session's work, then push it to the remote.
+    const pane = win.getByTestId('changes-pane');
+    await win.getByTestId('pane-tab-changes').click();
+    await expect(pane).toContainText('app.js', { timeout: 10_000 });
+    await pane.getByLabel('Commit message').fill('Fix add');
+    await pane.getByRole('button', { name: 'Commit' }).click();
+    await expect(pane).toContainText('1 commit', { timeout: 15_000 });
+
+    await pane.getByRole('button', { name: 'Push' }).click();
+    await expect.poll(() => execFileSync('git', ['branch', '--list', branch], { cwd: origin, encoding: 'utf8', windowsHide: true }).trim(), { timeout: 30_000 }).toContain(branch);
+    // A remote that is not GitHub offers no pull request button.
+    await expect(pane.getByRole('button', { name: 'Create pull request' })).toHaveCount(0);
+
+    // Someone else changes the same line on main, so merging conflicts.
+    writeFileSync(join(repo, 'app.js'), 'export function add(a, b) {\n  return a * b;\n}\n');
+    git('commit', '-q', '-am', 'Main edit');
+    await pane.getByRole('button', { name: /Merge into main/ }).click();
+    await pane.getByRole('button', { name: 'Merge', exact: true }).click();
+
+    // The conflict dialog opens on the conflicted file, still holding git's markers.
+    const dialog = win.getByRole('dialog').filter({ hasText: 'Resolve merge conflicts' });
+    await expect(dialog).toBeVisible({ timeout: 30_000 });
+    await expect(dialog).toContainText('app.js');
+    await expect(dialog.getByRole('button', { name: 'Continue merge' })).toBeDisabled();
+    await expect(dialog.locator('.monaco-editor')).toContainText('<<<<<<<', { timeout: 20_000 });
+
+    // Resolve it the way a person would: edit the markers away in the editor, save, continue.
+    await dialog.locator('.monaco-editor .view-lines').click();
+    await win.keyboard.press('Control+A');
+    await win.keyboard.type('export function add(a, b) {\n  return a + b;\n');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog.getByRole('button', { name: 'Continue merge' })).toBeEnabled({ timeout: 15_000 });
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-code-conflicts.png') });
+    await dialog.getByRole('button', { name: 'Continue merge' }).click();
+
+    await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+    await expect.poll(() => readFileSync(join(repo, 'app.js'), 'utf8'), { timeout: 15_000 }).toContain('return a + b;');
+    expect(readFileSync(join(repo, 'app.js'), 'utf8')).not.toContain('<<<<<<<');
+    expect(existsSync(join(repo, '.git', 'MERGE_HEAD'))).toBe(false);
+    expect(git('log', '-1', '--format=%s').trim()).toMatch(/Merge/i);
+  } finally {
+    await win.getByRole('button', { name: 'Chat and Cowork' }).click().catch(() => undefined);
+    // The session stays open, so Windows may still hold its worktree; cleaning up must not fail the test.
+    for (const dir of [repo, origin, workDir]) {
+      if (dir) try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+      } catch {
+        // a temp folder the OS will reclaim
+      }
+    }
   }
 });
 

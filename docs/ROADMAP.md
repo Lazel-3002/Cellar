@@ -13,6 +13,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M6 Math** | Study boards: exact calculator, worked steps, figures, graphs, practice tests, whiteboard | ✅ Done 2026-09-16 |
 | **M7 Inline capabilities** | Inline visualizations (sandboxed HTML rendered live in chat) and inline images ([[image: query]] via DuckDuckGo search) | ✅ Done 2026-09-16 |
 | **M8 Tier 3 wishlist** | Built-in Chromium browser, `call(module, task)` delegation, self-scheduling reminders, streaming dictation + spoken replies | ✅ Done 2026-09-17 |
+| **M8.1 Undo, git and memory** | Undo for Cowork file changes; push, pull requests and merge-conflict resolution in Code; `/update-memory` | ✅ Done 2026-09-17 |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -63,7 +64,7 @@ Tests: 92 unit tests (42 new: path containment incl. a real junction escape, glo
 
 ### Known gaps and follow-ups from M2
 - **Text protocol** is covered by unit tests but not by a real model: every model on the dev machine supports native tool calling.
-- **No undo** for agent file changes (M3's diff viewer and worktrees are the place for that); `run_command` output is shown when the command ends, not streamed.
+- **Undo** for agent file changes was added in M8.1 (Changes section in the task panel); `run_command` output is still shown when the command ends, not streamed.
 - **Office documents** are generated with fixed, clean styling; no templates, images in slides, or charts yet. Legacy `.doc/.xls/.ppt` cannot be read.
 - **Tasks cannot be incognito**, and retry/edit branching is not offered in the task view (follow-ups steer instead).
 - **Scratch task folders** are kept when a task is deleted, so outputs are never lost silently.
@@ -110,7 +111,7 @@ Real model through the UI (`scripts/code-smoke.mjs`), Ollama qwen3.5:9b: given "
 ### Known gaps and follow-ups from M3
 - **Real models:** only qwen3.5:9b through Ollama was run in this milestone; llama.cpp models and larger refactors are untested with Code.
 - **Commands:** `run_command` has no background mode: long-running servers belong in the Terminal tab. The agent cannot read terminal output.
-- **Git:** no pull requests, pushes or conflict resolution UI. Merge refuses and explains when the base checkout is dirty or conflicts appear.
+- **Git:** pushing, pull requests (through `gh`) and conflict resolution arrived in M8.1. Merge still refuses and explains when the base checkout is dirty.
 - **Snapshots** track only edits made through the file tools and the editor, not files changed by commands (git sessions see everything).
 - **Preview:** PDFs do not render in the sandboxed preview frame (use "Open"). Non-localhost web pages open in the browser.
 - **Editor:** IntelliSense now covers TypeScript/JavaScript and Python (see above); other languages Monaco can highlight still have no language server. "Go to definition" on an import specifier lands on the local import binding, not the re-exported source (tsserver's own `textDocument/definition` behavior) — same-file jumps and find-references work as expected. Peek-references previews are blank for files not already open (standalone Monaco doesn't resolve a model for them, though clicking still navigates correctly via the Files pane).
@@ -616,6 +617,85 @@ and the same OS wake job relaunches Cellar for it.
   engine; picking piper downloads the rhasspy build and one voice, and main renders each utterance
   to a WAV the renderer plays (it owns the audio output). If piper is missing or fails, speech falls
   back to the system voices instead of going silent.
+
+## M8.1 Undo in Cowork, git beyond commit, and memory on demand
+
+Two gaps carried since M2 and M3, plus a way to ask for memory rather than wait for it — each closed
+by extending machinery that was already there rather than adding a parallel one.
+
+### Undo for Cowork file changes
+
+Code sessions outside git already saved the original of every file before first changing it
+(`code/snapshots.ts`, driven by `ToolContext.beforeChange`), which is what let their Changes pane
+diff and discard without a repository. Cowork tasks passed `beforeChange: undefined`, so nothing was
+kept and nothing could be undone.
+
+- `agent/runner.ts` now installs the hook for **any** task without git (`!code || !code.isGit`), so
+  Cowork gets snapshots on the same code path. Git Code sessions still pass `undefined` — the
+  checkout's own history is the better record there.
+- New `tasks:changes` / `tasks:fileDiff` / `tasks:revertFile` handlers reuse `snapshotChangeSet`,
+  `snapshotFileDiff` and `snapshotDiscardFile` unchanged; Cowork never uses git, so the snapshot path
+  is the only one they need.
+- A **Changes** section in the task side panel lists what the task changed with +/− counts, expands
+  to the diff (the existing `DiffView`, not Monaco — it has to read in a 320px panel), and undoes one
+  file at a time behind a confirm step. Reverting an edit restores the original; reverting a created
+  file deletes it.
+- `chat:delete` now drops a conversation's snapshots, the way `code:deleteSession` already did.
+
+### `/update-memory`
+
+Memory generated from chats already existed as a background pass (`customize/memory-auto.ts`), but it
+only ran on its own, 90 seconds after a conversation went idle and only with the setting on. The same
+extraction is now also reachable on demand.
+
+- `runAutoMemory` takes a `force` flag and returns what it did (`MemoryUpdateResult`: titles saved,
+  titles removed, or a reason nothing was kept). The automatic and on-demand paths are the same code.
+- `/update-memory` is a built-in command in every composer. It runs the pass whether or not automatic
+  memory is on, and whether or not the conversation changed since the last pass — the user asked for
+  it. **Incognito chats still refuse**, as they do everywhere else.
+- Saving nothing is a normal outcome, not a failure: "Nothing saved — nothing here was worth
+  remembering" rather than an error, so the command is safe to type on any chat.
+
+### Pushing, pull requests and conflict resolution
+
+- **Push** (`code:push`): `git push -u origin <branch>` the first time, plain `git push` once the
+  branch tracks. Offered whenever the session has a branch and a remote is configured.
+- **Pull requests** (`code:createPullRequest`, `code/gh.ts`): shells out to the **GitHub CLI**, so
+  Cellar never handles a token — `gh` already carries the user's own sign-in. The button appears only
+  for a worktree session on a GitHub remote whose branch differs from its base; a missing or
+  signed-out `gh` comes back as instructions rather than a failure. An existing PR for the branch is
+  detected (`gh pr view`) and offered as "View pull request" instead.
+- **Conflicts:** `mergeSession` no longer aborts when a merge conflicts. It leaves `MERGE_HEAD` in
+  place and reports the conflicted files, and a "Resolve merge conflicts" dialog edits them with
+  git's own `<<<<<<<` markers in a Monaco editor — the same thing a person does on the command line,
+  which is why no three-way merge editor was needed. "Continue merge" refuses while any marker is
+  left, then stages **only** the conflicted paths and commits; "Abort merge" is always available.
+  Any other merge failure still aborts and cleans up as before.
+- A merge already sitting in the checkout (one Cellar did not start) surfaces as a banner with a
+  Resolve button instead of opening the dialog by itself.
+
+Tests: 296 unit tests (8 new: the agent loop snapshotting and undoing a Cowork edit end to end, the
+conflict continue/abort flows, GitHub remote-URL matching, a real push to a local bare remote, and
+`/update-memory` keeping, dropping and refusing) and 20 Playwright tests (1 new). The Cowork test now
+also undoes the file it wrote; the memory test types `/update-memory` on a chat worth remembering and
+on one that is not; the new Code test commits, pushes to a bare remote, hits a real conflict, resolves
+it in the dialog's editor and continues the merge.
+
+### Technical notes learned in M8.1
+
+- **Conflict resolution happens in the repository, not the session's worktree.** A worktree session
+  merges its branch into the base branch checked out in `repoRoot`, so the conflicted files are in
+  `repoRoot` — which the Files pane (scoped to `workspace.root`) cannot reach at all. The dialog
+  needs its own repoRoot-scoped IPC, with containment checked through `Workspace.open(repoRoot)` and
+  the path verified against the live conflicted-file list rather than trusted from the renderer.
+- **`git add -A` after resolving is too broad**: it sweeps unrelated files in the checkout into the
+  merge commit. Stage the conflicted paths explicitly (`add -A -- <paths>`, which still handles a
+  delete/modify conflict).
+- **The e2e suite runs the built bundle** (`out/`, via `package.json`'s `main`), not the sources —
+  `npm run build` before `npx playwright test`, or Playwright silently tests the previous build.
+- **A Code session that is still open holds its worktree on Windows**, so a test that does not delete
+  the session through the UI must clean up with `rmSync(..., { maxRetries, retryDelay })` inside a
+  try/catch — the same lock `removeWorktree` already retries around.
 
 ### Technical notes learned in M8
 
