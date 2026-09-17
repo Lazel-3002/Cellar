@@ -233,6 +233,42 @@ test('search finds earlier chats', async () => {
   await expect(win.getByText('Echo: Hello Cellar')).toBeVisible({ timeout: 10_000 });
 });
 
+test('the built-in browser opens a real page, and the model reads and clicks it', async () => {
+  await ipc('settings:update', { browserEnabled: true });
+  try {
+    await goHome();
+    await selectModel('mock-browser');
+    await send(`Read ${mock.url}/page and tell me about weekends`);
+
+    // Opening a host the user did not name asks first, like web_fetch.
+    const approval = win.getByTestId('approval-card');
+    await expect(approval).toBeVisible({ timeout: 20_000 });
+    await expect(approval).toContainText('built-in browser');
+    await win.getByTestId('approve').click();
+
+    // The panel opens by itself so the user can watch, and the tab shows the real page title.
+    const panel = win.getByTestId('browser-panel');
+    await expect(panel).toBeVisible({ timeout: 20_000 });
+    await expect(panel.getByRole('button', { name: /Cellar test page/ })).toBeVisible({ timeout: 20_000 });
+    await expect(panel.getByLabel('Address')).toHaveValue(`${mock.url}/page`);
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-browser.png') });
+
+    // browse_read parsed the page, and browse_click ran in it: the answer only exists after the click.
+    await expect(lastAssistant()).toContainText('Weekends: 10:00 to 16:00.', { timeout: 30_000 });
+
+    const state = await ipc<{ tabs: Array<{ id: string; url: string; title: string }> }>('browser:state');
+    expect(state.tabs[0]).toMatchObject({ url: `${mock.url}/page`, title: 'Cellar test page' });
+
+    await ipc('browser:close', state.tabs[0].id);
+    await panel.getByRole('button', { name: 'Close browser' }).click();
+    await expect(panel).toBeHidden();
+    expect((await ipc<{ tabs: unknown[] }>('browser:state')).tabs).toHaveLength(0);
+  } finally {
+    await ipc('settings:update', { browserEnabled: false });
+    await ipc('browser:setVisible', false);
+  }
+});
+
 test('cowork works through a task in a chosen folder, asking before it writes', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'cellar-cowork-'));
   try {

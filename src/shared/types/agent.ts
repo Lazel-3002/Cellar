@@ -75,8 +75,13 @@ export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'conne
 
 export type ToolPartStatus = 'streaming' | 'awaiting-approval' | 'running' | 'done' | 'error' | 'denied' | 'cancelled';
 
+/**
+ * `browser` asks about a page in the built-in browser (its host can be allowed for the rest of the
+ * task); `action` is anything else that only makes sense described in its own words — delegating to
+ * a module, setting a reminder — and offers no "always allow".
+ */
 export interface ApprovalRequest {
-  kind: 'write' | 'edit' | 'document' | 'command' | 'web' | 'connector';
+  kind: 'write' | 'edit' | 'document' | 'command' | 'web' | 'connector' | 'browser' | 'action';
   title: string;
   /** Connector tools: the connector's name and the tool's own name. */
   connector?: string;

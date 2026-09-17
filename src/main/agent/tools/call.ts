@@ -24,7 +24,7 @@ export const callTool = defineTool({
   async approval(args) {
     if (moduleReadOnly(args.module as ModuleId, args.task.action.toLowerCase().replace(/[\s-]+/g, '_'))) return null;
     return {
-      kind: 'command',
+      kind: 'action',
       title: `Let ${args.module} ${args.task.action.replace(/_/g, ' ')}`,
       preview: JSON.stringify(args.task, null, 2).slice(0, 4000),
     };

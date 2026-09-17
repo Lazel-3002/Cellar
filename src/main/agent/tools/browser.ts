@@ -43,7 +43,7 @@ export const browseOpen = defineTool({
       // fall back to the raw text in the prompt
     }
     if (ctx.task.allowedDomains.includes(host)) return null;
-    return { kind: 'web', title: `Open ${host} in the built-in browser`, url: args.url };
+    return { kind: 'browser', title: `Open ${host} in the built-in browser`, url: args.url };
   },
   async run(args) {
     browser.reveal();
@@ -139,7 +139,7 @@ export const browseFill = defineTool({
     tab_id: tabId,
   }),
   async approval(args) {
-    return { kind: 'web', title: 'Type into a field in the built-in browser', preview: `${args.selector}\n\n${args.value.slice(0, 2000)}` };
+    return { kind: 'action', title: 'Type into a field in the built-in browser', preview: `${args.selector}\n\n${args.value.slice(0, 2000)}` };
   },
   async run(args) {
     return asToolError(() => browser.fill(args.selector, args.value, args.tab_id));

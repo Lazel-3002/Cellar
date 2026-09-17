@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react';
-import { Ban, ChevronRight, CircleAlert, FileCode, Globe, Plug, ShieldAlert, SquareTerminal } from 'lucide-react';
+import { AppWindow, Ban, ChevronRight, CircleAlert, FileCode, Globe, Plug, ShieldAlert, SquareTerminal } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ApprovalAction, ToolPart } from '@shared/types/agent';
 import { Button } from '@/components/ui/button';
@@ -182,13 +182,15 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
   const allowAllLabel =
     approval.kind === 'command'
       ? 'Always allow commands'
-      : approval.kind === 'web'
+      : approval.kind === 'web' || approval.kind === 'browser'
         ? `Always allow ${approval.url ? hostOf(approval.url) : 'this site'}`
         : approval.kind === 'connector'
           ? `Always allow ${approval.tool ?? 'this tool'}`
           : 'Allow all edits';
   const heading =
-    approval.kind === 'command'
+    approval.kind === 'browser' || approval.kind === 'action'
+      ? approval.title
+      : approval.kind === 'command'
       ? 'Cellar wants to run a command'
       : approval.kind === 'web'
         ? 'Cellar wants to open a page it was not given'
@@ -202,12 +204,20 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
   return (
     <div data-testid="approval-card" className="my-2 overflow-hidden rounded-xl border border-brand/45 bg-card font-sans shadow-[0_2px_16px_rgba(0,0,0,0.12)] animate-fade-in">
       <div className="flex items-center gap-2.5 border-b border-divider px-4 py-2.5">
-        {approval.kind === 'command' ? <SquareTerminal className="size-4 text-brand" /> : approval.kind === 'connector' ? <Plug className="size-4 text-brand" /> : <ShieldAlert className="size-4 text-brand" />}
+        {approval.kind === 'command' ? (
+          <SquareTerminal className="size-4 text-brand" />
+        ) : approval.kind === 'connector' ? (
+          <Plug className="size-4 text-brand" />
+        ) : approval.kind === 'browser' ? (
+          <AppWindow className="size-4 text-brand" />
+        ) : (
+          <ShieldAlert className="size-4 text-brand" />
+        )}
         <span className="text-[14px] font-medium text-foreground">{heading}</span>
       </div>
       <div className="space-y-2 px-4 py-3">
         {approval.kind === 'command' && approval.path && <div className="text-[12px] text-muted-foreground">In {approval.path}</div>}
-        {approval.kind === 'web' && approval.url && <div className="font-mono text-[12.5px] break-all text-fg-2">{approval.url}</div>}
+        {(approval.kind === 'web' || approval.kind === 'browser') && approval.url && <div className="font-mono text-[12.5px] break-all text-fg-2">{approval.url}</div>}
         {approval.diff ? <DiffView before={approval.diff.oldText} after={approval.diff.newText} /> : approval.preview ? <CodeBlock maxLines={24}>{approval.preview}</CodeBlock> : null}
         {denying && (
           <Textarea autoFocus rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional: tell Cellar what to do instead" className="text-[13px]" />
@@ -228,9 +238,12 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
             <Button size="sm" variant="primary" data-testid="approve" disabled={busy} onClick={() => void decide('allow')}>
               Allow
             </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void decide('allow-all')}>
-              {allowAllLabel}
-            </Button>
+            {/* "Always allow" only means something for the categories the runner can remember. */}
+            {approval.kind !== 'action' && (
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => void decide('allow-all')}>
+                {allowAllLabel}
+              </Button>
+            )}
             <Button size="sm" variant="ghost" data-testid="deny" disabled={busy} onClick={() => setDenying(true)} className="ml-auto">
               Deny…
             </Button>

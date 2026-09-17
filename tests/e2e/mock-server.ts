@@ -102,13 +102,26 @@ function lastUserText(req: MockRequest): string {
   return (last.content as Array<{ type: string; text?: string }>).map((p) => p.text ?? '').join('');
 }
 
+/** A real web page for the built-in browser to open, served from this same server. */
+const BROWSER_PAGE = `<!doctype html><html><head><title>Cellar test page</title></head><body>
+<h1>Opening hours</h1>
+<p id="hours">The shop is open from 09:00 to 18:00 on weekdays.</p>
+<form><input id="q" name="q" type="text" placeholder="Search"></form>
+<button id="more" onclick="document.getElementById('hours').textContent='Weekends: 10:00 to 16:00.'">Show weekends</button>
+</body></html>`;
+
 /** Deterministic OpenAI-compatible server used by the end-to-end tests. */
 export async function startMockServer(): Promise<MockServer> {
   const requests: MockRequest[] = [];
   const server: Server = createServer((req, res) => {
+    if (req.url?.startsWith('/page')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(BROWSER_PAGE);
+      return;
+    }
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }, { id: 'mock-browser' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -202,6 +215,33 @@ export async function startMockServer(): Promise<MockServer> {
             send({}, 'tool_calls');
           } else {
             send({ content: selected ? 'Added a reminder.' : 'That is the theorem, a worked example and three questions.' }, 'stop');
+          }
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-browser' && parsed.tools?.length) {
+          // Scripted browsing: open the page, read it, click the button, read the change, answer.
+          const results = parsed.messages.filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const toolCall = (index: number, id: string, name: string, args: string) => {
+            send({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] });
+            for (const piece of args.match(/.{1,16}/gs) ?? []) send({ tool_calls: [{ index, function: { arguments: piece } }] });
+          };
+          const url = /https?:\/\/[^\s"]+\/page/.exec(lastUserText(parsed))?.[0] ?? '';
+          if (results.length === 0) {
+            send({ content: 'Let me open that page.' });
+            toolCall(0, 'open1', 'browse_open', JSON.stringify({ url }));
+            send({}, 'tool_calls');
+          } else if (results.length === 1) {
+            toolCall(0, 'read1', 'browse_read', JSON.stringify({}));
+            send({}, 'tool_calls');
+          } else if (results.length === 2) {
+            toolCall(0, 'click1', 'browse_click', JSON.stringify({ selector: '#more' }));
+            send({}, 'tool_calls');
+          } else if (results.length === 3) {
+            toolCall(0, 'read2', 'browse_read', JSON.stringify({}));
+            send({}, 'tool_calls');
+          } else {
+            send({ content: `The page says: ${/Weekends: [^\n]+/.exec(results.at(-1) ?? '')?.[0] ?? 'nothing about weekends'}` }, 'stop');
           }
           res.end('data: [DONE]\n\n');
           return;

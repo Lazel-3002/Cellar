@@ -44,7 +44,7 @@ export const createReminderTool = defineTool({
     if (!args.task && !args.email_check) return null;
     const seconds = parseDelaySeconds(args.delay_seconds) ?? 0;
     return {
-      kind: 'command',
+      kind: 'action',
       title: `Let this run again in ${seconds >= 3600 ? `${Math.round(seconds / 360) / 10} hours` : seconds >= 60 ? `${Math.round(seconds / 60)} minutes` : `${seconds} seconds`}`,
       preview: [args.task && `Task: ${args.task}`, args.email_check && `Inbox to check: ${args.email_check}`, args.message && `Note: ${args.message}`].filter(Boolean).join('\n\n').slice(0, 4000),
     };
