@@ -618,7 +618,7 @@ and the same OS wake job relaunches Cellar for it.
   to a WAV the renderer plays (it owns the audio output). If piper is missing or fails, speech falls
   back to the system voices instead of going silent.
 
-## M8.1 Undo in Cowork, git beyond commit, and memory on demand
+## M8.1 Undo in Cowork, git beyond commit, and memory on demand (v7.4.0)
 
 Two gaps carried since M2 and M3, plus a way to ask for memory rather than wait for it — each closed
 by extending machinery that was already there rather than adding a parallel one.
