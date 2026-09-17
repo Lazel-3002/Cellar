@@ -18,7 +18,7 @@ import { snapshotBeforeChange } from '../code/snapshots';
 import { assistantContext } from '../customize/context';
 import { buildDesignPrompt } from '../design/prompt';
 import { getDesign } from '../design/store';
-import { DESIGN_TOOLS } from '../design/tools';
+import { designToolsFor } from '../design/tools';
 import { buildMathPrompt } from '../math/prompt';
 import { getBoard } from '../math/store';
 import { MATH_TOOLS } from '../math/tools';
@@ -398,7 +398,7 @@ export class TaskRunner {
         : task.math
           ? MATH_TOOLS
           : task.design
-            ? DESIGN_TOOLS
+            ? designToolsFor(app)
             : task.code
               ? codeToolsFor(task.code.mode, task.permissionMode, app)
               : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });

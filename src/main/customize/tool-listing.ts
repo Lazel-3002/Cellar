@@ -6,7 +6,7 @@ import type { ToolInfo, ToolListing, ToolScope } from '@shared/types/customize';
 import type { ModelRef } from '@shared/types/models';
 import { pdfAvailable } from '../agent/documents';
 import { chatBaseTools, codeToolsFor, extraTools, toolsFor, type AgentTool } from '../agent/tools';
-import { DESIGN_TOOLS } from '../design/tools';
+import { designToolsFor } from '../design/tools';
 import { MATH_TOOLS } from '../math/tools';
 import { chat } from '../chat/orchestrator';
 import { providers } from '../providers/registry';
@@ -87,7 +87,7 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
       : scope === 'math'
         ? MATH_TOOLS
         : scope === 'design'
-          ? DESIGN_TOOLS
+          ? designToolsFor(app)
           : scope === 'code'
             ? codeToolsFor(codeMode, permissionMode, app)
             : toolsFor(permissionMode, app, { pdf: pdfAvailable() });

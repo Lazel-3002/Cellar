@@ -222,7 +222,7 @@ export const webSearch = defineTool({
   },
 });
 
-function checkedUrl(raw: string): URL {
+export function checkedUrl(raw: string): URL {
   const canonical = canonicalUrl(raw);
   if (!canonical) throw new ToolError(`${raw} is not a valid http(s) URL.`);
   const url = new URL(canonical);
@@ -230,7 +230,7 @@ function checkedUrl(raw: string): URL {
   return url;
 }
 
-async function download(url: URL, ctx: ToolContext): Promise<{ finalUrl: URL; contentType: string; body: Buffer }> {
+export async function download(url: URL, ctx: ToolContext): Promise<{ finalUrl: URL; contentType: string; body: Buffer }> {
   let current = url;
   for (let hop = 0; hop < 6; hop++) {
     const res = await fetchOnceMore(current.toString(), {

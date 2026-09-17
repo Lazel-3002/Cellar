@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { z } from 'zod';
 import { CHART_KINDS } from '@shared/design/charts';
 import { checkArtboard } from '@shared/design/check';
@@ -6,7 +7,10 @@ import { canonicalFields, elementIds, newArtboardId, normalizeElement, patchElem
 import { buildLayout, describeArtboard, describeElement, duplicateArtboard, findArtboard, findElement, reorderElement, resizeArtboard, type OrderChange } from '@shared/design/ops';
 import { ARTBOARD_PRESETS, customizeTheme, FORMAT_DEFAULTS, normalizeColor, parseSize, themeById, THEMES } from '@shared/design/theme';
 import type { Artboard, Design, DesignElement } from '@shared/types/design';
+import { attachmentFromBytes } from '../chat/attachments';
 import { defineTool, ToolError, type AgentTool, type ToolContext } from '../agent/tools/types';
+import { checkedUrl, download, webFetch, webSearch } from '../agent/tools/web';
+import { formatBytes } from '../lib/util';
 import { getDesign, updateDesign } from './store';
 
 const num = z.union([z.number(), z.string()]);
@@ -359,4 +363,31 @@ export const deleteArtboardTool = defineTool({
   },
 });
 
-export const DESIGN_TOOLS: AgentTool[] = [getDesignTool, setThemeTool, createArtboardTool, updateArtboardTool, editElementsTool, deleteArtboardTool] as AgentTool[];
+export const fetchImageTool = defineTool({
+  name: 'fetch_image',
+  description: "Download an image from a direct URL into Cellar (search the web first to find one, e.g. an icon, photo or template). Returns \"attachment:<id>\", ready to use as an image element's src.",
+  category: 'web',
+  input: z.object({ url: z.string().min(1).describe('A direct link to an image file (png, jpg, gif, webp, svg).'), name: z.string().optional().describe('A file name to save it as (default: taken from the URL)') }),
+  async approval(args, ctx) {
+    const url = checkedUrl(args.url);
+    if (ctx.knownUrls.has(url.toString()) || ctx.task.allowedDomains.includes(url.hostname)) return null;
+    return { kind: 'web', title: `Download an image from ${url.hostname}`, url: url.toString() };
+  },
+  async run(args, ctx) {
+    const url = checkedUrl(args.url);
+    const { finalUrl, contentType, body } = await download(url, ctx);
+    const looksLikeImage = /^image\//i.test(contentType) || /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(finalUrl.pathname);
+    if (!looksLikeImage) throw new ToolError(`${finalUrl} does not look like an image (content-type "${contentType || 'unknown'}"). Use web_fetch for pages, or find a direct image link.`);
+    const name = (args.name?.trim() || basename(finalUrl.pathname) || 'image').slice(0, 120);
+    const ref = await attachmentFromBytes(name, contentType || 'image/png', body);
+    ctx.recordSource({ url: finalUrl.toString(), kind: 'fetch' });
+    return `Downloaded "${ref.name}" (${formatBytes(ref.size)}) into Cellar as attachment:${ref.id}. Use it as an image element's src: "attachment:${ref.id}".`;
+  },
+});
+
+export const DESIGN_TOOLS: AgentTool[] = [getDesignTool, setThemeTool, createArtboardTool, updateArtboardTool, editElementsTool, deleteArtboardTool, fetchImageTool, webSearch, webFetch] as AgentTool[];
+
+/** Design tools, dropping web access (search, fetch, image download) when the user has turned it off. */
+export function designToolsFor(settings: { coworkWebAccess: boolean }): AgentTool[] {
+  return settings.coworkWebAccess ? DESIGN_TOOLS : DESIGN_TOOLS.filter((t) => t.category !== 'web');
+}
