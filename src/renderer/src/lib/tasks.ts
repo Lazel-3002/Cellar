@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import {
+  AppWindow,
   Brain,
   Calculator,
   ChartSpline,
@@ -32,6 +33,7 @@ import {
   SquareTerminal,
   Stethoscope,
   TextSearch,
+  Workflow,
   Wrench,
   Zap,
 } from 'lucide-react';
@@ -171,6 +173,31 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>
       return { icon: History, done: 'Searched past chats for', active: 'Searching past chats for', failed: "Couldn't search past chats for", target: text(args.query) };
     case 'read_chat':
       return { icon: History, done: 'Read an earlier chat', active: 'Reading an earlier chat', failed: "Couldn't read the chat" };
+    case 'browse_open':
+      return { icon: AppWindow, done: 'Opened', active: 'Opening', failed: "Couldn't open", target: short(text(args.url).replace(/^https?:\/\/(www\.)?/, ''), 60) };
+    case 'browse_read':
+      return { icon: AppWindow, done: 'Read the page in the browser', active: 'Reading the page in the browser', failed: "Couldn't read the page" };
+    case 'browse_url':
+      return { icon: AppWindow, done: 'Checked where the browser is', active: 'Checking where the browser is', failed: "Couldn't check the browser" };
+    case 'browse_back':
+      return { icon: AppWindow, done: 'Went back', active: 'Going back', failed: "Couldn't go back" };
+    case 'browse_forward':
+      return { icon: AppWindow, done: 'Went forward', active: 'Going forward', failed: "Couldn't go forward" };
+    case 'browse_reload':
+      return { icon: AppWindow, done: 'Reloaded the page', active: 'Reloading the page', failed: "Couldn't reload the page" };
+    case 'browse_click':
+      return { icon: AppWindow, done: 'Clicked', active: 'Clicking', failed: "Couldn't click", target: short(text(args.selector), 48) };
+    case 'browse_fill':
+      return { icon: AppWindow, done: 'Filled in', active: 'Filling in', failed: "Couldn't fill in", target: short(text(args.selector), 48) };
+    case 'browse_scroll':
+      return { icon: AppWindow, done: 'Scrolled the page', active: 'Scrolling the page', failed: "Couldn't scroll the page" };
+    case 'browse_tabs':
+      return { icon: AppWindow, done: 'Checked the browser tabs', active: 'Checking the browser tabs', failed: "Couldn't check the browser tabs" };
+    case 'call': {
+      const task = (args.task ?? {}) as Record<string, unknown>;
+      const action = text(task.action) || text(args.action);
+      return { icon: Workflow, done: 'Asked', active: 'Asking', failed: "Couldn't ask", target: `${text(args.module) || 'a module'}${action ? ` to ${action}` : ''}` };
+    }
     default: {
       const connector = /^(.+?)__(.+)$/.exec(part.name);
       if (connector) return { icon: Plug, done: `Used ${connector[1]}:`, active: `Using ${connector[1]}:`, failed: `${connector[1]} failed:`, target: connector[2] };

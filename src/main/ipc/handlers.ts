@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import { z } from 'zod';
 import type { AppInfo } from '@shared/ipc-contract';
 import { Workspace } from '../agent/workspace';
+import { registerBrowserHandlers } from '../browser/ipc';
 import { registerChangesHandlers } from '../code/changes';
 import { registerCodeHandlers } from '../code/ipc';
 import { registerPreviewHandlers } from '../code/preview';
@@ -329,6 +330,7 @@ export function registerIpcHandlers(): void {
     return result.filePath;
   });
 
+  registerBrowserHandlers();
   registerCodeHandlers();
   registerChangesHandlers();
   registerTerminalHandlers();

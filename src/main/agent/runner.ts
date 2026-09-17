@@ -75,6 +75,15 @@ function joinReasoning(parts: AgentPart[]): string {
     .join('\n\n');
 }
 
+/** Host of a URL a tool asked about; browse_open accepts bare hostnames, so add the scheme first. */
+function hostOf(raw: string): string | null {
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -402,7 +411,13 @@ export class TaskRunner {
             : task.code
               ? codeToolsFor(task.code.mode, task.permissionMode, app)
               : toolsFor(task.permissionMode, app, { pdf: pdfAvailable() });
-      const extras = await extraTools({ settings: app, skills: customize.skills.length > 0, incognito: store.incognito, readOnly: task.permissionMode === 'plan' && !run.chat });
+      const extras = await extraTools({
+        settings: app,
+        skills: customize.skills.length > 0,
+        incognito: store.incognito,
+        readOnly: task.permissionMode === 'plan' && !run.chat,
+        browser: !task.math && !task.design,
+      });
       const tools = [...baseTools, ...extras];
       const schemas = tools.map(toolSchema);
       const customSystemPrompt = conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt;
@@ -755,6 +770,7 @@ export class TaskRunner {
         if (task.code?.mode === 'ask') return fail(`${known.name} is not available in Ask mode. Answer from what the read-only tools show; the user can switch to Code mode for changes.`);
         return fail(`${known.name} is not available in plan mode. Investigate with the read-only tools and finish with a plan.`);
       }
+      if (known?.category === 'browser') return fail('The built-in browser is turned off. The user can switch it on from the tools menu in the composer, or Settings → Capabilities.');
       if (findTool(ALL_TOOLS, call.name)?.category === 'web') return fail(run.chat ? 'Web search is turned off for chats (use the tools menu in the composer).' : 'Web access is turned off in Settings → Cowork.');
       if (known?.category === 'memory') return fail(run.store.incognito ? 'Nothing is remembered in incognito chats.' : 'Memory is turned off in Customize → Memory.');
       return fail(`There is no tool named "${call.name}". Available tools: ${tools.map((t) => t.name).join(', ')}.`);
@@ -779,7 +795,11 @@ export class TaskRunner {
       const request = tool.approval ? await tool.approval(args, ctx) : null;
       const needsApproval =
         !!request &&
-        (tool.category === 'web' || tool.category === 'connector' || (tool.category === 'edit' && task.permissionMode !== 'auto-edits') || (tool.category === 'command' && !task.allowCommands));
+        (tool.category === 'web' ||
+          tool.category === 'browser' ||
+          tool.category === 'connector' ||
+          (tool.category === 'edit' && task.permissionMode !== 'auto-edits') ||
+          (tool.category === 'command' && !task.allowCommands));
       if (request && needsApproval) {
         call.approval = request;
         call.status = 'awaiting-approval';
@@ -794,9 +814,9 @@ export class TaskRunner {
         if (decision.action === 'allow-all') {
           if (tool.category === 'edit' && task.permissionMode === 'ask') task.permissionMode = 'auto-edits';
           if (tool.category === 'command') task.allowCommands = true;
-          if (tool.category === 'web' && request.url) {
-            const host = new URL(request.url).hostname;
-            if (!task.allowedDomains.includes(host)) task.allowedDomains = [...task.allowedDomains, host];
+          if ((tool.category === 'web' || tool.category === 'browser') && request.url) {
+            const host = hostOf(request.url);
+            if (host && !task.allowedDomains.includes(host)) task.allowedDomains = [...task.allowedDomains, host];
           }
           if (tool.category === 'connector') await tool.onAllowAll?.();
         }

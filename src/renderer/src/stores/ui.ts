@@ -21,6 +21,9 @@ interface UiState {
   loadSettingsFor: ModelRef | null;
   artifact: ArtifactPanelState | null;
   artifactWidth: number;
+  /** The built-in browser panel is showing. */
+  browserOpen: boolean;
+  browserWidth: number;
   drafts: Record<string, string>;
   pendingPrompt: string | null;
   /** Cowork home: the chosen folder, or null with `coworkSkipped` when the user chose no folder. */
@@ -43,6 +46,8 @@ interface UiState {
   openLoadSettings: (ref: ModelRef | null) => void;
   openArtifact: (state: ArtifactPanelState | null) => void;
   setArtifactWidth: (width: number) => void;
+  setBrowserOpen: (open: boolean) => void;
+  setBrowserWidth: (width: number) => void;
   setDraft: (key: string, text: string) => void;
 }
 
@@ -58,6 +63,8 @@ export const useUi = create<UiState>()(
       loadSettingsFor: null,
       artifact: null,
       artifactWidth: 560,
+      browserOpen: false,
+      browserWidth: 620,
       drafts: {},
       pendingPrompt: null,
       coworkFolder: null,
@@ -77,8 +84,11 @@ export const useUi = create<UiState>()(
       setIncognito: (incognito) => set({ incognito }),
       setSearchOpen: (searchOpen) => set({ searchOpen }),
       openLoadSettings: (loadSettingsFor) => set({ loadSettingsFor }),
-      openArtifact: (artifact) => set({ artifact }),
+      openArtifact: (artifact) => set(artifact ? { artifact, browserOpen: false } : { artifact }),
       setArtifactWidth: (artifactWidth) => set({ artifactWidth: Math.max(380, Math.min(1400, artifactWidth)) }),
+      // Only one right-hand panel at a time: the native browser view would cover the artifact anyway.
+      setBrowserOpen: (browserOpen) => set(browserOpen ? { browserOpen, artifact: null } : { browserOpen }),
+      setBrowserWidth: (browserWidth) => set({ browserWidth: Math.max(380, Math.min(1400, browserWidth)) }),
       setDraft: (key, text) =>
         set((s) => {
           const drafts = { ...s.drafts };
@@ -96,6 +106,7 @@ export const useUi = create<UiState>()(
         thinking: s.thinking,
         mode: s.mode,
         artifactWidth: s.artifactWidth,
+        browserWidth: s.browserWidth,
         drafts: s.drafts,
         coworkFolder: s.coworkFolder,
         coworkSkipped: s.coworkSkipped,

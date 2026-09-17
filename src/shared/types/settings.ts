@@ -78,10 +78,12 @@ export interface AppSettings {
   embeddingModel: ModelRef | null;
   /** Automatic background update checks (every few hours). "Check for updates" in Settings always runs regardless. */
   autoUpdateCheck: boolean;
-  /** Read finished assistant replies aloud with the browser's built-in speech synthesis. */
+  /** Read finished assistant replies aloud. */
   voiceReplies: boolean;
   /** SpeechSynthesisVoice.name; '' uses the system default voice. */
   voiceReplyVoice: string;
+  /** Let models open, read and click pages in Cellar's built-in browser. The panel itself is always available to the user. */
+  browserEnabled: boolean;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

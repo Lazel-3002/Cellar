@@ -66,8 +66,12 @@ export interface TaskState {
   math?: MathSessionInfo;
 }
 
-/** connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget. design and math: canvas or board changes (undoable, never ask). */
-export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math';
+/**
+ * connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget.
+ * design and math: canvas or board changes (undoable, never ask). browser: the built-in Chromium panel.
+ * module: `call`, which delegates work to another Cellar module.
+ */
+export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math' | 'browser' | 'module';
 
 export type ToolPartStatus = 'streaming' | 'awaiting-approval' | 'running' | 'done' | 'error' | 'denied' | 'cancelled';
 

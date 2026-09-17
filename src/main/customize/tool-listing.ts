@@ -35,6 +35,16 @@ const GROUPS: Record<string, string> = {
   todo_write: 'Planning',
   web_search: 'Web',
   web_fetch: 'Web',
+  browse_open: 'Built-in browser',
+  browse_read: 'Built-in browser',
+  browse_url: 'Built-in browser',
+  browse_back: 'Built-in browser',
+  browse_forward: 'Built-in browser',
+  browse_reload: 'Built-in browser',
+  browse_click: 'Built-in browser',
+  browse_fill: 'Built-in browser',
+  browse_scroll: 'Built-in browser',
+  browse_tabs: 'Built-in browser',
   skill: 'Skills',
   read_skill_file: 'Skills',
   remember: 'Memory',
@@ -50,6 +60,7 @@ function describe(tool: AgentTool): ToolInfo {
   }
   const group = GROUPS[tool.name] ?? 'Other';
   const kind = group === 'Skills' ? 'skill' : group === 'Memory' || group === 'Past chats' ? 'memory' : 'built-in';
+  if (tool.category === 'browser') return { name: tool.name, description: tool.description, group, kind, policy: tool.approval ? 'ask' : 'allow' };
   return { name: tool.name, description: tool.description, group, kind };
 }
 
@@ -92,7 +103,13 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
             ? codeToolsFor(codeMode, permissionMode, app)
             : toolsFor(permissionMode, app, { pdf: pdfAvailable() });
   const skills = await activeSkills();
-  const extras = await extraTools({ settings: app, skills: skills.length > 0, incognito, readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && permissionMode === 'plan' });
+  const extras = await extraTools({
+    settings: app,
+    skills: skills.length > 0,
+    incognito,
+    readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && permissionMode === 'plan',
+    browser: scope !== 'math' && scope !== 'design',
+  });
   const tools = [...base, ...extras].map(describe);
   const connectorPolicies = new Map<string, string>();
   for (const tool of extras) if (tool.category === 'connector') connectorPolicies.set(tool.name, (await tool.approval?.({}, undefined as never)) ? 'ask' : 'allow');

@@ -34,6 +34,7 @@ import type {
   SendMessageResult,
   ThinkingLevel,
 } from './types/chat';
+import type { BrowserBounds, BrowserState, BrowserTab } from './types/browser';
 import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary } from './types/design';
 import type { MathBoard, MathBoardSummary, MathChangedEvent, MathExportRequest, MathStartOptions } from './types/math';
 import type { DownloadJob, HfModelSummary, HfRepoDetail, HfSearchQuery, QuantFit, StartDownloadInput } from './types/hub';
@@ -300,6 +301,20 @@ export interface IpcInvokeMap {
   /** partial=true trades accuracy for speed (greedy decoding) for a live preview while still recording. */
   'voice:transcribe': Handler<[wav: Uint8Array, language?: string, partial?: boolean], TranscriptionResult>;
 
+  /** The built-in Chromium browser (`main/browser/browser.ts`); the view is painted over `browser:setBounds`. */
+  'browser:state': Handler<[], BrowserState>;
+  'browser:open': Handler<[url: string, newTab?: boolean], BrowserTab>;
+  'browser:navigate': Handler<[tabId: string | null, url: string], BrowserTab>;
+  'browser:back': Handler<[tabId?: string | null], BrowserTab>;
+  'browser:forward': Handler<[tabId?: string | null], BrowserTab>;
+  'browser:reload': Handler<[tabId?: string | null], BrowserTab>;
+  'browser:stop': Handler<[tabId?: string | null], void>;
+  'browser:activate': Handler<[tabId: string], BrowserState>;
+  'browser:close': Handler<[tabId: string], BrowserState>;
+  /** Where the panel wants the page painted; null parks it off-screen. */
+  'browser:setBounds': Handler<[bounds: BrowserBounds | null], void>;
+  'browser:setVisible': Handler<[visible: boolean], void>;
+
   'projects:indexStatus': Handler<[projectId: string], ProjectIndexStatus>;
   'projects:reindex': Handler<[projectId: string], void>;
 
@@ -355,6 +370,9 @@ export interface IpcEventMap {
   'connectors:changed': ConnectorStatus[];
   'scheduled:changed': Record<string, never>;
   'voice:progress': VoiceProgress;
+  'browser:changed': BrowserState;
+  /** A browser tool ran: open the panel so the user sees what the model is doing. */
+  'browser:reveal': Record<string, never>;
   'projects:index': ProjectIndexStatus;
   /** Sent to the quick entry window each time it opens. */
   'quick:shown': Record<string, never>;
@@ -525,6 +543,17 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'voice:downloadModel': true,
   'voice:deleteModel': true,
   'voice:transcribe': true,
+  'browser:state': true,
+  'browser:open': true,
+  'browser:navigate': true,
+  'browser:back': true,
+  'browser:forward': true,
+  'browser:reload': true,
+  'browser:stop': true,
+  'browser:activate': true,
+  'browser:close': true,
+  'browser:setBounds': true,
+  'browser:setVisible': true,
   'projects:indexStatus': true,
   'projects:reindex': true,
   'design:list': true,
@@ -566,6 +595,8 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'connectors:changed': true,
   'scheduled:changed': true,
   'voice:progress': true,
+  'browser:changed': true,
+  'browser:reveal': true,
   'projects:index': true,
   'quick:shown': true,
   'design:changed': true,

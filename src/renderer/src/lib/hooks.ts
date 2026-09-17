@@ -125,6 +125,12 @@ export function useAppCommands(): void {
   );
 }
 
+/** A browser tool ran in some conversation: show the panel so the user can watch the page. */
+export function useBrowserReveal(): void {
+  const setBrowserOpen = useUi((s) => s.setBrowserOpen);
+  useEffect(() => onEvent('browser:reveal', () => setBrowserOpen(true)), [setBrowserOpen]);
+}
+
 export function isChatCapable(m: ModelEntry): boolean {
   return !m.capabilities.embedding;
 }

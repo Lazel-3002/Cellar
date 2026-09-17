@@ -113,6 +113,12 @@ function General() {
         <Field label="Inline images" description="Let models search for and insert a relevant photo inline (up to 2 per reply) when a picture genuinely helps. Uses DuckDuckGo image search — no API key needed.">
           <Switch checked={s.inlineImages} onCheckedChange={(v) => update.mutate({ inlineImages: v })} />
         </Field>
+        <Field
+          label="Built-in browser"
+          description="Let models open, read, click and fill pages in Cellar's own Chromium panel, which shares the app's session so sites you are signed in to stay signed in. Opening a new site asks you first. You can open the panel yourself from the tools menu whether or not this is on."
+        >
+          <Switch checked={s.browserEnabled} onCheckedChange={(v) => update.mutate({ browserEnabled: v })} />
+        </Field>
       </Card>
       <DesktopCard />
     </>

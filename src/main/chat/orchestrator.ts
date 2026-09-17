@@ -481,7 +481,7 @@ class ChatOrchestrator {
   private async chatUsesTools(store: ChatStore, entry: ModelEntry): Promise<boolean> {
     if (!entry.capabilities.tools) return false;
     const app = settings.get();
-    if (app.chatWebSearch) return true;
+    if (app.chatWebSearch || app.browserEnabled) return true;
     if (!store.incognito && (app.memoryEnabled || app.searchPastChats)) return true;
     if (connectors.available().length > 0) return true;
     return (await activeSkills()).length > 0;

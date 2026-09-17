@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { app, BrowserWindow, safeStorage } from 'electron';
 import { installPdfRenderer, installTaskNotifications } from './agent/desktop';
 import { attachCloseToTray, backgroundActive, installBackground, isQuitting, markQuitting, showMainWindow } from './app/background';
+import { browser, installBrowser } from './browser/browser';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
 import { configure as configureLsp, lsp } from './code/lsp';
@@ -94,6 +95,7 @@ if (!app.requestSingleInstanceLock()) {
     // the user didn't ask for; anything else (a normal launch, or background mode being off) opens as usual.
     if (!scheduledWake || !settings.get().runInBackground) openMainWindow();
     installBackground({ getMainWindow: () => mainWindow, createMainWindow: openMainWindow });
+    installBrowser(() => mainWindow);
 
     // Warm caches in the background so the first screens render instantly.
     void detectHardware();
@@ -119,6 +121,7 @@ if (!app.requestSingleInstanceLock()) {
     chat.stopAll();
     stopAllSideChats();
     terminals.disposeAll();
+    browser.dispose();
     scheduler.dispose();
     updater.dispose();
     void Promise.all([providers.dispose(), connectors.dispose(), lsp.disposeAll()])

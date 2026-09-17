@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Brain, Globe, Info, ListChecks, Plug, Settings2, Sparkles } from 'lucide-react';
+import { AppWindow, Brain, Globe, Info, ListChecks, Plug, Settings2, Sparkles } from 'lucide-react';
 import type { ToolScope } from '@shared/types/customize';
 import type { ModelRef } from '@shared/types/models';
 import { Dialog } from '@/components/ui/dialog';
@@ -9,6 +9,7 @@ import { Badge, Spinner, StatusDot } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useConnectors, useSettings, useSkills } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { useUi } from '@/stores/ui';
 
 function Toggle({ on }: { on: boolean }) {
   return (
@@ -24,6 +25,7 @@ export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTool
   const { data: settings } = useSettings();
   const { data: connectors = [] } = useConnectors();
   const { data: skills = [] } = useSkills();
+  const { browserOpen, setBrowserOpen } = useUi();
   if (!settings) return null;
   const webOn = scope === 'chat' ? settings.chatWebSearch : settings.coworkWebAccess;
   const activeConnectors = connectors.filter((c) => c.config.enabled);
@@ -61,6 +63,21 @@ export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTool
             Memory
             <Toggle on={settings.memoryEnabled} />
           </span>
+        </MenuItem>
+        <MenuItem
+          icon={<AppWindow />}
+          onSelect={(e) => {
+            keepOpen(e);
+            void invoke('settings:update', { browserEnabled: !settings.browserEnabled });
+          }}
+        >
+          <span className="flex w-full items-center gap-2">
+            Built-in browser
+            <Toggle on={settings.browserEnabled} />
+          </span>
+        </MenuItem>
+        <MenuItem icon={<AppWindow />} onSelect={() => setBrowserOpen(!browserOpen)}>
+          {browserOpen ? 'Hide the browser panel' : 'Open the browser panel'}
         </MenuItem>
         <MenuSeparator />
         <MenuLabel>Connectors</MenuLabel>

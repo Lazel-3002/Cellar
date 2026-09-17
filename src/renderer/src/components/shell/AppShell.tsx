@@ -2,8 +2,9 @@ import { Outlet, useRouterState } from '@tanstack/react-router';
 import { Tooltip } from 'radix-ui';
 import { Toaster } from 'sonner';
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel';
+import { BrowserPanel } from '@/components/browser/BrowserPanel';
 import { LoadSettingsDialog } from '@/components/models/LoadSettingsDialog';
-import { useAppCommands, useThemeSync } from '@/lib/hooks';
+import { useAppCommands, useBrowserReveal, useThemeSync } from '@/lib/hooks';
 import { useIpcSync, useSettings } from '@/lib/queries';
 import { useDesignLayout } from '@/stores/design';
 import { useMathLayout } from '@/stores/math';
@@ -16,10 +17,12 @@ import { TitleBar } from './TitleBar';
 export function AppShell() {
   useIpcSync();
   useAppCommands();
+  useBrowserReveal();
   const { data: settings } = useSettings();
   useThemeSync(settings);
   const sidebarOpen = useUi((s) => s.sidebarOpen);
   const artifactOpen = useUi((s) => !!s.artifact);
+  const browserOpen = useUi((s) => s.browserOpen);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isCode = pathname.startsWith('/code');
   const isDesignEditor = pathname.startsWith('/design/');
@@ -35,7 +38,8 @@ export function AppShell() {
         <main className="relative h-full min-w-0 flex-1">
           <Outlet />
         </main>
-        {artifactOpen && !isCode && !pathname.startsWith('/design') && !pathname.startsWith('/math') && <ArtifactPanel />}
+        {artifactOpen && !browserOpen && !isCode && !pathname.startsWith('/design') && !pathname.startsWith('/math') && <ArtifactPanel />}
+        {browserOpen && <BrowserPanel />}
       </div>
       <SearchPalette />
       <LoadSettingsDialog />

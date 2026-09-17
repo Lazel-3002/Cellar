@@ -3,6 +3,7 @@ import type { CodeMode } from '@shared/types/code';
 import type { AppSettings } from '@shared/types/settings';
 import { connectors } from '../../connectors/manager';
 import { calculateTool } from '../../math/tools';
+import { BROWSER_TOOLS } from './browser';
 import { runCommand } from './command';
 import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFileTool, rememberTool, searchChatsTool, skillTool } from './extra';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
@@ -30,22 +31,27 @@ export const ALL_TOOLS: AgentTool[] = [
   calculateTool,
 ] as AgentTool[];
 
-/** Tools that do not depend on the working folder: skills, memory and past chats. */
-export const ASSISTANT_TOOLS: AgentTool[] = [skillTool, readSkillFileTool, rememberTool, forgetTool, searchChatsTool, readChatTool] as AgentTool[];
+/** Tools that do not depend on the working folder: skills, memory, past chats and the built-in browser. */
+export const ASSISTANT_TOOLS: AgentTool[] = [skillTool, readSkillFileTool, rememberTool, forgetTool, searchChatsTool, readChatTool, ...BROWSER_TOOLS] as AgentTool[];
 
 export interface ExtraToolOptions {
-  settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats'>;
+  settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats' | 'browserEnabled'>;
   /** At least one skill is enabled. */
   skills: boolean;
   incognito: boolean;
-  /** Plan / Ask modes: connector tools must be read-only. */
+  /** Plan / Ask modes: connector tools must be read-only, and the browser may look but not click. */
   readOnly: boolean;
+  /** Offer the built-in browser here (chats, Cowork tasks and Code sessions; not Math or Design). */
+  browser?: boolean;
 }
 
-/** Skills, memory, past-chat search and connector tools, as the settings allow. */
+/** Skills, memory, past-chat search, the built-in browser and connector tools, as the settings allow. */
 export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]> {
   const tools: AgentTool[] = [];
   if (options.skills) tools.push(skillTool as AgentTool, readSkillFileTool as AgentTool);
+  if (options.browser && options.settings.browserEnabled) {
+    tools.push(...(BROWSER_TOOLS.filter((t) => !options.readOnly || (t.name !== 'browse_click' && t.name !== 'browse_fill')) as AgentTool[]));
+  }
   if (options.settings.memoryEnabled && !options.incognito) tools.push(rememberTool as AgentTool, forgetTool as AgentTool);
   if (options.settings.searchPastChats && !options.incognito) tools.push(searchChatsTool as AgentTool, readChatTool as AgentTool);
   if (connectors.connectorsWithResources().length) tools.push(mcpResourcesTool as AgentTool, mcpReadResourceTool as AgentTool);
