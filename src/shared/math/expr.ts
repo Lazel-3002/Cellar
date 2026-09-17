@@ -405,6 +405,27 @@ export function parseEquation(input: string): Equation {
   return { lhs: new Parser(tokenize(lhs)).parse(), rhs: new Parser(tokenize(rhs)).parse(), text: { lhs, rhs } };
 }
 
+export type InequalityOp = '<' | '>' | '<=' | '>=';
+
+export interface Inequality {
+  lhs: Node;
+  rhs: Node;
+  op: InequalityOp;
+  text: { lhs: string; rhs: string };
+}
+
+/** Splits "2x + 3 < 11" into two trees and the comparison. */
+export function parseInequality(input: string): Inequality {
+  const text = normalizeExpression(input);
+  const match = /^(.*?)(<=|>=|<|>)(.*)$/.exec(text);
+  if (!match) throw new MathError('Write the inequality with <, >, <= or >=.');
+  const [, lhsRaw, op, rhsRaw] = match;
+  const lhs = lhsRaw.trim();
+  const rhs = rhsRaw.trim();
+  if (!lhs || !rhs) throw new MathError('Both sides of the inequality need an expression.');
+  return { lhs: new Parser(tokenize(lhs)).parse(), rhs: new Parser(tokenize(rhs)).parse(), op: op as InequalityOp, text: { lhs, rhs } };
+}
+
 /** Variable names in a tree, in the order they appear. */
 export function variablesOf(node: Node): string[] {
   const out: string[] = [];
@@ -428,6 +449,25 @@ export function variablesOf(node: Node): string[] {
   };
   walk(node);
   return out;
+}
+
+/** Whether a variable appears anywhere in a tree. */
+export function dependsOn(node: Node, variable: string): boolean {
+  switch (node.t) {
+    case 'var':
+      return node.name === variable;
+    case 'num':
+    case 'const':
+      return false;
+    case 'neg':
+    case 'fact':
+    case 'pct':
+      return dependsOn(node.a, variable);
+    case 'bin':
+      return dependsOn(node.a, variable) || dependsOn(node.b, variable);
+    case 'call':
+      return node.args.some((arg) => dependsOn(arg, variable));
+  }
 }
 
 // ---------------------------------------------------------------------------

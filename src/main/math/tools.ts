@@ -230,11 +230,11 @@ export const deleteBlocksTool = defineTool({
 export const solveStepsTool = defineTool({
   name: 'solve_steps',
   description:
-    'Work a problem out step by step and put the steps on the board. Cellar does the maths, so the steps are right: an expression or equation (input), the Pythagorean theorem (sides: give two of a, b, c and leave out the one to find), or the trigonometric ratios of a right triangle (triangle: two of opposite, adjacent, hypotenuse).',
+    'Work a problem out step by step and put the steps on the board. Cellar does the maths, so the steps are right: an expression, equation, inequality (input, e.g. "2x + 3 < 11"), a logarithmic or exponential equation (input, kind logarithmic), a trigonometric equation (input, kind trig-equation, general solution), a system of linear equations (system: one equation per unknown), a derivative (derivative: expression, optional point) or a definite integral (integral: expression and limits), the Pythagorean theorem (sides: give two of a, b, c and leave out the one to find), or the trigonometric ratios of a right triangle (triangle: two of opposite, adjacent, hypotenuse).',
   category: 'math',
   input: z.object({
-    kind: z.enum(['auto', 'expression', 'equation', 'linear', 'quadratic', 'pythagoras', 'trig']).optional().describe('Default auto: picked from what you give'),
-    input: z.string().optional().describe('An expression ("3^2 + 4^2") or an equation ("3x + 5 = 20")'),
+    kind: z.enum(['auto', 'expression', 'equation', 'linear', 'quadratic', 'inequality', 'logarithmic', 'trig-equation', 'pythagoras', 'trig', 'system', 'derivative', 'integral']).optional().describe('Default auto: picked from what you give'),
+    input: z.string().optional().describe('An expression ("3^2 + 4^2"), an equation ("3x + 5 = 20"), an inequality ("2x + 3 < 11"), a logarithmic/exponential equation ("log(x) = 2", "2^x = 8") or a trig equation ("sin(x) = 0.5")'),
     sides: z
       .looseObject({
         a: measure.optional().describe('One leg'),
@@ -254,6 +254,27 @@ export const solveStepsTool = defineTool({
       })
       .optional()
       .describe('Trigonometry: two sides of a right triangle'),
+    system: z
+      .looseObject({ equations: z.array(z.string()).min(2).max(4).describe('One linear equation per unknown, e.g. ["2x + y = 5", "x - y = 1"]') })
+      .optional()
+      .describe('A system of linear equations (up to 4 unknowns)'),
+    derivative: z
+      .looseObject({
+        expression: z.string().describe('A function of the variable, e.g. "x^3 - 2x"'),
+        variable: z.string().max(8).optional().describe('Default "x"'),
+        at: z.number().optional().describe('Also evaluate the derivative at this point'),
+      })
+      .optional()
+      .describe('A derivative (basic rules: sum, product, quotient, power, chain — sin/cos/tan/ln/exp/sqrt); trig assumes radians'),
+    integral: z
+      .looseObject({
+        expression: z.string().describe('A function of the variable, e.g. "x^2 + 1"'),
+        variable: z.string().max(8).optional().describe('Default "x"'),
+        from: num.describe('Lower limit'),
+        to: num.describe('Upper limit'),
+      })
+      .optional()
+      .describe('A definite integral: exact for a polynomial, numerical (adaptive Simpson) otherwise'),
     title: z.string().max(200).optional(),
     insert: z.boolean().optional().describe('Put the steps on the board as a derivation block (default true)'),
     after: z.string().optional().describe('Insert after this block id'),
@@ -262,7 +283,16 @@ export const solveStepsTool = defineTool({
     const board = getBoard(boardId(ctx));
     let solution;
     try {
-      solution = solve({ kind: args.kind, input: args.input, sides: args.sides as never, triangle: args.triangle as never, angle: board.angleMode });
+      solution = solve({
+        kind: args.kind,
+        input: args.input,
+        sides: args.sides as never,
+        triangle: args.triangle as never,
+        system: args.system as never,
+        derivative: args.derivative as never,
+        integral: args.integral as never,
+        angle: board.angleMode,
+      });
     } catch (err) {
       throw new ToolError(err instanceof Error ? err.message : 'I could not solve that.');
     }

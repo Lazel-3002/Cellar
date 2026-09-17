@@ -11,7 +11,19 @@ import { boardOutline, describeBlock, normalizeBlock, patchBlock } from '../../s
 import { buildPlot } from '../../src/shared/math/plot';
 import { generateQuiz } from '../../src/shared/math/quiz';
 import { boardHtml, boardMarkdown, strokeGeometry } from '../../src/shared/math/render';
-import { solve, solveLinear, solvePythagoras, solveQuadratic, solveTrigRatios } from '../../src/shared/math/solve';
+import {
+  solve,
+  solveDerivative,
+  solveInequality,
+  solveIntegral,
+  solveLinear,
+  solveLogarithmic,
+  solvePythagoras,
+  solveQuadratic,
+  solveSystem,
+  solveTrigEquation,
+  solveTrigRatios,
+} from '../../src/shared/math/solve';
 import type { StreamEvent } from '../../src/shared/types/chat';
 import type { MathBoard } from '../../src/shared/types/math';
 import type { ModelEntry } from '../../src/shared/types/models';
@@ -169,6 +181,70 @@ describe('solvers', () => {
     expect(solve({ input: '4x = 12' }).result).toBe('x = 3');
     expect(solve({ sides: { a: 6, b: 8 } }).result).toBe('c = 10');
     expect(solve({ triangle: { opposite: 5, hypotenuse: 13, ratios: ['sin'] } }).result).toBe('sin A = 5/13');
+  });
+
+  it('solves systems of linear equations by Gaussian elimination', () => {
+    const two = solveSystem({ equations: ['2x + y = 5', 'x - y = 1'] });
+    expect(two.result).toBe('x = 2, y = 1');
+    const three = solveSystem({ equations: ['x + y + z = 6', '2y + 5z = -4', '2x + 5y - z = 27'] });
+    expect(three.result).toBe('x = 5, y = 3, z = -2');
+    expect(() => solveSystem({ equations: ['x + y = 1'] })).toThrow(/at least two/);
+    expect(() => solveSystem({ equations: ['x + y = 1', 'x + z = 2'] })).toThrow(/unknowns/);
+    expect(() => solveSystem({ equations: ['x + y = 1', '2x + 2y = 2'] })).toThrow(/does not have exactly one solution/);
+    expect(solve({ system: { equations: ['x + y = 3', 'x - y = 1'] } }).result).toBe('x = 2, y = 1');
+  });
+
+  it('solves linear and quadratic inequalities, flipping the sign when dividing by a negative', () => {
+    expect(solveInequality('2x + 3 < 11').result).toBe('x < 4');
+    expect(solveInequality('-2x + 3 < 11').result).toBe('x > -4'); // dividing by -2 flips <
+    expect(solveInequality('2x + 1 >= 2x - 5').result).toBe('all real numbers'); // x cancels; always true
+    expect(solveInequality('x^2 - 5x + 6 > 0').result).toBe('x < 2 or x > 3'); // opens up, outside the roots
+    expect(solveInequality('x^2 - 5x + 6 < 0').result).toBe('2 < x < 3'); // opens up, between the roots
+    expect(solveInequality('x^2 + 1 < 0').result).toBe('no solution'); // never negative
+    expect(solveInequality('x^2 + 1 > 0').result).toBe('all real numbers'); // always positive
+    expect(solveInequality('x^2 - 4x + 4 >= 0').result).toBe('all real numbers'); // (x-2)^2, touches zero once
+    expect(solveInequality('x^2 - 4x + 4 > 0').result).toBe('all real numbers except x = 2');
+    expect(solveInequality('-x^2 + 4 > 0').result).toBe('-2 < x < 2'); // opens down, between the roots
+  });
+
+  it('solves logarithmic and exponential equations by undoing them', () => {
+    expect(solveLogarithmic('log(x) = 2').result).toBe('x = 100');
+    expect(solveLogarithmic('ln(x) = 0').result).toBe('x = 1');
+    expect(solveLogarithmic('log(2x + 1, 3) = 2').result).toBe('x = 4');
+    expect(solveLogarithmic('2^x = 8').result).toBe('x = 3');
+    expect(solveLogarithmic('3^(x+1) = 81').result).toBe('x = 3');
+    expect(() => solveLogarithmic('x + 1 = 2')).toThrow(/one logarithm or one exponential/);
+  });
+
+  it('gives the general solution of a trigonometric equation', () => {
+    const solution = solveTrigEquation('sin(x) = 0.5');
+    expect(solution.result).toBe('x = 30° + k·360°,  k ∈ ℤ;  x = 150° + k·360°,  k ∈ ℤ');
+    expect(solveTrigEquation('tan(x) = 1').result).toBe('x = 45° + k·180°,  k ∈ ℤ');
+    expect(solveTrigEquation('sin(x) = 2').result).toBe('no solution');
+    // The angle is 2x, so the x-period is half the angle's period.
+    const scaled = solveTrigEquation('cos(2x) = 1');
+    expect(scaled.result).toContain('k·180°');
+  });
+
+  it('differentiates symbolically with the standard rules', () => {
+    expect(solveDerivative({ expression: 'x^3' }).result).toBe("f'(x) = 3·x^2");
+    expect(solveDerivative({ expression: '3*x^2 + 2*x' }).result).toMatch(/f'\(x\) =/);
+    const atPoint = solveDerivative({ expression: 'x^2', at: 3 });
+    expect(atPoint.result).toBe('f\'(3) = 6');
+    const trig = solveDerivative({ expression: 'sin(x)' });
+    expect(trig.result).toBe("f'(x) = cos(x)");
+    expect(trig.note).toMatch(/radians/);
+    expect(() => solveDerivative({ expression: 'x^x' })).toThrow(/constant/);
+  });
+
+  it('evaluates definite integrals exactly for polynomials and numerically otherwise', () => {
+    const polynomial = solveIntegral({ expression: 'x^2', from: 0, to: 3 });
+    expect(polynomial.result).toBe('9');
+    expect(polynomial.steps.some((s) => s.math.includes('F(x)'))).toBe(true);
+    expect(solveIntegral({ expression: '2*x + 1', from: 0, to: 2 }).result).toBe('6');
+    const numeric = solveIntegral({ expression: 'sin(x)', from: 0, to: Math.PI });
+    expect(Number(numeric.result)).toBeCloseTo(2, 4);
+    expect(numeric.note).toMatch(/Numerical/);
   });
 });
 

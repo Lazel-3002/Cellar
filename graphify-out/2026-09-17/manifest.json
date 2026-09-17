@@ -1290,13 +1290,13 @@
     "semantic_hash": ""
   },
   "src/shared/math/exact.ts": {
-    "mtime": 1789492461.817375,
-    "ast_hash": "2531cd6a0c64fac5d305708ae9fabdf1",
+    "mtime": 1789602326.058585,
+    "ast_hash": "14df57fff8b9bae2170e1ae1f3172212",
     "semantic_hash": ""
   },
   "src/shared/math/expr.ts": {
-    "mtime": 1789493725.5559208,
-    "ast_hash": "3b0c3d21d2d361311aef8ceabeec764f",
+    "mtime": 1789602379.77895,
+    "ast_hash": "52f7d57d45f5dba6c0599e0cecf9a8ea",
     "semantic_hash": ""
   },
   "src/shared/math/figure.ts": {
@@ -1330,8 +1330,8 @@
     "semantic_hash": ""
   },
   "src/shared/math/solve.ts": {
-    "mtime": 1789549409.6717257,
-    "ast_hash": "3db99afc7822ac8025969bad0b4cfbf5",
+    "mtime": 1789602435.3963583,
+    "ast_hash": "47c42efb833ec5a1545ba59fa516fb45",
     "semantic_hash": ""
   },
   "src/shared/types/math.ts": {
@@ -1340,8 +1340,8 @@
     "semantic_hash": ""
   },
   "tests/unit/math.test.ts": {
-    "mtime": 1789549863.1546776,
-    "ast_hash": "2faf31ca52fbcc63be008037843a418f",
+    "mtime": 1789602533.6609535,
+    "ast_hash": "93b7fea6768a8e6d203b40a8e1b8ee78",
     "semantic_hash": ""
   },
   "docs/Creator Ideas - important things/Desgin needs to havee web search and should have a folder so it can browse and dowland.png": {

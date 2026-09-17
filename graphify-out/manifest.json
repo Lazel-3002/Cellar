@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789602008.6137896,
-    "ast_hash": "bebb0dcc63390c4e14ba89a00a93752c",
+    "mtime": 1789603328.8969474,
+    "ast_hash": "a513af78a17858ea5bc2f8124a9f4e47",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "src/main/math/tools.ts": {
-    "mtime": 1789493883.912349,
-    "ast_hash": "f778c281b7dd58cb1309523e3e7f336b",
+    "mtime": 1789603268.6669447,
+    "ast_hash": "5f7e8909f28101f7b92e140b439b7ec4",
     "semantic_hash": ""
   },
   "src/renderer/src/components/math/Blocks.tsx": {
@@ -1295,8 +1295,8 @@
     "semantic_hash": ""
   },
   "src/shared/math/expr.ts": {
-    "mtime": 1789602379.77895,
-    "ast_hash": "52f7d57d45f5dba6c0599e0cecf9a8ea",
+    "mtime": 1789602852.141555,
+    "ast_hash": "cacefff26025bff9d1ea8cf9129cd7ae",
     "semantic_hash": ""
   },
   "src/shared/math/figure.ts": {
@@ -1330,8 +1330,8 @@
     "semantic_hash": ""
   },
   "src/shared/math/solve.ts": {
-    "mtime": 1789602435.3963583,
-    "ast_hash": "47c42efb833ec5a1545ba59fa516fb45",
+    "mtime": 1789603215.6446831,
+    "ast_hash": "df202849991f97a9fa78061f0d601303",
     "semantic_hash": ""
   },
   "src/shared/types/math.ts": {
@@ -1340,8 +1340,8 @@
     "semantic_hash": ""
   },
   "tests/unit/math.test.ts": {
-    "mtime": 1789602533.6609535,
-    "ast_hash": "93b7fea6768a8e6d203b40a8e1b8ee78",
+    "mtime": 1789603220.5923936,
+    "ast_hash": "cd94f4461d205bd19054036c0700837d",
     "semantic_hash": ""
   },
   "docs/Creator Ideas - important things/Desgin needs to havee web search and should have a folder so it can browse and dowland.png": {
@@ -1422,6 +1422,11 @@
   "src/shared/types/lsp.ts": {
     "mtime": 1789600828.0532513,
     "ast_hash": "031b13c2e7b3c402c66d37ffba66ae45",
+    "semantic_hash": ""
+  },
+  "src/shared/math/calculus.ts": {
+    "mtime": 1789602941.363911,
+    "ast_hash": "8ef7857475e021dbef62ea61e86d5055",
     "semantic_hash": ""
   }
 }

@@ -1,16 +1,16 @@
 # Graph Report - Cellar  (2026-09-17)
 
 ## Corpus Check
-- 277 files · ~285,271 words
+- 277 files · ~285,745 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3290 nodes · 7838 edges · 186 communities (139 shown, 47 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 141 edges (avg confidence: 0.72)
+- 3294 nodes · 7856 edges · 182 communities (131 shown, 51 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 142 edges (avg confidence: 0.72)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5c95a79b`
+- Built from commit: `84df8362`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -179,16 +179,12 @@
 - network.test.ts
 - ArtifactPanel
 - sucrase
-- MonacoEditor.tsx
 - command.ts
 - cmdk
-- croner
-- extract-zip
 - @fontsource-variable/source-serif-4
 - @huggingface/gguf
 - monaco-editor
 - systeminformation
-- zod
 - react
 - @streamdown/mermaid
 - @tailwindcss/browser
@@ -215,15 +211,15 @@
   src/renderer/src/components/code/SideChat.tsx → tests/unit/side-chat.test.ts
 - `QuizView()` --indirect_call--> `question()`  [INFERRED]
   src/renderer/src/components/math/Blocks.tsx → tests/unit/side-chat.test.ts
-- `answerOf()` --calls--> `calculate()`  [EXTRACTED]
-  tests/unit/math.test.ts → src/shared/math/calc.ts
 - `extractDocumentText()` --references--> `jszip`  [EXTRACTED]
+  src/main/agent/documents.ts → package.json
+- `markdownToHtmlPage()` --references--> `marked`  [EXTRACTED]
   src/main/agent/documents.ts → package.json
 
 ## Import Cycles
 - None detected.
 
-## Communities (186 total, 47 thin omitted)
+## Communities (182 total, 51 thin omitted)
 
 ### Community 0 - "hf-api.ts"
 Cohesion: 0.06
@@ -234,32 +230,28 @@ Cohesion: 0.10
 Nodes (20): LocalModel, buildServerArgs(), ServerLaunch, splitArgs(), validateLoadConfig(), formatParamCount(), freePort(), Instance (+12 more)
 
 ### Community 2 - "queries.ts"
-Cohesion: 0.19
-Nodes (4): joinReasoning(), TaskRunInput, TaskRunnerHooks, ChatStore
-
-### Community 3 - "ChatOrchestrator"
 Cohesion: 0.13
-Nodes (3): ChatOrchestrator, fallbackTitle(), discardIncognitoArtifacts()
+Nodes (20): BINARY_EXTENSIONS, count(), describeWrite(), editFileTool, globTool, grepTool, IMAGE_EXTENSIONS, isBinary() (+12 more)
 
 ### Community 4 - "engine.ts"
 Cohesion: 0.10
-Nodes (25): fitToContext(), messageTokens(), toTurns(), truncateMiddle(), active, buildSideChatPrompt(), clipTranscript(), fitSideMessages() (+17 more)
+Nodes (26): estimateTokens(), fitToContext(), messageTokens(), toTurns(), truncateMiddle(), active, buildSideChatPrompt(), clipTranscript() (+18 more)
 
 ### Community 5 - "run"
-Cohesion: 0.23
-Nodes (15): formatSchema, registerDesignHandlers(), copyDesign(), createDesign(), DesignConflictError, designForConversation(), DesignRow, getDesign() (+7 more)
+Cohesion: 0.19
+Nodes (17): angleMode, paper, registerMathHandlers(), topic, BoardConflictError, boardForConversation(), BoardRow, copyBoard() (+9 more)
 
 ### Community 6 - "scripts"
-Cohesion: 0.08
-Nodes (25): docx, electron-updater, exceljs, jszip, marked, @modelcontextprotocol/sdk, node-pty, dependencies (+17 more)
+Cohesion: 0.13
+Nodes (15): croner, docx, electron-updater, extract-zip, @modelcontextprotocol/sdk, dependencies, croner, docx (+7 more)
 
 ### Community 7 - "chat.test.ts"
-Cohesion: 0.17
-Nodes (14): buildSystemPrompt(), chatToolGuidance(), cleanTitle(), supportsArtifactInstructions(), SystemPromptInput, ParsedImageTag, parseImageTags(), withImageTags() (+6 more)
+Cohesion: 0.11
+Nodes (25): buildSystemPrompt(), chatToolGuidance(), cleanTitle(), fallbackTitle(), SystemPromptInput, normalizeChart(), measureSvg(), sanitizeSvg() (+17 more)
 
 ### Community 8 - "openai-compat.ts"
-Cohesion: 0.18
-Nodes (21): LmsDownloadStatus, LmsModel, authHeaders(), baseEntry(), ChatChunk, fetchEmbeddings(), fetchOpenAIModels(), guessCapabilitiesFromName() (+13 more)
+Cohesion: 0.13
+Nodes (22): LmsDownloadStatus, LmsModel, authHeaders(), baseEntry(), ChatChunk, fetchEmbeddings(), fetchOpenAIModels(), guessCapabilitiesFromName() (+14 more)
 
 ### Community 9 - "compilerOptions"
 Cohesion: 0.07
@@ -270,20 +262,20 @@ Cohesion: 0.07
 Nodes (27): DOM, DOM.Iterable, src/artifact-runtime/**/*, src/preload/api.d.ts, src/renderer/src/**/*, src/renderer/src/**/*.tsx, vite/client, compilerOptions (+19 more)
 
 ### Community 11 - "orchestrator.ts"
-Cohesion: 0.08
-Nodes (22): check(), conversationIdSchema, CreateTerminalOptions, dataSchema, envValue(), findOnPath(), idSchema, log (+14 more)
+Cohesion: 0.05
+Nodes (37): check(), conversationIdSchema, CreateTerminalOptions, dataSchema, envValue(), findOnPath(), idSchema, log (+29 more)
 
 ### Community 12 - "main/index.ts"
-Cohesion: 0.05
-Nodes (74): installPdfRenderer(), installTaskNotifications(), log, setPdfRenderer(), setSvgRasterizer(), attachCloseToTray(), backgroundActive(), createMain() (+66 more)
+Cohesion: 0.07
+Nodes (46): log, ActiveGeneration, chat, log, TurnFinished, supportsArtifactInstructions(), formatSchema, registerDesignHandlers() (+38 more)
 
 ### Community 13 - "DownloadManager"
 Cohesion: 0.05
-Nodes (43): addArtboard(), addElement(), AlignEdge, alignSelection(), copySelection(), deleteArtboard(), deleteSelection(), duplicateSelection() (+35 more)
+Nodes (44): addArtboard(), addElement(), AlignEdge, alignSelection(), copySelection(), deleteArtboard(), deleteSelection(), duplicateSelection() (+36 more)
 
 ### Community 14 - "handlers.ts"
 Cohesion: 0.07
-Nodes (64): attachmentFromBytes(), attachmentRefs(), attachmentsFromPaths(), classifyFile(), extractPdfText(), IMAGE_TYPES, Row, store() (+56 more)
+Nodes (56): attachmentFromBytes(), attachmentRefs(), attachmentsFromPaths(), classifyFile(), cleanupOrphanAttachments(), extractPdfText(), IMAGE_TYPES, Row (+48 more)
 
 ### Community 15 - "ipc-contract.ts"
 Cohesion: 0.05
@@ -314,8 +306,8 @@ Cohesion: 0.15
 Nodes (10): CapabilityIcons(), FIT_COPY, FitBadge(), MemoryBars(), PROVIDER_LABEL, providerStateDot(), ProviderStatusDot(), CONTEXT_STEPS (+2 more)
 
 ### Community 22 - "stream-parsers.ts"
-Cohesion: 0.12
-Nodes (16): DARK_ANSI, LIGHT_ANSI, message(), openLink(), previewUrl(), readTheme(), SessionTerminals(), TerminalView() (+8 more)
+Cohesion: 0.50
+Nodes (4): agentPowerShell(), cache, findOnPath(), PowerShellEdition
 
 ### Community 23 - "SettingsPage.tsx"
 Cohesion: 0.09
@@ -323,11 +315,11 @@ Nodes (7): ACCENTS, LANGUAGES, SECTIONS, SettingsPage(), SHORTCUTS, VARIANT_LABE
 
 ### Community 24 - "types/models.ts"
 Cohesion: 0.10
-Nodes (35): attachmentImage(), ensureSession(), exportDesign(), ExportTarget, fileSafe(), imageUrls(), rasterizeSvg(), renderPdf() (+27 more)
+Nodes (30): pptxgenjs, pptxgenjs, attachmentImage(), ensureSession(), exportDesign(), ExportTarget, fileSafe(), imageUrls() (+22 more)
 
 ### Community 25 - "provider-configs.ts"
-Cohesion: 0.07
-Nodes (44): connectorTool(), connectorToolName(), connectorTools(), diagnosticsTool, forgetTool, objectSchema(), readChatTool, readSkillFileTool (+36 more)
+Cohesion: 0.10
+Nodes (32): pdfAvailable(), connectorTool(), connectorToolName(), connectorTools(), diagnosticsTool, forgetTool, objectSchema(), readChatTool (+24 more)
 
 ### Community 26 - "hub.ts"
 Cohesion: 0.08
@@ -338,20 +330,20 @@ Cohesion: 0.18
 Nodes (12): describeLocation(), FoundGroup, inspectLocalGguf(), localModelId(), LocalModelIndex, log, pickMmproj(), quantLabelFromName() (+4 more)
 
 ### Community 28 - "LmStudioProvider"
-Cohesion: 0.19
-Nodes (13): effectiveThinking(), thinkingLabel(), thinkingOptions(), useAppCommands(), useSelectedModel(), useThemeSync(), useModels(), useSettings() (+5 more)
+Cohesion: 0.16
+Nodes (15): effectiveThinking(), thinkingLabel(), thinkingOptions(), useAppCommands(), useSelectedModel(), useThemeSync(), cleanIpcError(), onEvent() (+7 more)
 
 ### Community 29 - "app.spec.ts"
-Cohesion: 0.15
-Nodes (28): codeSession(), BASE_HEADERS, buildPreviewUrl(), canConnect(), CONTENT_TYPES, fileResponse(), installPreview(), isListening() (+20 more)
+Cohesion: 0.14
+Nodes (29): session(), codeSession(), BASE_HEADERS, buildPreviewUrl(), canConnect(), CONTENT_TYPES, fileResponse(), installPreview() (+21 more)
 
 ### Community 30 - "OpenAIServerProvider"
-Cohesion: 0.20
-Nodes (13): chartFromCode(), newToolCallId(), asObject(), CallSplitPart, describeType(), escapeControlCharsInStrings(), ParsedTextCall, parseLooseJson() (+5 more)
+Cohesion: 0.21
+Nodes (12): newToolCallId(), asObject(), CallSplitPart, describeType(), escapeControlCharsInStrings(), ParsedTextCall, parseLooseJson(), parseTextToolCall() (+4 more)
 
 ### Community 31 - "MemoryChatStore"
-Cohesion: 0.06
-Nodes (85): quickEntryShortcutActive(), builtInCommands(), changed(), commandSlug(), customCommands(), deleteCommand(), expandCommand(), expandTemplate() (+77 more)
+Cohesion: 0.05
+Nodes (96): quickEntryShortcutActive(), builtInCommands(), changed(), commandSlug(), customCommands(), deleteCommand(), expandCommand(), expandTemplate() (+88 more)
 
 ### Community 32 - "ProviderRegistry"
 Cohesion: 0.13
@@ -362,8 +354,8 @@ Cohesion: 0.08
 Nodes (20): cell, createDocx, createPdf, createPptx, createXlsx, DOCUMENT_EXTENSIONS, documentOptions(), documentPath() (+12 more)
 
 ### Community 34 - "Provider"
-Cohesion: 0.20
-Nodes (24): baseBlob(), byPath(), commitAll(), deleteNewFile(), existsInBase(), gitChangeSet(), gitDiscardFile(), gitFailure() (+16 more)
+Cohesion: 0.21
+Nodes (22): baseBlob(), byPath(), commitAll(), deleteNewFile(), existsInBase(), gitChangeSet(), gitDiscardFile(), gitFailure() (+14 more)
 
 ### Community 35 - "form.tsx"
 Cohesion: 0.20
@@ -378,8 +370,8 @@ Cohesion: 0.22
 Nodes (8): elapsed, logs, outDir, problems, profile, project, [providerId = 'ollama', modelId = 'qwen3:0.6b', prompt = 'Say hello in five words.', shot = 'chat'], started
 
 ### Community 39 - "ModelRef"
-Cohesion: 0.14
-Nodes (17): exists(), inside(), PathAccessError, Workspace, changed(), contentSchema, conversationIdSchema, listDirectory() (+9 more)
+Cohesion: 0.26
+Nodes (7): exists(), inside(), Workspace, listDirectory(), writeWorkspaceFile(), CodeSessionContext, finished()
 
 ### Community 40 - "build-artifact-runtime.mjs"
 Cohesion: 0.25
@@ -410,8 +402,8 @@ Cohesion: 0.33
 Nodes (3): ErrorBoundary, modules, mount()
 
 ### Community 48 - "CellarBridge"
-Cohesion: 0.13
-Nodes (17): answerMatches(), answerQuestion(), clearSketch(), resetQuiz(), revealQuestion(), updateBlock(), DerivationView(), FormulaView() (+9 more)
+Cohesion: 0.14
+Nodes (15): answerMatches(), answerQuestion(), resetQuiz(), revealQuestion(), updateBlock(), DerivationView(), EDITABLE, FormulaView() (+7 more)
 
 ### Community 49 - "HomePage.tsx"
 Cohesion: 0.25
@@ -426,12 +418,12 @@ Cohesion: 0.33
 Nodes (4): exe, exportDir, local, project
 
 ### Community 52 - "DiscoverPage.tsx"
-Cohesion: 0.18
-Nodes (13): ancestors(), baseName(), DirState, errorText(), FilesPane(), FilesState, handledRequests, HEAVY_DIRS (+5 more)
+Cohesion: 0.08
+Nodes (31): ChangesPane(), Counts(), errorText(), FileRow(), FileRowProps, num(), splitPath(), STATUS (+23 more)
 
 ### Community 53 - "ModelsPage.tsx"
-Cohesion: 0.14
-Nodes (24): vizCssVariables(), canonicalFields(), clamp(), color(), FORMATS, gradient(), KEY_ALIASES, length() (+16 more)
+Cohesion: 0.07
+Nodes (44): vizCssVariables(), CHART_KINDS, LAYOUT_NAMES, layoutContent, layoutName, canonicalFields(), clamp(), color() (+36 more)
 
 ### Community 55 - "ipc-run.mjs"
 Cohesion: 0.50
@@ -447,31 +439,31 @@ Nodes (11): displayAddress(), externalLink(), handledRequests, isPdf(), Preview(
 
 ### Community 58 - "ChatPage.tsx"
 Cohesion: 0.10
-Nodes (37): blockElements(), cellValue(), chartTable(), createPptx(), createXlsx(), DOCUMENT_EXTENSIONS, DocumentOptions, DOCX_IMAGE_TYPES (+29 more)
+Nodes (38): blockElements(), cellValue(), chartFromCode(), chartTable(), createPptx(), createXlsx(), DOCUMENT_EXTENSIONS, DocumentOptions (+30 more)
 
 ### Community 63 - "cmdk"
 Cohesion: 0.26
 Nodes (21): escapeXml(), artboardHtml(), artboardStyle(), boxStyle(), cssText(), designHtml(), elementHtml(), HtmlOptions (+13 more)
 
 ### Community 64 - "electron"
-Cohesion: 0.10
-Nodes (48): approxRational(), Exact, exactAdd(), exactDiv(), exactFromNumber(), exactInt(), exactInverse(), exactIsZero() (+40 more)
+Cohesion: 0.08
+Nodes (67): approxRational(), asRational(), Exact, exactAdd(), exactDiv(), exactFromNumber(), exactInt(), exactInverse() (+59 more)
 
 ### Community 66 - "electron-vite"
-Cohesion: 0.07
-Nodes (32): pdfAvailable(), historyTokens(), ToolProtocol, AgentPromptInput, buildAgentPrompt(), compactionRequest(), agentNoun(), chatTaskState() (+24 more)
+Cohesion: 0.11
+Nodes (11): chatTaskState(), joinReasoning(), joinText(), LiveRun, stableJson(), TaskRunInput, TaskRunner, TaskRunnerHooks (+3 more)
 
 ### Community 67 - "@fontsource-variable/inter"
 Cohesion: 0.11
 Nodes (14): buildDesignPrompt(), DesignPromptInput, contentSchema, createArtboardTool, deleteArtboardTool, DESIGN_TOOLS, designOutline(), editElementsTool (+6 more)
 
 ### Community 68 - "@fontsource-variable/source-serif-4"
-Cohesion: 0.18
-Nodes (19): branchExists(), branchSlug(), createWorktree(), findMemoryFile(), gitAvailable(), GitError, GitOptions, GitResult (+11 more)
+Cohesion: 0.13
+Nodes (24): branchExists(), branchSlug(), createWorktree(), currentBranch(), findMemoryFile(), gitAvailable(), GitError, GitOptions (+16 more)
 
 ### Community 70 - "@playwright/test"
-Cohesion: 0.11
-Nodes (41): blockType(), FIGURE_KINDS, figureKindOf(), isObject(), LIMITS, Loose, measureList(), nextBlockId() (+33 more)
+Cohesion: 0.10
+Nodes (43): blockType(), boardOutline(), describeBlock(), FIGURE_KINDS, figureKindOf(), isObject(), LIMITS, Loose (+35 more)
 
 ### Community 71 - "radix-ui"
 Cohesion: 0.12
@@ -482,60 +474,60 @@ Cohesion: 0.12
 Nodes (10): ChatRequest, currentEntry, fake, FakeProvider, finished(), message(), Provider, Script (+2 more)
 
 ### Community 73 - "react-dom"
-Cohesion: 0.14
-Nodes (37): CalcOptions, CalcResult, calculate(), evaluationSteps(), measureOf(), prettyMeasure(), formatExact(), AngleMode (+29 more)
+Cohesion: 0.19
+Nodes (23): CalcOptions, CalcResult, calculate(), evaluationSteps(), measureOf(), prettyMeasure(), formatExact(), AngleMode (+15 more)
 
 ### Community 74 - "streamdown"
-Cohesion: 0.12
-Nodes (28): Atom, escapeHtml(), mathToPlain(), prepare(), renderMath(), superscript(), SUPERSCRIPT_DIGITS, SYMBOLS (+20 more)
+Cohesion: 0.11
+Nodes (27): Node, Atom, escapeHtml(), mathToPlain(), prepare(), Renderer, renderMath(), superscript() (+19 more)
 
 ### Community 75 - "@streamdown/code"
 Cohesion: 0.11
-Nodes (26): area(), arithmetic(), Draft, fractions(), fromSolution(), GeneratedQuiz, generateQuiz(), GENERATORS (+18 more)
+Nodes (27): area(), arithmetic(), Draft, fractions(), fromSolution(), GeneratedQuiz, generateQuiz(), GENERATORS (+19 more)
 
 ### Community 76 - "@streamdown/math"
 Cohesion: 0.12
 Nodes (13): AppShell(), CodeSidebar(), SessionFilter, DownloadsButton(), TARGET_LABEL, SearchPalette(), Icon, NavItem() (+5 more)
 
 ### Community 77 - "@streamdown/mermaid"
-Cohesion: 0.18
-Nodes (8): onEvent(), useIpcSync(), speakReply(), stripForSpeech(), useSpeechVoices(), pending, StreamsState, useStreams
+Cohesion: 0.20
+Nodes (7): useIpcSync(), speakReply(), stripForSpeech(), useSpeechVoices(), pending, StreamsState, useStreams
 
 ### Community 78 - "sucrase"
-Cohesion: 0.20
-Nodes (15): addBlock(), deleteBlock(), duplicateBlock(), moveBlock(), reorderBlock(), setBoardMeta(), store(), BlockShell() (+7 more)
+Cohesion: 0.22
+Nodes (14): addBlock(), deleteBlock(), duplicateBlock(), moveBlock(), reorderBlock(), setBoardMeta(), store(), BlockShell() (+6 more)
 
 ### Community 80 - "tailwindcss"
 Cohesion: 0.14
 Nodes (16): BUILTINS, deleteProviderConfig(), getProviderConfig(), listProviderConfigs(), Row, saveProviderConfig(), toStored(), openSecret() (+8 more)
 
 ### Community 81 - "@tailwindcss/browser"
-Cohesion: 0.14
-Nodes (18): ChartRenderOptions, backgroundAt(), checkArtboard(), intersects(), short(), newArtboardId(), newElementId(), NormalizeContext (+10 more)
+Cohesion: 0.50
+Nodes (3): AgentPromptInput, buildAgentPrompt(), compactionRequest()
 
 ### Community 82 - "@tanstack/react-query"
 Cohesion: 0.13
 Nodes (14): AgentPart, ChatStreamEvent, Message, SideChatMessage, ask(), ChatRequest, FakeProvider, msg() (+6 more)
 
 ### Community 83 - "@tanstack/react-router"
-Cohesion: 0.27
-Nodes (12): removeWorktree(), registerCodeHandlers(), deleteSnapshots(), folder(), manifestPath(), queues, serial(), snapshotBeforeChange() (+4 more)
+Cohesion: 0.33
+Nodes (12): deleteSnapshots(), folder(), forgetSnapshot(), manifestPath(), queues, readManifest(), serial(), snapshotBeforeChange() (+4 more)
 
 ### Community 85 - "@types/react"
-Cohesion: 0.14
-Nodes (19): cleanupOrphanAttachments(), log, deleteStoredConnector(), ensureOverride(), pluginOverrides(), record(), Row, saveStoredConnector() (+11 more)
+Cohesion: 0.09
+Nodes (35): connectors, log, deleteStoredConnector(), ensureOverride(), pluginOverrides(), record(), Row, saveStoredConnector() (+27 more)
 
 ### Community 86 - "typescript"
-Cohesion: 0.38
-Nodes (5): DictationState, encodeWav(), toSpeechWav(), useDictation(), cleanIpcError()
+Cohesion: 0.60
+Nodes (4): DictationState, encodeWav(), toSpeechWav(), useDictation()
 
 ### Community 88 - "@vitejs/plugin-react"
-Cohesion: 0.39
-Nodes (8): estimateLines(), estimateTextHeight(), fitFontSize(), glyphWidth(), paragraphs(), TextRun, isWideFont(), WIDE_FONTS
+Cohesion: 0.17
+Nodes (19): backgroundAt(), checkArtboard(), intersects(), short(), clamp(), layoutElements(), LAYOUTS, Raw (+11 more)
 
 ### Community 89 - "vitest"
-Cohesion: 0.31
-Nodes (12): buildTaskHistory(), groupRounds(), HistoryOptions, latestCompaction(), resultForModel(), Round, roundsToMessages(), transcriptForSummary() (+4 more)
+Cohesion: 0.20
+Nodes (15): buildTaskHistory(), groupRounds(), HistoryOptions, historyTokens(), latestCompaction(), resultForModel(), Round, roundsToMessages() (+7 more)
 
 ### Community 90 - "zustand"
 Cohesion: 0.19
@@ -570,16 +562,12 @@ Cohesion: 0.14
 Nodes (12): address, approvals, elapsed, logs, outDir, problems, profile, project (+4 more)
 
 ### Community 101 - "Workspace"
-Cohesion: 0.20
-Nodes (8): MathChat(), EditorState, MathLayoutState, PanelTab, PEN_COLORS, selectedBlock(), useMathEditor, useMathLayout
+Cohesion: 0.18
+Nodes (9): PropertiesTab(), MathChat(), EditorState, MathLayoutState, PanelTab, PEN_COLORS, selectedBlock(), useMathEditor (+1 more)
 
 ### Community 102 - "orchestrator.ts"
-Cohesion: 0.19
-Nodes (11): PREVIEW_SCHEME_PRIVILEGES, ARTIFACT_CSP, escapeScript(), handleArtifactProtocol(), registerArtifactScheme(), renderArtifactDocument(), RUNTIME_FILES, handleVizProtocol() (+3 more)
-
-### Community 103 - "util.ts"
-Cohesion: 0.12
-Nodes (16): CHART_KINDS, clamp(), LAYOUT_NAMES, layoutContent, layoutElements(), layoutName, LAYOUTS, Raw (+8 more)
+Cohesion: 0.07
+Nodes (41): installPdfRenderer(), installTaskNotifications(), log, setPdfRenderer(), setSvgRasterizer(), attachCloseToTray(), backgroundActive(), createMain() (+33 more)
 
 ### Community 104 - "client.ts"
 Cohesion: 0.20
@@ -606,8 +594,8 @@ Cohesion: 0.27
 Nodes (9): EMPTY, historyOf(), LiveReply, newRequestId(), requestMessages(), settle(), SideChat(), SideEntry (+1 more)
 
 ### Community 110 - "downloadFile"
-Cohesion: 0.13
-Nodes (18): ThemePanel(), clampSize(), COLOR_TOKENS, contrastRatio(), FontCategory, FONTS, FORMAT_DEFAULTS, hex6() (+10 more)
+Cohesion: 0.11
+Nodes (25): COLOR_TOKENS, FontCategory, FORMAT_DEFAULTS, hex6(), luminance(), mixColors(), NAMED, parseRgb() (+17 more)
 
 ### Community 111 - "ToolContext"
 Cohesion: 0.31
@@ -634,8 +622,8 @@ Cohesion: 0.17
 Nodes (12): scripts, build, build:win, dev, preview, runtime:artifacts, test, test:e2e (+4 more)
 
 ### Community 121 - "@xterm/addon-web-links"
-Cohesion: 0.48
-Nodes (6): addStroke(), eraseStroke(), distanceTo(), pathsOf(), SketchCanvas(), TOOLS
+Cohesion: 0.36
+Nodes (8): addStroke(), clearSketch(), eraseStroke(), distanceTo(), pathsOf(), SketchCanvas(), SketchToolbar(), TOOLS
 
 ### Community 122 - "@xterm/xterm"
 Cohesion: 0.17
@@ -686,21 +674,9 @@ Nodes (6): parseNDJSON(), parseSSE(), partialSuffix(), readLines(), SplitPart, T
 Cohesion: 0.27
 Nodes (9): buildCron(), DAYS, errorText(), formatWhen(), Frequency, parseSchedule(), RunHistory(), ScheduledPage() (+1 more)
 
-### Community 136 - ".resolve"
-Cohesion: 0.29
-Nodes (7): pptxgenjs, pptxgenjs, artboardsToPptx(), CHART_TYPES, PptxAssets, textRuns(), transparency()
-
-### Community 137 - "quants.ts"
-Cohesion: 0.32
-Nodes (11): createAppWindow(), createMainWindow(), guardNavigation(), isAppUrl(), loadRenderer(), loadState(), overlayWindows, saveState() (+3 more)
-
 ### Community 141 - "dictation.ts"
 Cohesion: 0.33
 Nodes (5): DARK_PALETTE, LIGHT_PALETTE, readVizTheme(), useVizTheme(), VizTheme
-
-### Community 144 - "electron-vite"
-Cohesion: 0.48
-Nodes (6): base64Of(), copyPng(), loadImage(), paint(), pngOnBackground(), svgToPng()
 
 ### Community 145 - "package.json"
 Cohesion: 0.22
@@ -710,28 +686,24 @@ Nodes (8): author, description, license, main, name, private, productName, versi
 Cohesion: 0.20
 Nodes (11): completionKindMap(), DocInfo, docs, documentUri(), LSP_LANGUAGES, parseDocumentUri(), registerLspProviders(), SEVERITY_MAP() (+3 more)
 
-### Community 148 - "MonacoEditor.tsx"
-Cohesion: 0.21
-Nodes (13): ChartElement, ChartKind, ChartSeries, DesignExportFormat, ElementBase, ImageElement, LineElement, ShapeElement (+5 more)
-
 ### Community 150 - "code-changes.test.ts"
 Cohesion: 0.10
 Nodes (21): ApprovalAction, ApprovalDecision, ApprovalRequest, CompactionPart, ReasoningPart, TaskFile, TaskSource, TaskState (+13 more)
 
 ### Community 153 - "@tanstack/react-query"
-Cohesion: 0.21
-Nodes (9): argumentsObject(), OllamaChatLine, OllamaPs, OllamaPullProgress, OllamaShow, OllamaTag, ollamaThink(), parseOllamaChatStream() (+1 more)
+Cohesion: 0.13
+Nodes (11): PathAccessError, StoredProviderConfig, argumentsObject(), OllamaChatLine, OllamaPs, OllamaPullProgress, OllamaShow, OllamaTag (+3 more)
 
 ### Community 154 - "@vitejs/plugin-react"
 Cohesion: 0.34
 Nodes (4): canonicalFunction(), CONSTANTS, Parser, tokenize()
 
 ### Community 155 - "snapshots.ts"
-Cohesion: 0.21
-Nodes (21): BOM, byPath(), countable(), readWorkspaceFile(), snapshotChangeSet(), snapshotDiscardFile(), snapshotFileDiff(), WriteOptions (+13 more)
+Cohesion: 0.15
+Nodes (27): changed(), contentSchema, conversationIdSchema, BOM, byPath(), countable(), readWorkspaceFile(), snapshotChangeSet() (+19 more)
 
 ### Community 156 - "LmStudioProvider"
-Cohesion: 0.19
+Cohesion: 0.21
 Nodes (7): fetchWithTimeout(), lmStudioInstalled(), LmStudioProvider, DuckDuckGoImage, fetchVqd(), ImageResult, searchImage()
 
 ### Community 157 - "math-smoke.mjs"
@@ -745,42 +717,34 @@ Nodes (9): exportDir, logs, outDir, problems, profile, project, [
 ], quiz (+1 more)
 
 ### Community 159 - "charts.ts"
-Cohesion: 0.18
-Nodes (18): chartSvg(), clamp(), formatValue(), niceScale(), normalizeChart(), r1(), truncate(), wrap() (+10 more)
+Cohesion: 0.21
+Nodes (15): ThemePanel(), ChartRenderOptions, chartSvg(), clamp(), formatValue(), niceScale(), r1(), truncate() (+7 more)
 
 ### Community 161 - "MathPage.tsx"
 Cohesion: 0.29
 Nodes (11): BoardCard(), errorText(), exportBoard(), IDEAS, isEditableTarget(), MathBoardPage(), MathHeader(), MathHomePage() (+3 more)
 
-### Community 165 - "fetchWithTimeout"
-Cohesion: 0.29
-Nodes (9): ChangesPane(), Counts(), errorText(), FileRow(), FileRowProps, num(), splitPath(), STATUS (+1 more)
-
 ### Community 167 - "network.test.ts"
-Cohesion: 0.12
-Nodes (21): ChecksumError, downloadFile(), DownloadOptions, fileSize(), hashExisting(), recommendedWhisperVariant(), cleanTranscript(), CLI_NAMES (+13 more)
-
-### Community 170 - "MonacoEditor.tsx"
-Cohesion: 0.27
-Nodes (9): closeLsp(), CodeEditor(), CodeEditorProps, DiffEditor(), DiffEditorProps, Doc, setModelText(), TextModel (+1 more)
+Cohesion: 0.09
+Nodes (31): ChecksumError, downloadFile(), DownloadOptions, fileSize(), hashExisting(), errorMessage(), autoCheckTick(), AutoUpdater (+23 more)
 
 ### Community 171 - "command.ts"
-Cohesion: 0.22
-Nodes (9): ANSI, ESC, killTree(), runCommand, runShell(), ShellOptions, ShellResult, report() (+1 more)
+Cohesion: 0.18
+Nodes (12): ANSI, ESC, killTree(), runCommand, runShell(), ShellOptions, ShellResult, cleanSchema() (+4 more)
 
 ## Knowledge Gaps
 - **762 isolated node(s):** `shared`, `baseCsp`, `name`, `productName`, `version` (+757 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **47 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **51 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `dependencies` connect `scripts` to `.resolve`, `croner`, `extract-zip`, `@huggingface/gguf`, `package.json`, `systeminformation`, `zod`?**
+- **Why does `dependencies` connect `scripts` to `fetchWithTimeout`, `Renderer`, `util.ts`, `.resolve`, `quants.ts`, `@huggingface/gguf`, `package.json`, `code-changes.test.ts`, `systeminformation`, `electron-vite`, `MonacoEditor.tsx`, `types/models.ts`?**
   _High betweenness centrality (0.077) - this node is a cross-community bridge._
-- **Why does `paths()` connect `MemoryChatStore` to `openai-compat.ts`, `quants.ts`, `main/index.ts`, `handlers.ts`, `router.tsx`, `stream-parsers.ts`, `types/models.ts`, `.doScan`, `network.test.ts`, `.update`, `electron-vite`, `@fontsource-variable/source-serif-4`, `radix-ui`, `tailwindcss`, `@tanstack/react-router`, `@types/react`, `zustand`, `tools/types.ts`, `orchestrator.ts`, `code-changes.test.ts`?**
+- **Why does `paths()` connect `MemoryChatStore` to `electron-vite`, `tools/types.ts`, `@fontsource-variable/source-serif-4`, `orchestrator.ts`, `radix-ui`, `openai-compat.ts`, `.update`, `network.test.ts`, `orchestrator.ts`, `main/index.ts`, `handlers.ts`, `tailwindcss`, `@tanstack/react-router`, `router.tsx`, `@types/react`, `types/models.ts`, `zustand`, `.doScan`?**
   _High betweenness centrality (0.076) - this node is a cross-community bridge._
-- **Why does `errorMessage()` connect `main/index.ts` to `hf-api.ts`, `queries.ts`, `engine.ts`, `run`, `orchestrator.ts`, `fetchWithTimeout`, `@tanstack/react-query`, `.doScan`, `OpenAIServerProvider`, `MemoryChatStore`, `network.test.ts`, `.update`, `window.ts`, `electron-vite`, `radix-ui`, `@tanstack/react-router`, `@types/react`, `tools/types.ts`, `plugins.ts`?**
+- **Why does `errorMessage()` connect `network.test.ts` to `hf-api.ts`, `ChatOrchestrator`, `engine.ts`, `orchestrator.ts`, `main/index.ts`, `handlers.ts`, `fetchWithTimeout`, `@tanstack/react-query`, `.doScan`, `OpenAIServerProvider`, `MemoryChatStore`, `.update`, `window.ts`, `electron-vite`, `radix-ui`, `@types/react`, `tools/types.ts`, `orchestrator.ts`, `plugins.ts`?**
   _High betweenness centrality (0.058) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `paths()` (e.g. with `Composer()` and `DesignHeader()`) actually correct?**
   _`paths()` has 3 INFERRED edges - model-reasoned connections that need verification._
