@@ -269,6 +269,7 @@ export interface IpcInvokeMap {
   'connectors:delete': Handler<[id: string], void>;
   'connectors:setEnabled': Handler<[id: string, enabled: boolean], void>;
   'connectors:reconnect': Handler<[id: string], void>;
+  'connectors:signOutOAuth': Handler<[id: string], void>;
   /** null resets the tool to its default policy. */
   'connectors:setToolPolicy': Handler<[id: string, tool: string, policy: ToolPolicy | null], void>;
   'connectors:importJson': Handler<[json: string], number>;
@@ -502,6 +503,7 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'connectors:delete': true,
   'connectors:setEnabled': true,
   'connectors:reconnect': true,
+  'connectors:signOutOAuth': true,
   'connectors:setToolPolicy': true,
   'connectors:importJson': true,
   'connectors:importClaude': true,

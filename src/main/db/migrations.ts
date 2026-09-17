@@ -253,4 +253,14 @@ export const migrations: string[] = [
   );
   CREATE INDEX boards_updated ON boards(updated_at DESC);
   `,
+  /* 6: MCP OAuth */ `
+  CREATE TABLE connector_oauth (
+    connector_id TEXT PRIMARY KEY,
+    client_info TEXT NOT NULL DEFAULT '',
+    tokens TEXT NOT NULL DEFAULT '',
+    code_verifier TEXT NOT NULL DEFAULT '',
+    discovery_state TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];

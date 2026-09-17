@@ -101,6 +101,8 @@ export interface ToolPart {
   /** Tool output sent back to the model; live stream events carry a shortened copy. */
   result?: string;
   resultTruncated?: boolean;
+  /** Attachment ids for images a connector tool result carried, shown to vision models alongside `result`. */
+  resultImages?: string[];
   error?: string;
   approval?: ApprovalRequest;
   feedback?: string;

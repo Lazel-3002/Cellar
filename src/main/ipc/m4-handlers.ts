@@ -98,6 +98,7 @@ export function registerM4Handlers(): void {
   handle('connectors:delete', (id) => connectors.remove(id));
   handle('connectors:setEnabled', (id, enabled) => connectors.setEnabled(id, !!enabled));
   handle('connectors:reconnect', (id) => connectors.reconnect(id));
+  handle('connectors:signOutOAuth', (id) => connectors.signOutOAuth(z.string().min(1).parse(id)));
   handle('connectors:setToolPolicy', (id, tool, value) => connectors.setToolPolicy(id, z.string().min(1).parse(tool), value === null ? null : policy.parse(value)));
   handle('connectors:importJson', (json) => connectors.importJson(z.string().max(1_000_000).parse(json)));
   handle('connectors:importClaude', () => connectors.importClaudeDesktop());

@@ -102,12 +102,16 @@ export type ConnectorInput = Omit<ConnectorConfig, 'id' | 'createdAt' | 'toolPol
 
 export interface ConnectorStatus {
   config: ConnectorConfig;
-  state: 'disabled' | 'connecting' | 'connected' | 'error';
+  state: 'disabled' | 'connecting' | 'connected' | 'needs-auth' | 'error';
   message?: string;
   serverName?: string;
   serverVersion?: string;
   instructions?: string;
   tools: ConnectorToolInfo[];
+  /** state 'needs-auth': open this to sign in (Cellar also opens it automatically). */
+  authUrl?: string;
+  /** A remote connector has a saved OAuth session, whether or not it is currently connected. */
+  signedIn?: boolean;
 }
 
 export interface MemoryItem {

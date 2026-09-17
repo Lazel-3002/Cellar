@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Brain, ChevronRight, Ellipsis, FolderOpen, Import, Pencil, Plug, Plus, Puzzle, RefreshCw, Sparkles, SquareSlash, Trash } from 'lucide-react';
+import { Brain, ChevronRight, Ellipsis, ExternalLink, FolderOpen, Import, LogOut, Pencil, Plug, Plus, Puzzle, RefreshCw, Sparkles, SquareSlash, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CommandInfo, ConnectorInput, ConnectorStatus, ConnectorTransport, SkillInfo, ToolPolicy } from '@shared/types/customize';
 import { Button } from '@/components/ui/button';
@@ -388,7 +388,7 @@ function ConnectorCard({ status, onEdit }: { status: ConnectorStatus; onEdit: ()
   const [expanded, setExpanded] = useState(false);
   const { config } = status;
   const summary = config.transport === 'stdio' ? `${config.command} ${joinArgs(config.args)}`.trim() : config.url;
-  const dot = status.state === 'connected' ? 'online' : status.state === 'connecting' ? 'loading' : status.state === 'error' ? 'warning' : 'offline';
+  const dot = status.state === 'connected' ? 'online' : status.state === 'connecting' || status.state === 'needs-auth' ? 'loading' : status.state === 'error' ? 'warning' : 'offline';
   return (
     <Card testId="connector-row">
       <div className="flex items-start gap-3">
@@ -398,12 +398,30 @@ function ConnectorCard({ status, onEdit }: { status: ConnectorStatus; onEdit: ()
             <span className="text-[14px] font-medium">{config.name}</span>
             {config.pluginName && <Badge tone="outline">{config.pluginName}</Badge>}
             <span className="text-[12px] text-muted-foreground">
-              {status.state === 'connected' ? `${status.tools.length} tool${status.tools.length === 1 ? '' : 's'}${status.serverName ? ` · ${status.serverName}${status.serverVersion ? ` ${status.serverVersion}` : ''}` : ''}` : status.state === 'connecting' ? 'Connecting…' : status.state === 'disabled' ? 'Off' : 'Not connected'}
+              {status.state === 'connected'
+                ? `${status.tools.length} tool${status.tools.length === 1 ? '' : 's'}${status.serverName ? ` · ${status.serverName}${status.serverVersion ? ` ${status.serverVersion}` : ''}` : ''}`
+                : status.state === 'connecting'
+                  ? 'Connecting…'
+                  : status.state === 'needs-auth'
+                    ? 'Sign-in needed'
+                    : status.state === 'disabled'
+                      ? 'Off'
+                      : 'Not connected'}
             </span>
           </div>
           <div className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground" title={summary}>
             {summary}
           </div>
+          {status.state === 'needs-auth' && (
+            <div className="mt-1.5 flex items-center gap-2 text-[12.5px]">
+              <span className="text-muted-foreground">A browser tab opened to sign in to {config.name}.</span>
+              {status.authUrl && (
+                <button className="flex items-center gap-1 text-brand hover:underline" onClick={() => void invoke('system:openExternal', status.authUrl!)}>
+                  <ExternalLink className="size-3.5" /> Open again
+                </button>
+              )}
+            </div>
+          )}
           {status.state === 'error' && status.message && <pre className="mt-1.5 max-h-28 overflow-auto rounded-md bg-danger/10 px-2 py-1 font-mono text-[11.5px] whitespace-pre-wrap text-danger">{status.message}</pre>}
         </div>
         <Switch checked={config.enabled} onCheckedChange={(v) => void attempt(() => invoke('connectors:setEnabled', config.id, v))} label={`Use ${config.name}`} />
@@ -417,6 +435,11 @@ function ConnectorCard({ status, onEdit }: { status: ConnectorStatus; onEdit: ()
             <MenuItem icon={<RefreshCw />} onSelect={() => void attempt(() => invoke('connectors:reconnect', config.id))}>
               Reconnect
             </MenuItem>
+            {status.signedIn && (
+              <MenuItem icon={<LogOut />} onSelect={() => void attempt(() => invoke('connectors:signOutOAuth', config.id), `Signed out of ${config.name}`)}>
+                Sign out
+              </MenuItem>
+            )}
             {!config.pluginName && (
               <>
                 <MenuItem icon={<Pencil />} onSelect={onEdit}>

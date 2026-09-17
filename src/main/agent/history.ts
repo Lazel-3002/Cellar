@@ -1,6 +1,6 @@
 import type { AgentPart, CompactionPart, ToolPart } from '@shared/types/agent';
 import type { Message } from '@shared/types/chat';
-import { withAttachments } from '../chat/attachments';
+import { attachmentImage, withAttachments } from '../chat/attachments';
 import { estimateTokens } from '../chat/context-window';
 import type { ProviderMessage } from '../providers/types';
 import { renderTextToolCall, renderToolResponse } from './text-protocol';
@@ -50,9 +50,16 @@ export function resultForModel(call: ToolPart): string {
 
 const RECENT_ROUNDS_IN_FULL = 2;
 
-function roundsToMessages(rounds: Round[], options: HistoryOptions, keepReasoning: boolean, recentFull: boolean): ProviderMessage[] {
+/** Images a tool call's result carried, as base64 (only when the model can see images). */
+async function callImages(call: ToolPart, vision: boolean): Promise<NonNullable<ProviderMessage['images']>> {
+  if (!vision || !call.resultImages?.length) return [];
+  const loaded = await Promise.all(call.resultImages.map((id) => attachmentImage(id)));
+  return loaded.filter((img): img is NonNullable<typeof img> => !!img).map((img) => ({ mime: img.mime, base64: img.bytes.toString('base64') }));
+}
+
+async function roundsToMessages(rounds: Round[], options: HistoryOptions, keepReasoning: boolean, recentFull: boolean): Promise<ProviderMessage[]> {
   const out: ProviderMessage[] = [];
-  rounds.forEach((round, i) => {
+  for (const [i, round] of rounds.entries()) {
     const recent = recentFull && i >= rounds.length - RECENT_ROUNDS_IN_FULL;
     const result = (call: ToolPart) => {
       let text = resultForModel(call);
@@ -68,7 +75,11 @@ function roundsToMessages(rounds: Round[], options: HistoryOptions, keepReasonin
           toolCalls: round.calls.map((c) => ({ id: c.id, name: c.name, arguments: JSON.stringify(c.args ?? {}) })),
           reasoning: keepReasoning && round.reasoning ? round.reasoning : undefined,
         });
-        for (const call of round.calls) out.push({ role: 'tool', toolCallId: call.id, toolName: call.name, content: result(call) });
+        for (const call of round.calls) {
+          out.push({ role: 'tool', toolCallId: call.id, toolName: call.name, content: result(call) });
+          const images = await callImages(call, options.vision);
+          if (images.length) out.push({ role: 'user', content: `Image${images.length > 1 ? 's' : ''} returned by ${call.name}:`, images });
+        }
       } else if (round.text.trim()) {
         out.push({ role: 'assistant', content: round.text.trim() });
       }
@@ -76,8 +87,12 @@ function roundsToMessages(rounds: Round[], options: HistoryOptions, keepReasonin
       const content = [round.text.trim(), ...round.calls.map((c) => renderTextToolCall(c.name, c.args ?? {}))].filter(Boolean).join('\n\n');
       if (content) out.push({ role: 'assistant', content });
       if (round.calls.length) out.push({ role: 'user', content: round.calls.map((c) => renderToolResponse(c.name, result(c))).join('\n\n') });
+      for (const call of round.calls) {
+        const images = await callImages(call, options.vision);
+        if (images.length) out.push({ role: 'user', content: `Image${images.length > 1 ? 's' : ''} returned by ${call.name}:`, images });
+      }
     }
-  });
+  }
   return out;
 }
 
@@ -112,7 +127,7 @@ export async function buildTaskHistory(branch: Message[], options: HistoryOption
     } else if (m.role === 'assistant') {
       if (m.parts?.length) {
         const fromRound = compaction && i === compaction.messageIndex ? compaction.part.round : 0;
-        out.push(...roundsToMessages(groupRounds(m.parts, fromRound), options, i === lastAssistant, i === lastAssistant));
+        out.push(...(await roundsToMessages(groupRounds(m.parts, fromRound), options, i === lastAssistant, i === lastAssistant)));
       } else if (m.content.trim() && m.status !== 'error') {
         out.push({ role: 'assistant', content: m.content });
       }

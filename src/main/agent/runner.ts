@@ -8,6 +8,7 @@ import type { AgentPart, ApprovalDecision, ConversationKind, PermissionMode, Rea
 import type { CodeMode } from '@shared/types/code';
 import type { ChatStreamEvent, GenerationStats, Message, ThinkingLevel } from '@shared/types/chat';
 import { DEFAULT_INFERENCE_PARAMS, type InferenceParams, type LoadConfig, type ModelEntry } from '@shared/types/models';
+import { attachmentFromBytes } from '../chat/attachments';
 import { estimateTokens } from '../chat/context-window';
 import { buildSystemPrompt, supportsArtifactInstructions } from '../chat/prompts';
 import { problemsAfterChange } from '../code/diagnostics';
@@ -810,6 +811,10 @@ export class TaskRunner {
           if (call.status !== 'running') return;
           call.result = text.length > LIVE_OUTPUT_CHARS ? text.slice(-LIVE_OUTPUT_CHARS) : text;
           run.emit();
+        },
+        recordResultImages: async (images) => {
+          const refs = await Promise.all(images.map((img, i) => attachmentFromBytes(`${tool.name}-${i + 1}.${img.mime.split('/')[1] ?? 'png'}`, img.mime, Buffer.from(img.base64, 'base64'))));
+          call.resultImages = [...(call.resultImages ?? []), ...refs.map((r) => r.id)];
         },
       });
       call.result = repeats > 0 ? `${output}\n\n[You already made this exact call earlier in this task. Use the result you have and move on to the next step.]` : output;

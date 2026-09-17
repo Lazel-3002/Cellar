@@ -1,10 +1,12 @@
 import type { PermissionMode } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
 import type { AppSettings } from '@shared/types/settings';
+import { connectors } from '../../connectors/manager';
 import { calculateTool } from '../../math/tools';
 import { runCommand } from './command';
 import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFileTool, rememberTool, searchChatsTool, skillTool } from './extra';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
+import { mcpGetPromptTool, mcpPromptsTool, mcpReadResourceTool, mcpResourcesTool } from './mcp';
 import { createDocx, createPdf, createPptx, createXlsx, normalizeTodoArgs, todoWrite } from './plan-docs';
 import type { AgentTool } from './types';
 import { webFetch, webSearch } from './web';
@@ -46,6 +48,8 @@ export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]
   if (options.skills) tools.push(skillTool as AgentTool, readSkillFileTool as AgentTool);
   if (options.settings.memoryEnabled && !options.incognito) tools.push(rememberTool as AgentTool, forgetTool as AgentTool);
   if (options.settings.searchPastChats && !options.incognito) tools.push(searchChatsTool as AgentTool, readChatTool as AgentTool);
+  if (connectors.connectorsWithResources().length) tools.push(mcpResourcesTool as AgentTool, mcpReadResourceTool as AgentTool);
+  if (connectors.connectorsWithPrompts().length) tools.push(mcpPromptsTool as AgentTool, mcpGetPromptTool as AgentTool);
   return [...tools, ...(await connectorTools(options.readOnly))];
 }
 

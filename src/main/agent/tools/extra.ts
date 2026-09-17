@@ -173,6 +173,7 @@ export function connectorTool(config: ConnectorConfig, tool: Tool, policy: ToolP
       const result = await connectors.callTool(config.id, tool.name, args as Record<string, unknown>, ctx.signal);
       const text = clip(result.text, ctx.maxResultChars, 'the tool returned more than fits');
       if (result.isError) throw new ToolError(text);
+      if (result.images.length) await ctx.recordResultImages?.(result.images);
       return text;
     },
   };

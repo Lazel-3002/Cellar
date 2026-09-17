@@ -5,17 +5,21 @@
  */
 import { readFile } from 'node:fs/promises';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { ToolListChangedNotificationSchema, type Tool } from '@modelcontextprotocol/sdk/types.js';
+import { CreateMessageRequestSchema, ToolListChangedNotificationSchema, type GetPromptResult, type ListPromptsResult, type ListResourcesResult, type ReadResourceResult, type Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ConnectorConfig, ConnectorInput, ConnectorStatus, ConnectorToolInfo, ToolPolicy } from '@shared/types/customize';
 import { pluginConnectors, parseMcpServers } from '../customize/plugins';
 import { bus } from '../lib/events';
 import { logger } from '../lib/log';
 import { errorMessage } from '../lib/util';
 import { paths } from '../system/paths';
+import { authUrlFor, CellarOAuthProvider, closeOAuthServer, forgetOAuth } from './oauth';
+import { hasOAuthTokens } from './oauth-store';
+import { handleSampling } from './sampling';
 import { deleteStoredConnector, listStoredConnectors, pluginOverrides, saveStoredConnector, setStoredEnabled, setStoredToolPolicy } from './store';
 
 const log = logger('connectors');
@@ -37,6 +41,8 @@ interface Live {
   instructions?: string;
   stderr: string[];
   connecting?: Promise<void>;
+  /** Set while waiting for the user to finish signing in with a browser. */
+  authUrl?: string;
 }
 
 const signatureOf = (c: ConnectorConfig) => JSON.stringify([c.transport, c.command, c.args, c.env, c.url, c.headers]);
@@ -77,6 +83,21 @@ export function renderToolResult(result: { content?: unknown; structuredContent?
   if (parts.length === 0 && result.structuredContent !== undefined) parts.push(JSON.stringify(result.structuredContent, null, 2));
   if (parts.length === 0 && result.toolResult !== undefined) parts.push(typeof result.toolResult === 'string' ? result.toolResult : JSON.stringify(result.toolResult, null, 2));
   return parts.join('\n\n').trim() || '(the tool returned no content)';
+}
+
+/** Image blocks a tool result carries (inline images, and image resources embedded by reference). */
+export function toolResultImages(result: { content?: unknown; structuredContent?: unknown; isError?: boolean; toolResult?: unknown }): Array<{ mime: string; base64: string }> {
+  const blocks = Array.isArray(result.content) ? (result.content as Array<Record<string, unknown>>) : [];
+  const images: Array<{ mime: string; base64: string }> = [];
+  for (const block of blocks) {
+    if (block.type === 'image' && typeof block.data === 'string') images.push({ mime: String(block.mimeType ?? 'image/png'), base64: block.data });
+    else if (block.type === 'resource') {
+      const resource = (block.resource ?? {}) as Record<string, unknown>;
+      const mime = String(resource.mimeType ?? '');
+      if (typeof resource.blob === 'string' && mime.startsWith('image/')) images.push({ mime, base64: resource.blob });
+    }
+  }
+  return images;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -140,6 +161,8 @@ class ConnectorManager {
       serverName: live.serverName,
       serverVersion: live.serverVersion,
       instructions: live.instructions,
+      authUrl: live.authUrl,
+      signedIn: live.config.transport !== 'stdio' && hasOAuthTokens(live.config.id),
       tools: live.tools.map((t): ConnectorToolInfo => ({ name: t.name, title: t.title ?? t.annotations?.title, description: t.description ?? '', readOnly: !!t.annotations?.readOnlyHint, policy: toolPolicy(live.config, t) })),
     };
   }
@@ -193,7 +216,7 @@ class ConnectorManager {
     if (client) await client.close().catch(() => undefined);
   }
 
-  private makeTransport(config: ConnectorConfig, live: Live, legacySse = false): Transport {
+  private makeTransport(config: ConnectorConfig, live: Live, legacySse: boolean, authProvider?: CellarOAuthProvider): Transport {
     if (config.transport === 'stdio') {
       const transport = new StdioClientTransport({
         command: config.command,
@@ -209,8 +232,8 @@ class ConnectorManager {
       return transport;
     }
     const requestInit: RequestInit = { headers: config.headers };
-    if (config.transport === 'sse' || legacySse) return new SSEClientTransport(new URL(config.url), { requestInit, eventSourceInit: { fetch: (url, init) => fetch(url, { ...init, headers: { ...(init?.headers as Record<string, string>), ...config.headers } }) } });
-    return new StreamableHTTPClientTransport(new URL(config.url), { requestInit });
+    if (config.transport === 'sse' || legacySse) return new SSEClientTransport(new URL(config.url), { requestInit, authProvider, eventSourceInit: { fetch: (url, init) => fetch(url, { ...init, headers: { ...(init?.headers as Record<string, string>), ...config.headers } }) } });
+    return new StreamableHTTPClientTransport(new URL(config.url), { requestInit, authProvider });
   }
 
   private connect(config: ConnectorConfig): Promise<void> {
@@ -218,10 +241,25 @@ class ConnectorManager {
     this.live.set(config.id, live);
     this.emit();
     live.connecting = (async () => {
+      const authProvider = config.transport === 'stdio' ? undefined : new CellarOAuthProvider(config.id, config.name);
       const attempt = async (legacySse: boolean) => {
-        const client = new Client({ name: 'Cellar', version: this.version }, { capabilities: {} });
-        const transport = this.makeTransport(config, live, legacySse);
-        await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, `The server did not answer within ${CONNECT_TIMEOUT_MS / 1000} seconds.`);
+        const client = new Client({ name: 'Cellar', version: this.version }, { capabilities: { sampling: {} } });
+        client.setRequestHandler(CreateMessageRequestSchema, (request) => handleSampling(request.params));
+        const transport = this.makeTransport(config, live, legacySse, authProvider);
+        try {
+          await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, `The server did not answer within ${CONNECT_TIMEOUT_MS / 1000} seconds.`);
+        } catch (err) {
+          if (err instanceof UnauthorizedError && authProvider && 'finishAuth' in transport) {
+            live.state = 'needs-auth';
+            live.authUrl = authUrlFor(config.id);
+            live.message = 'Sign in with your browser, then Cellar connects automatically.';
+            this.emit();
+            const code = await authProvider.waitForCode();
+            await (transport as unknown as { finishAuth(code: string): Promise<void> }).finishAuth(code);
+            return attempt(legacySse);
+          }
+          throw err;
+        }
         return { client, transport };
       };
       try {
@@ -241,6 +279,7 @@ class ConnectorManager {
         }
         live.client = connection.client;
         live.transport = connection.transport;
+        live.authUrl = undefined;
         const server = connection.client.getServerVersion();
         live.serverName = server?.name;
         live.serverVersion = server?.version;
@@ -316,11 +355,66 @@ class ConnectorManager {
     return [...this.live.values()].filter((l) => l.state === 'connected' && l.instructions?.trim()).map((l) => ({ name: l.config.name, text: l.instructions!.trim() }));
   }
 
-  async callTool(connectorId: string, toolName: string, args: Record<string, unknown>, signal: AbortSignal): Promise<{ text: string; isError: boolean }> {
+  async callTool(connectorId: string, toolName: string, args: Record<string, unknown>, signal: AbortSignal): Promise<{ text: string; isError: boolean; images: Array<{ mime: string; base64: string }> }> {
     const live = this.live.get(connectorId);
     if (!live?.client || live.state !== 'connected') throw new Error(`${live?.config.name ?? 'The connector'} is not connected. Check it in Customize → Connectors.`);
     const result = await live.client.callTool({ name: toolName, arguments: args }, undefined, { signal, timeout: CALL_TIMEOUT_MS, resetTimeoutOnProgress: true });
-    return { text: renderToolResult(result), isError: !!result.isError };
+    return { text: renderToolResult(result), isError: !!result.isError, images: toolResultImages(result) };
+  }
+
+  private connectedClient(connectorId: string): Client {
+    const live = this.live.get(connectorId);
+    if (!live?.client || live.state !== 'connected') throw new Error(`${live?.config.name ?? 'That connector'} is not connected. Check it in Customize → Connectors.`);
+    return live.client;
+  }
+
+  connectorByName(name: string): ConnectorConfig | undefined {
+    for (const live of this.live.values()) if (live.state === 'connected' && live.config.name === name) return live.config;
+    return undefined;
+  }
+
+  /** Connected connectors whose server advertises resources (for the resource-reading tools). */
+  connectorsWithResources(): ConnectorConfig[] {
+    return [...this.live.values()].filter((l) => l.state === 'connected' && l.client?.getServerCapabilities()?.resources).map((l) => l.config);
+  }
+
+  /** Connected connectors whose server advertises prompts (for the prompt tools). */
+  connectorsWithPrompts(): ConnectorConfig[] {
+    return [...this.live.values()].filter((l) => l.state === 'connected' && l.client?.getServerCapabilities()?.prompts).map((l) => l.config);
+  }
+
+  async listResources(connectorId: string): Promise<ListResourcesResult['resources']> {
+    const client = this.connectedClient(connectorId);
+    const out: ListResourcesResult['resources'] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const result = await client.listResources(cursor ? { cursor } : undefined);
+      out.push(...result.resources);
+      cursor = result.nextCursor;
+      if (!cursor) break;
+    }
+    return out;
+  }
+
+  readResource(connectorId: string, uri: string): Promise<ReadResourceResult> {
+    return this.connectedClient(connectorId).readResource({ uri });
+  }
+
+  async listPrompts(connectorId: string): Promise<ListPromptsResult['prompts']> {
+    const client = this.connectedClient(connectorId);
+    const out: ListPromptsResult['prompts'] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const result = await client.listPrompts(cursor ? { cursor } : undefined);
+      out.push(...result.prompts);
+      cursor = result.nextCursor;
+      if (!cursor) break;
+    }
+    return out;
+  }
+
+  getPrompt(connectorId: string, name: string, args: Record<string, string>): Promise<GetPromptResult> {
+    return this.connectedClient(connectorId).getPrompt({ name, arguments: args });
   }
 
   async save(input: ConnectorInput): Promise<ConnectorStatus> {
@@ -332,7 +426,14 @@ class ConnectorManager {
   async remove(id: string): Promise<void> {
     if (id.startsWith('plugin:')) throw new Error('This connector comes from a plugin. Turn it off here, or remove the plugin.');
     deleteStoredConnector(id);
+    forgetOAuth(id);
     await this.sync();
+  }
+
+  /** Signs out of a connector's OAuth session (forgets tokens and client registration) and reconnects. */
+  async signOutOAuth(id: string): Promise<void> {
+    forgetOAuth(id);
+    await this.reconnect(id);
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<void> {
@@ -401,6 +502,7 @@ class ConnectorManager {
   async dispose(): Promise<void> {
     await Promise.all([...this.live.values()].map((l) => this.close(l)));
     this.live.clear();
+    closeOAuthServer();
   }
 }
 

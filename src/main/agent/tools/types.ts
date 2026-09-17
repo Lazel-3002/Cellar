@@ -28,6 +28,8 @@ export interface ToolContext {
   incognito?: boolean;
   /** Run after a file tool changed a file; returns problems found in it (Code and Cowork). */
   afterChange?(absolutePath: string): Promise<string>;
+  /** Connector tools: saves image content a tool result carried, so the model can see it (vision models only). */
+  recordResultImages?(images: Array<{ mime: string; base64: string }>): Promise<void>;
 }
 
 export interface AgentTool<S extends z.ZodType = z.ZodType> {
