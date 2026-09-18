@@ -86,5 +86,8 @@ export function failureHint(info: LoadInfo): string | undefined {
   if (info.error && /unknown model architecture|unsupported model/i.test(info.error)) {
     return 'This llama.cpp build does not support the model architecture. Update the runtime in Settings → Engines & runtimes.';
   }
+  if (info.error && /llama_model_loader: failed to load model/i.test(info.error)) {
+    return 'This GGUF may use a non-standard tensor or quantization format (common with vendor-specific low-bit/ternary quants) that this llama.cpp build can\'t read. Check the model card for a required custom llama.cpp fork and add it as a runtime in Settings → Engines & runtimes, or download a different quant of the same model.';
+  }
   return undefined;
 }

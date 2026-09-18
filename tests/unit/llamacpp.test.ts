@@ -133,6 +133,14 @@ describe('parseLogLine', () => {
     expect(info.error).toContain('out of memory');
     expect(failureHint(info)).toMatch(/context length/);
   });
+
+  it('hints at a vendor-specific quant when the generic loader rejects the GGUF', () => {
+    const info = [
+      '0.00.235.242 E llama_model_load: error loading model: llama_model_loader: failed to load model from C:\\models\\Ternary-Bonsai-2-27B-PTQ1_0.gguf',
+    ].reduce(parseLogLine, emptyLoadInfo());
+    expect(info.outOfMemory).toBe(false);
+    expect(failureHint(info)).toMatch(/non-standard tensor or quantization format/);
+  });
 });
 
 describe('runtime parsing', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, FolderOpen, Plus, RefreshCw, Trash } from 'lucide-react';
+import { Check, FolderOpen, Plus, RefreshCw, Search, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProviderConfig, ProviderStatus } from '@shared/types/providers';
 import type { AppSettings } from '@shared/types/settings';
@@ -1286,6 +1286,8 @@ function About() {
 
 export function SettingsPage() {
   const { section } = useParams({ from: '/settings/$section' });
+  const [query, setQuery] = useState('');
+  const filteredSections = SECTIONS.filter((s) => s.label.toLowerCase().includes(query.trim().toLowerCase()));
   const content: Record<string, ReactNode> = {
     general: <General />,
     usage: <Usage />,
@@ -1317,7 +1319,12 @@ export function SettingsPage() {
     <div className="flex h-full pt-9">
       <nav className="w-56 shrink-0 px-3 pt-6">
         <h1 className="mb-4 px-2 font-serif text-[26px]">Settings</h1>
-        {SECTIONS.map((s) => (
+        <div className="relative mb-3">
+          <Search className="absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search settings…" className="h-7 pl-8 text-[13px]" />
+        </div>
+        {filteredSections.length === 0 && <p className="px-2.5 text-[12.5px] text-muted-foreground">No matches</p>}
+        {filteredSections.map((s) => (
           <Link
             key={s.id}
             to="/settings/$section"
