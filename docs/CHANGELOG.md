@@ -3,6 +3,13 @@
 Every entry here is a real released version. See `docs/ROADMAP.md` for the fuller
 milestone-by-milestone story of how Cellar got here.
 
+## 7.7.0 — 2026-09-18
+**Following up with one model**
+
+### Added
+- Playground: carry on with one model on its own. **Follow up** under an answer aims the next prompt at that side only, and a turn the agent loop paused (a model stuck repeating the same tool call, or out of steps) now has a **Continue** button that picks it up where it stopped instead of leaving you to guess. The other model sits the round out and its column says so.
+- Playground: the tools menu from the composer — web search, memory, run commands, approval mode, the browser, connectors and skills — so both sides can be compared with the same tools on.
+
 ## 7.6.0 — 2026-09-18
 **Playground**
 

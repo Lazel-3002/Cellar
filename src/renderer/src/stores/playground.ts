@@ -21,7 +21,10 @@ export interface SideSetup {
 export interface RoundCell {
   messageId?: string;
   error?: string;
+  /** Its turn was cancelled when the round was stopped. */
   skipped?: boolean;
+  /** The prompt was aimed at the other model, so this one was left out of the round. */
+  notAsked?: boolean;
 }
 
 export interface Round {
@@ -38,7 +41,8 @@ interface PlaygroundState {
   /** The side generating right now, or null between runs. `messageId` is null until its send returns. */
   active: { side: Side; messageId: string | null } | null;
   setModel: (side: Side, ref: ModelRef) => void;
-  run: (prompt: string, setup: Record<Side, SideSetup>) => Promise<void>;
+  /** Runs the sides present in `setup`, left to right. One side alone is a follow-up to that model. */
+  run: (prompt: string, setup: Partial<Record<Side, SideSetup>>) => Promise<void>;
   stop: () => void;
   clear: () => void;
 }
@@ -84,6 +88,11 @@ export const usePlayground = create<PlaygroundState>()(
           set((s) => ({ rounds: s.rounds.map((r) => (r.id === id ? { ...r, cells: { ...r.cells, [side]: { ...r.cells[side], ...cell } } } : r)) }));
 
         for (const side of SIDES) {
+          const spec = setup[side];
+          if (!spec) {
+            patch(side, { notAsked: true });
+            continue;
+          }
           if (cancelled) {
             patch(side, { skipped: true });
             continue;
@@ -96,8 +105,8 @@ export const usePlayground = create<PlaygroundState>()(
               title: TITLE,
               content: prompt,
               attachmentIds: [],
-              model: setup[side].ref,
-              thinking: setup[side].thinking,
+              model: spec.ref,
+              thinking: spec.thinking,
             });
             set((s) => ({
               conversations: { ...s.conversations, [side]: result.conversationId },

@@ -33,7 +33,10 @@ A Claude Desktop-style app for **local models**. Chat with models running on you
   - Properties: position, typography (font, size, weight, line height, tracking, alignment, lists), colors from the theme or custom, fills, borders, radius, shadows, chart type and data.
   - Themes (10 presets or your own colors and fonts) restyle every artboard at once; elements refer to theme colors by name.
   - Export to PDF (one page per artboard), PowerPoint with editable text and native charts, and PNG; present full screen.
-- **Playground**: two models, one prompt, side by side. The left model answers first and the right one starts the moment it finishes, so neither is slowed down by the other sharing the GPU — then you read both answers, with tok/s, tokens and time to first token under each. Both sides are incognito and nothing is saved.
+- **Playground**: two models, one prompt, side by side. The left model answers first and the right one starts the moment it finishes, so neither is slowed down by the other sharing the GPU — then you read both answers, with tok/s, tokens and time to first token under each.
+  - Tools work as they do in Chat (web search, connectors, skills, the browser), so you can compare how two models handle the same tool use.
+  - Follow up with one model on its own: **Follow up** under an answer aims the next prompt at that side, and a turn the agent loop paused has a **Continue** button that picks it up where it stopped. The other side sits the round out.
+  - Both sides are incognito and nothing is saved.
 - **Scheduled**: prompts and Cowork tasks on cron schedules with local models, run history and notifications. A notification-area icon keeps them running when the window is closed.
 - **Voice dictation**: the mic button transcribes speech on your computer with whisper.cpp (Cellar installs the build and a model).
 - **Quick entry**: a global shortcut (Alt+Shift+Space) opens a small window for a quick question.

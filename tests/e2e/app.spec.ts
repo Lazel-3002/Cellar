@@ -947,6 +947,27 @@ test('playground: two models answer the same prompt, one after the other', async
   // Both sides are incognito, so none of it is saved.
   expect(await ipc<unknown[]>('chat:list', { query: 'Compare yourselves' })).toHaveLength(0);
 
+  // A follow-up goes to one model only; the other sits the round out.
+  await answers(1).last().getByTestId('playground-follow-up').click();
+  await expect(win.getByTestId('playground-target')).toContainText('Model 2 only');
+  await ask('and again');
+  await expect(answers(2)).toHaveCount(1, { timeout: 30_000 });
+  await expect(win.getByTestId('playground-round').nth(2)).toContainText('→ Model 2 only');
+  await expect(win.getByTestId('playground-round').nth(2)).toContainText('Not asked');
+  await expect(answers(2).first()).toContainText('Echo: and again', { timeout: 30_000 });
+
+  // A turn the agent loop paused can be picked up from the answer itself.
+  await win.getByTestId('playground-target').click();
+  await win.getByRole('menuitem', { name: 'Both models' }).click();
+  await ask('loop forever please');
+  await expect(answers(3)).toHaveCount(2, { timeout: 60_000 });
+  await expect(answers(3).last()).toHaveAttribute('data-side-status', 'complete', { timeout: 60_000 });
+  await expect(answers(3).first()).toContainText('Paused');
+  await answers(3).first().getByTestId('playground-continue').click();
+  await expect(win.getByTestId('playground-round').nth(4)).toContainText('→ Model 1 only', { timeout: 30_000 });
+  await expect(answers(4).first()).toContainText('Echo: continue', { timeout: 30_000 });
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-playground-followup.png') });
+
   await win.getByRole('button', { name: 'Clear' }).click();
   await expect(win.getByText('Ask both models the same thing')).toBeVisible();
 });

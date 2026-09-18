@@ -14,7 +14,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M7 Inline capabilities** | Inline visualizations (sandboxed HTML rendered live in chat) and inline images ([[image: query]] via DuckDuckGo search) | ✅ Done 2026-09-16 |
 | **M8 Tier 3 wishlist** | Built-in Chromium browser, `call(module, task)` delegation, self-scheduling reminders, streaming dictation + spoken replies | ✅ Done 2026-09-17 |
 | **M8.1 Undo, git and memory** | Undo for Cowork file changes; push, pull requests and merge-conflict resolution in Code; `/update-memory` | ✅ Done 2026-09-17 |
-| **M8.2 Playground** | Two models answering the same prompt side by side, one after the other | ✅ Done 2026-09-18 |
+| **M8.2 Playground** | Two models answering the same prompt side by side, one after the other, with per-model follow-ups | ✅ Done 2026-09-18 |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -744,6 +744,28 @@ machinery that already existed: no new IPC, no new inference path, no new storag
   branch switching there act on the globally selected model, which is not what a side means here.
 - `ModelPicker` grew an optional `onSelect`, so a picker can choose for one column instead of for the
   whole app. Thinking level stays global — both sides should be asked the same way.
+
+### Following up with one model (v7.7.0)
+
+Comparing two models is only the first half: as soon as one of them goes wrong you want to carry on
+with *that* one. Real use turned this up immediately — a model paused mid-task with "the model
+repeated the same call 4 times in a row. Reply 'continue'…", and the shared composer had no way to
+reply to only that side.
+
+- `run()` takes the sides to ask as the keys of its setup, so one side alone is a follow-up and both
+  is a comparison — no separate code path. The side left out is recorded as `notAsked`, which is what
+  its column and the round's "→ Model 2 only" marker read from.
+- **Follow up** under an answer aims the composer at that model (the target is also a menu next to
+  the send button, and the placeholder says who it is talking to). **Continue** appears only on a
+  turn the agent loop paused — `stopReason` of `step-limit`, `repeated-calls` or `browser-step-limit`
+  — and sends the literal "continue" to that side, which is the reply the pause message asks for.
+- The composer grew the Chat tools menu (`ToolsMenu`/`ToolsDialog`, scope `chat`), since Playground
+  rounds go through the same agent loop and were already running web search and connector tools.
+
+Tests: the Playwright test now covers a one-sided follow-up and a real paused turn — the mock server
+answers "loop forever" with the same `calculate` call every time, so the runner hits its repeated-call
+limit exactly as a stuck local model does, and the test clicks Continue and checks the resumed round
+went to that model alone.
 
 Tests: 297 unit tests and 21 Playwright tests (1 new: both columns answer the same prompt, the second
 model waits its turn while the first streams, stopping ends the round instead of handing the prompt

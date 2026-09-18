@@ -289,6 +289,14 @@ export async function startMockServer(): Promise<MockServer> {
           res.end('data: [DONE]\n\n');
           return;
         }
+        // A model that will not let go of one tool. The agent loop pauses it after four identical
+        // calls, which is the state the Playground's Continue button recovers from.
+        if (/loop forever/i.test(prompt) && parsed.tools?.some((t) => t.function.name === 'calculate')) {
+          send({ tool_calls: [{ index: 0, id: `calc${requests.length}`, type: 'function', function: { name: 'calculate', arguments: JSON.stringify({ expressions: '1+1' }) } }] });
+          send({}, 'tool_calls');
+          res.end('data: [DONE]\n\n');
+          return;
+        }
         if (parsed.model === 'mock-thinker-r1') {
           send({ reasoning_content: 'Let me think about this carefully.' });
           await sleep(50);
