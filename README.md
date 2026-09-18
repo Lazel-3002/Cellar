@@ -2,12 +2,12 @@
 
 A Claude Desktop-style app for **local models**. Chat with models running on your own GPU through Cellar's built-in llama.cpp engine, or through Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server. Find and download GGUFs from Hugging Face with LM Studio-style control over how they load.
 
-> This build: Milestone 1 (app shell, Chat, Projects, Artifacts, incognito chats, the Model Hub and all backends), Milestone 2 (Cowork agents), Milestone 3 (Code), Milestone 4 (Customize, Scheduled, voice), Milestone 5 (Design) and Milestone 6 (Math).
+> This build: Milestone 1 (app shell, Chat, Projects, Artifacts, incognito chats, the Model Hub and all backends), Milestone 2 (Cowork agents), Milestone 3 (Code), Milestone 4 (Customize, Scheduled, voice), Milestone 5 (Design), Milestone 6 (Math) and the Playground.
 > Follow-ups and known gaps are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Features
 
-- **Claude-style shell**: sidebar (New, Projects, Artifacts, Scheduled, Customize, chats and tasks, Design, Math), custom title bar with back/forward, search (Ctrl+K), Chat/Code switch and the incognito ghost.
+- **Claude-style shell**: sidebar (New, Projects, Artifacts, Scheduled, Customize, chats and tasks, Design, Math, Playground), custom title bar with back/forward, search (Ctrl+K), Chat/Code switch and the incognito ghost.
 - **Chat**:
   - Streaming Markdown (code highlighting, math, Mermaid), collapsible thinking blocks and thinking-level control.
   - Retry and edit with switchable branches, stop, and auto-generated titles.
@@ -33,6 +33,7 @@ A Claude Desktop-style app for **local models**. Chat with models running on you
   - Properties: position, typography (font, size, weight, line height, tracking, alignment, lists), colors from the theme or custom, fills, borders, radius, shadows, chart type and data.
   - Themes (10 presets or your own colors and fonts) restyle every artboard at once; elements refer to theme colors by name.
   - Export to PDF (one page per artboard), PowerPoint with editable text and native charts, and PNG; present full screen.
+- **Playground**: two models, one prompt, side by side. The left model answers first and the right one starts the moment it finishes, so neither is slowed down by the other sharing the GPU — then you read both answers, with tok/s, tokens and time to first token under each. Both sides are incognito and nothing is saved.
 - **Scheduled**: prompts and Cowork tasks on cron schedules with local models, run history and notifications. A notification-area icon keeps them running when the window is closed.
 - **Voice dictation**: the mic button transcribes speech on your computer with whisper.cpp (Cellar installs the build and a model).
 - **Quick entry**: a global shortcut (Alt+Shift+Space) opens a small window for a quick question.

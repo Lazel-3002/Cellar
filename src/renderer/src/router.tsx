@@ -10,6 +10,7 @@ import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
 import { ArtifactsPage, RecentsPage } from './pages/MiscPages';
 import { ModelsPage } from './pages/ModelsPage';
+import { PlaygroundPage } from './pages/PlaygroundPage';
 import { ProjectDetailPage, ProjectsPage } from './pages/ProjectsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TaskPage } from './pages/TaskPage';
@@ -25,6 +26,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/artifacts', component: ArtifactsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recents', component: RecentsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/models', component: ModelsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/playground', component: PlaygroundPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/discover',

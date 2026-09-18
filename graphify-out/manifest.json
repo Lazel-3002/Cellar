@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1789675625.0001469,
-    "ast_hash": "52fa4ae3c13afa0cbdefc135724d3863",
+    "mtime": 1789752917.8586771,
+    "ast_hash": "545a3c6368ab3300fda5026d1a8ce665",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -200,8 +200,8 @@
     "semantic_hash": ""
   },
   "src/main/providers/llamacpp/log-parser.ts": {
-    "mtime": 1789309815.8969655,
-    "ast_hash": "3f6291ba84f6979d323e8229d70a104b",
+    "mtime": 1789750386.018051,
+    "ast_hash": "8750557295c0c18de277435a94090970",
     "semantic_hash": ""
   },
   "src/main/providers/lmstudio.ts": {
@@ -325,8 +325,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/composer/ModelPicker.tsx": {
-    "mtime": 1789327418.6351266,
-    "ast_hash": "1285b0156e189e3f5d10adbc8a651c96",
+    "mtime": 1789752596.7124662,
+    "ast_hash": "16b7d258957418c0c71d8aa89fc7e366",
     "semantic_hash": ""
   },
   "src/renderer/src/components/models/LoadSettingsDialog.tsx": {
@@ -355,8 +355,8 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/Sidebar.tsx": {
-    "mtime": 1789678457.9490736,
-    "ast_hash": "7bfe4c376f17c9fece05b3c456e097ea",
+    "mtime": 1789752609.1093125,
+    "ast_hash": "5ca715aab3e3b49416bd83fb3c6e4b8c",
     "semantic_hash": ""
   },
   "src/renderer/src/components/shell/TitleBar.tsx": {
@@ -445,13 +445,13 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/SettingsPage.tsx": {
-    "mtime": 1789678513.190911,
-    "ast_hash": "5f6c88850dc670e71ecce2dd58c88226",
+    "mtime": 1789751448.09524,
+    "ast_hash": "79daeb739be6ddf965654c095b294df0",
     "semantic_hash": ""
   },
   "src/renderer/src/router.tsx": {
-    "mtime": 1789548549.6594605,
-    "ast_hash": "ce3d28ce1f62f8210f0c413b69645081",
+    "mtime": 1789752602.2970736,
+    "ast_hash": "16c2729647698f0a48d2b83889069377",
     "semantic_hash": ""
   },
   "src/renderer/src/stores/streams.ts": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "tests/e2e/app.spec.ts": {
-    "mtime": 1789675345.8512878,
-    "ast_hash": "4649d7fcd200eb0431708511e697d8d2",
+    "mtime": 1789752797.5609713,
+    "ast_hash": "8883798acc69ca89f2ef5f174901295e",
     "semantic_hash": ""
   },
   "tests/e2e/mock-server.ts": {
@@ -530,8 +530,8 @@
     "semantic_hash": ""
   },
   "tests/unit/llamacpp.test.ts": {
-    "mtime": 1789309825.4715557,
-    "ast_hash": "31d847bf4da7836fad43653ed448ddd3",
+    "mtime": 1789750389.6510227,
+    "ast_hash": "0dd8438de4af453f54fcdd0ee5bfdbc6",
     "semantic_hash": ""
   },
   "tests/unit/models.test.ts": {
@@ -715,13 +715,13 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789549092.7363822,
-    "ast_hash": "8b20bfe47ea76d05634b3bbf8ea0ff39",
+    "mtime": 1789752911.8177614,
+    "ast_hash": "037d859a746630b53981e7d5a7e066b1",
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1789675628.5418496,
-    "ast_hash": "65953c847b79af62ef80b5df2d389334",
+    "mtime": 1789752948.7630413,
+    "ast_hash": "6e943a05148f2107a73ab901477dbf64",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -1380,8 +1380,8 @@
     "semantic_hash": ""
   },
   "src/main/services/updater.ts": {
-    "mtime": 1789597938.5488758,
-    "ast_hash": "da7a9c0a747ad9042e2277e05f781c9a",
+    "mtime": 1789749285.073863,
+    "ast_hash": "7e39c3081b504f84340fc953da5a8d05",
     "semantic_hash": ""
   },
   "src/renderer/src/lib/viz-export.ts": {
@@ -1575,8 +1575,18 @@
     "semantic_hash": ""
   },
   "docs/CHANGELOG.md": {
-    "mtime": 1789678481.494674,
-    "ast_hash": "24c8f242b159c951b20001c735d3b35c",
+    "mtime": 1789752915.843726,
+    "ast_hash": "67d092f1d8aa20aca893b75c9739f1a4",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/pages/PlaygroundPage.tsx": {
+    "mtime": 1789752757.492702,
+    "ast_hash": "ba2f3b8bc034bfd67e3e24fa0acbaa33",
+    "semantic_hash": ""
+  },
+  "src/renderer/src/stores/playground.ts": {
+    "mtime": 1789752685.3103535,
+    "ast_hash": "9129349307054436698da631f30bd711",
     "semantic_hash": ""
   }
 }

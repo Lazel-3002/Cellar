@@ -3,6 +3,16 @@
 Every entry here is a real released version. See `docs/ROADMAP.md` for the fuller
 milestone-by-milestone story of how Cellar got here.
 
+## 7.6.0 — 2026-09-18
+**Playground**
+
+### Added
+- Playground: ask two models the same prompt and read their answers side by side, with tok/s, tokens and time to first token under each. They take turns — the second model starts only once the first has finished, so neither is slowed down by sharing the GPU — and both sides run as incognito chats, so nothing is saved.
+- A search box over the Settings sections.
+
+### Changed
+- A GGUF that llama.cpp cannot load now says what is usually wrong — a vendor-specific low-bit quant needing a custom llama.cpp fork — instead of only the raw loader error.
+
 ## 7.5.1 — 2026-09-18
 ### Fixed
 - "Check for updates" always failed silently: `electron-updater`'s `autoUpdater` export is a lazy getter that Node's CJS/ESM interop doesn't surface as a named export, so it was always `undefined`. Auto-update had never actually worked before this fix.

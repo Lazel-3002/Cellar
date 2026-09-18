@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, ChevronDown, Cpu, SlidersHorizontal, Telescope } from 'lucide-react';
-import type { ModelEntry } from '@shared/types/models';
+import type { ModelEntry, ModelRef } from '@shared/types/models';
 import { CapabilityIcons, ProviderStatusDot } from '@/components/models/bits';
 import { PopoverContent, PopoverRoot, PopoverTrigger } from '@/components/ui/menu';
 import { Spinner, StatusDot, Tip } from '@/components/ui/misc';
@@ -40,8 +40,8 @@ function ModelRow({ model, selected, onSelect, dim }: { model: ModelEntry; selec
   );
 }
 
-/** `preferTools` (Cowork) lists models with native tool calling first. */
-export function ModelPicker({ model, compact, preferTools }: { model: ModelEntry | null; compact?: boolean; preferTools?: boolean }) {
+/** `preferTools` (Cowork) lists models with native tool calling first. `onSelect` (Playground) picks for one side instead of the whole app. */
+export function ModelPicker({ model, compact, preferTools, onSelect }: { model: ModelEntry | null; compact?: boolean; preferTools?: boolean; onSelect?: (ref: ModelRef) => void }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -102,7 +102,8 @@ export function ModelPicker({ model, compact, preferTools }: { model: ModelEntry
                   dim={preferTools && !m.capabilities.tools}
                   selected={!!model && model.ref.providerId === m.ref.providerId && model.ref.modelId === m.ref.modelId}
                   onSelect={() => {
-                    setModel(m.ref);
+                    if (onSelect) onSelect(m.ref);
+                    else setModel(m.ref);
                     setOpen(false);
                   }}
                 />

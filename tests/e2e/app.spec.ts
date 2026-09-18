@@ -78,7 +78,7 @@ test.afterAll(async () => {
 });
 
 test('home screen mirrors the Claude layout', async () => {
-  for (const label of ['New', 'Projects', 'Artifacts', 'Scheduled', 'Customize', 'Design', 'Math']) {
+  for (const label of ['New', 'Projects', 'Artifacts', 'Scheduled', 'Customize', 'Design', 'Math', 'Playground']) {
     await expect(win.getByRole('link', { name: label, exact: true })).toBeVisible();
   }
   await expect(win.getByText('Chats and tasks')).toBeVisible();
@@ -901,4 +901,52 @@ test('math: a tutor fills a board, the calculator and whiteboard work, and a tes
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
+});
+
+test('playground: two models answer the same prompt, one after the other', async () => {
+  await openSidebar();
+  await win.getByRole('link', { name: 'Playground', exact: true }).click();
+  await expect(win.getByTestId('playground-input')).toBeVisible();
+
+  const pickSide = async (index: number, name: string) => {
+    await win.getByTestId('model-picker').nth(index).click();
+    await win.locator('[data-testid=model-option]', { hasText: name }).first().click();
+  };
+  await pickSide(0, 'mock-echo');
+  await pickSide(1, 'mock-thinker-r1');
+
+  const ask = async (text: string) => {
+    await win.getByTestId('playground-input').fill(text);
+    await win.getByTestId('playground-send').click();
+  };
+  const answers = (round: number) => win.getByTestId('playground-round').nth(round).getByTestId('playground-answer');
+
+  // The second model holds off until the first one is done: they share the GPU.
+  await ask('slow compare please');
+  await expect(answers(0).first()).toHaveAttribute('data-side-status', 'streaming', { timeout: 15_000 });
+  await expect(win.getByTestId('playground-round').first()).toContainText('Waiting for mock-echo to finish');
+  await expect(answers(0)).toHaveCount(1);
+
+  // Stopping ends the round rather than handing the prompt on to the second model.
+  await win.getByTestId('playground-stop').click();
+  await expect(answers(0).first()).toHaveAttribute('data-side-status', 'stopped', { timeout: 15_000 });
+  await expect(win.getByTestId('playground-round').first()).toContainText('Never ran');
+
+  await ask('Compare yourselves');
+  await expect(answers(1)).toHaveCount(2, { timeout: 30_000 });
+  for (const cell of [answers(1).first(), answers(1).last()]) {
+    await expect(cell).toHaveAttribute('data-side-status', 'complete', { timeout: 30_000 });
+    await expect(cell).toContainText('Echo: Compare yourselves');
+    await expect(cell).toContainText('tok/s');
+  }
+  // Each side keeps its own model's behaviour: only the reasoning model thinks first.
+  await expect(answers(1).last()).toContainText(/Thought for|Thoughts/);
+  await expect(answers(1).first()).not.toContainText(/Thought for|Thoughts/);
+  await win.screenshot({ path: join(project, 'test-results', 'e2e-playground.png') });
+
+  // Both sides are incognito, so none of it is saved.
+  expect(await ipc<unknown[]>('chat:list', { query: 'Compare yourselves' })).toHaveLength(0);
+
+  await win.getByRole('button', { name: 'Clear' }).click();
+  await expect(win.getByText('Ask both models the same thing')).toBeVisible();
 });

@@ -14,6 +14,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M7 Inline capabilities** | Inline visualizations (sandboxed HTML rendered live in chat) and inline images ([[image: query]] via DuckDuckGo search) | ✅ Done 2026-09-16 |
 | **M8 Tier 3 wishlist** | Built-in Chromium browser, `call(module, task)` delegation, self-scheduling reminders, streaming dictation + spoken replies | ✅ Done 2026-09-17 |
 | **M8.1 Undo, git and memory** | Undo for Cowork file changes; push, pull requests and merge-conflict resolution in Code; `/update-memory` | ✅ Done 2026-09-17 |
+| **M8.2 Playground** | Two models answering the same prompt side by side, one after the other | ✅ Done 2026-09-18 |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -718,3 +719,43 @@ it in the dialog's editor and continues the merge.
 - **A one-shot schedule needs an instant, not a cron expression.** Five-field cron has minute
   granularity and repeats yearly, so `fire_at` plus `one_shot` is simpler than trying to express
   "once, in 90 seconds" as a pattern — and the row still feeds the existing OS wake job unchanged.
+
+---
+
+## M8.2 Playground (v7.6.0)
+
+Two models, one prompt, side by side — the shape people actually compare models in. Built entirely on
+machinery that already existed: no new IPC, no new inference path, no new storage.
+
+- **One incognito conversation per side** (`chat:send` with `incognito: true`), created with the
+  first prompt and kept until Clear. That is where streaming, thinking blocks, the agent-tool path,
+  generation stats, model loading status, artifacts and `chat:stop` all come from for free, and it is
+  why the sides hold their own history, so follow-up prompts are a real conversation on each.
+  Passing `title` up front keeps both chats out of auto-titling, which would otherwise cost an extra
+  generation per side per round.
+- **Sequential by design.** The left model answers first; the right one starts the moment the left
+  one's stream reaches a final state. Two local models generating at once would fight over the same
+  GPU and report speeds neither would reach alone, so the comparison would be worth less than the
+  time it saved. `stores/playground.ts` runs the sequence outside React, so leaving the page does not
+  interrupt it.
+- **Rounds are stored, not derived.** The store keeps `rounds: { prompt, cells: { a, b } }` with the
+  assistant message id per side, and the page looks those ids up in the two conversations.
+- The page renders its own trimmed answer component rather than reusing `AssistantMessage`: retry and
+  branch switching there act on the globally selected model, which is not what a side means here.
+- `ModelPicker` grew an optional `onSelect`, so a picker can choose for one column instead of for the
+  whole app. Thinking level stays global — both sides should be asked the same way.
+
+Tests: 297 unit tests and 21 Playwright tests (1 new: both columns answer the same prompt, the second
+model waits its turn while the first streams, stopping ends the round instead of handing the prompt
+on, each side keeps its own model's behaviour, and nothing reaches the database).
+
+### Technical notes learned in M8.2
+
+- **Index-aligned columns drift.** Pairing the two transcripts by turn index looks right until a
+  round is stopped before the second model starts: from then on every later answer sits one row off,
+  under the wrong prompt. Recording each round's message ids per side is the fix — the rows are then
+  what actually happened, not a guess from two lengths.
+- **Waiting for a turn to end is a store subscription, not a poll.** Both the plain chat path and the
+  agent path always emit a final `chat:stream` event (the `finally` in `generate`, the explicit emit
+  in the runner), so awaiting `!isLive(event)` on the streams store covers a completed, stopped,
+  errored and empty-response turn alike.
