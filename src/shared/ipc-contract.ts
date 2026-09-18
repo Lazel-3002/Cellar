@@ -40,7 +40,7 @@ import type {
   ThinkingLevel,
 } from './types/chat';
 import type { BrowserBounds, BrowserLoginStatus, BrowserState, BrowserTab } from './types/browser';
-import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary } from './types/design';
+import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary, DesignVersionSummary, FontSummary } from './types/design';
 import type { MathBoard, MathBoardSummary, MathChangedEvent, MathExportRequest, MathStartOptions } from './types/math';
 import type { DownloadJob, HfModelSummary, HfRepoDetail, HfSearchQuery, QuantFit, StartDownloadInput } from './types/hub';
 import type {
@@ -112,7 +112,7 @@ export interface IpcInvokeMap {
   'system:openExternal': Handler<[url: string], void>;
   'system:showInFolder': Handler<[path: string], void>;
   'system:pickDirectory': Handler<[title?: string], string | null>;
-  'system:pickFiles': Handler<[kind?: 'attachments' | 'knowledge'], string[]>;
+  'system:pickFiles': Handler<[kind?: 'attachments' | 'knowledge' | 'fonts'], string[]>;
   'window:setTheme': Handler<[theme: 'dark' | 'light'], void>;
   'window:action': Handler<[action: WindowAction], void>;
 
@@ -376,6 +376,21 @@ export interface IpcInvokeMap {
   'design:duplicate': Handler<[conversationId: string], { conversationId: string }>;
   /** Asks where to save and writes PNG, PDF or PowerPoint; null when cancelled. */
   'design:export': Handler<[request: DesignExportRequest], string | null>;
+  /** Every saved snapshot of a design, newest first. */
+  'design:versions:list': Handler<[designId: string], DesignVersionSummary[]>;
+  /** One snapshot's full content, e.g. to render a thumbnail before restoring it. */
+  'design:versions:get': Handler<[designId: string, versionId: string], Design>;
+  /** Restores an old snapshot as a new, latest version. */
+  'design:versions:restore': Handler<[designId: string, versionId: string], Design>;
+  /** Labels a saved version (or clears its label with `name: null`). */
+  'design:versions:rename': Handler<[designId: string, versionId: string, name: string | null], void>;
+  /** Fonts imported into Cellar, usable by name in any font picker. */
+  'fonts:list': Handler<[], FontSummary[]>;
+  'fonts:addFiles': Handler<[paths: string[]], FontSummary[]>;
+  'fonts:addGoogle': Handler<[family: string], FontSummary>;
+  'fonts:remove': Handler<[id: string], void>;
+  /** `@font-face` CSS for exactly these family names (skipping any not actually imported); injected once per editor session. */
+  'fonts:css': Handler<[families: string[]], string>;
 
   'math:list': Handler<[], MathBoardSummary[]>;
   /** The board of a Math conversation. */
@@ -637,6 +652,15 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'design:save': true,
   'design:duplicate': true,
   'design:export': true,
+  'design:versions:list': true,
+  'design:versions:get': true,
+  'design:versions:restore': true,
+  'design:versions:rename': true,
+  'fonts:list': true,
+  'fonts:addFiles': true,
+  'fonts:addGoogle': true,
+  'fonts:remove': true,
+  'fonts:css': true,
   'math:list': true,
   'math:get': true,
   'math:create': true,

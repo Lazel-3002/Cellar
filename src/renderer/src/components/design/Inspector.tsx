@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AlignCenter,
   AlignCenterHorizontal,
@@ -33,13 +34,15 @@ import {
   Ungroup,
   Underline,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { CHART_KINDS } from '@shared/design/charts';
 import { estimateTextHeight } from '@shared/design/text';
 import { ARTBOARD_PRESETS, FONTS, fontName, gradientCss, gradientStops, normalizeColor, resolveColor, THEMES } from '@shared/design/theme';
-import type { Artboard, ChartElement, ColorToken, Design, DesignElement, DesignTheme, Gradient, ImageElement, LineElement, ShapeElement, TextElement } from '@shared/types/design';
+import type { Artboard, ChartElement, ColorToken, Design, DesignElement, DesignTheme, Gradient, ImageCrop, ImageElement, ImageFilters, LineElement, ShapeElement, TextElement } from '@shared/types/design';
 import { Button, IconButton } from '@/components/ui/button';
 import { Input, Select, Switch, Textarea } from '@/components/ui/form';
 import { Menu, MenuContent, MenuItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from '@/components/ui/menu';
+import { FONTS_QUERY_KEY, useFontsQuery } from '@/lib/fonts';
 import { invoke } from '@/lib/ipc';
 import { cn } from '@/lib/utils';
 import { useDesignEditor, useDesignLayout } from '@/stores/design';
@@ -179,13 +182,74 @@ function GradientEditor({ gradient, theme, onChange }: { gradient: Gradient; the
 }
 
 function FontSelect({ value, theme, onChange }: { value: string | undefined; theme: DesignTheme; onChange: (v: string) => void }) {
+  const { data: customFonts } = useFontsQuery();
   const options = [
     { value: 'heading', label: `Heading · ${theme.fonts.heading}` },
     { value: 'body', label: `Body · ${theme.fonts.body}` },
     ...FONTS.map((f) => ({ value: f.name, label: <span style={{ fontFamily: `'${f.name}'` }}>{f.name}</span> })),
+    ...(customFonts ?? []).map((f) => ({ value: f.family, label: <span style={{ fontFamily: `'${f.family}'` }}>{f.family} ✦</span> })),
   ];
   const current = value ?? 'body';
   return <Select value={options.some((o) => o.value === current) ? current : 'body'} onChange={onChange} options={options} className="w-full" />;
+}
+
+/** Import a font file, or download a Google Font by name. Human-editor-only: the model can already set any font name, it just needs one imported first. */
+function ImportFontButton() {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: FONTS_QUERY_KEY });
+
+  const importFile = async () => {
+    const paths = await invoke('system:pickFiles', 'fonts');
+    if (!paths.length) return;
+    setBusy(true);
+    try {
+      const added = await invoke('fonts:addFiles', paths);
+      await refresh();
+      toast.success(added.length > 1 ? `Imported ${added.length} fonts` : `Imported "${added[0]?.family}"`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importGoogle = async () => {
+    const family = name.trim();
+    if (!family) return;
+    setBusy(true);
+    try {
+      const font = await invoke('fonts:addGoogle', family);
+      await refresh();
+      toast.success(`Imported "${font.family}" from Google Fonts`);
+      setName('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <PopoverRoot>
+      <PopoverTrigger asChild>
+        <button className="text-[12px] text-muted-foreground hover:text-foreground">Import font…</button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" align="end">
+        <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void importFile()}>
+          Choose a font file…
+        </Button>
+        <div className="my-2 text-center text-[11px] text-muted-foreground">or a Google Font</div>
+        <div className="flex gap-1.5">
+          <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void importGoogle()} placeholder="e.g. Inter" className="h-8 min-w-0 flex-1" />
+          <Button size="sm" disabled={busy || !name.trim()} onClick={() => void importGoogle()}>
+            Add
+          </Button>
+        </div>
+      </PopoverContent>
+    </PopoverRoot>
+  );
 }
 
 function Toggle({ active, label, onClick, children }: { active?: boolean; label: string; onClick: () => void; children: ReactNode }) {
@@ -229,7 +293,7 @@ function Properties() {
       </>
     );
   if (elements.length > 1) return <MultiPanel count={elements.length} grouped={isWholeGroup(artboard, selection.elementIds)} />;
-  return <ElementPanel artboard={artboard} el={elements[0]} theme={design.theme} />;
+  return <ElementPanel artboard={artboard} el={elements[0]} theme={design.theme} design={design} />;
 }
 
 function patch(artboardId: string, id: string, changes: Partial<DesignElement>) {
@@ -298,7 +362,7 @@ function MultiPanel({ count, grouped }: { count: number; grouped: boolean }) {
   );
 }
 
-function ElementPanel({ artboard, el, theme }: { artboard: Artboard; el: DesignElement; theme: DesignTheme }) {
+function ElementPanel({ artboard, el, theme, design }: { artboard: Artboard; el: DesignElement; theme: DesignTheme; design: Design }) {
   const set = (changes: Partial<DesignElement>) => patch(artboard.id, el.id, changes);
   const Icon = TYPE_ICONS[el.type];
   return (
@@ -322,6 +386,7 @@ function ElementPanel({ artboard, el, theme }: { artboard: Artboard; el: DesignE
           <NumberField label="Opac" value={Math.round((el.opacity ?? 1) * 100)} onChange={(v) => set({ opacity: v >= 100 ? undefined : v / 100 })} min={0} max={100} suffix="%" />
         </Row>
       </Section>
+      <LinkSection el={el} design={design} set={set} />
       {el.type === 'text' && <TextSection artboard={artboard} el={el} theme={theme} />}
       {(el.type === 'rect' || el.type === 'ellipse') && <ShapeSection el={el} theme={theme} set={set} />}
       {el.type === 'line' && <LineSection el={el} theme={theme} set={set} />}
@@ -332,12 +397,45 @@ function ElementPanel({ artboard, el, theme }: { artboard: Artboard; el: DesignE
   );
 }
 
+/** Makes any element a clickable hotspot in Present and in exported HTML/PDF/PowerPoint — jump to another artboard, or open a URL. */
+function LinkSection({ el, design, set }: { el: DesignElement; design: Design; set: (c: Partial<DesignElement>) => void }) {
+  const kind = el.link?.kind ?? 'none';
+  return (
+    <Section title="Link">
+      <Row>
+        <Select
+          value={kind}
+          onChange={(v) => set({ link: v === 'none' ? undefined : v === 'artboard' ? { kind: 'artboard', artboard: design.artboards.find((a) => a.id !== el.id)?.id ?? design.artboards[0]?.id ?? '' } : { kind: 'url', url: '' } })}
+          options={[
+            { value: 'none', label: 'None' },
+            { value: 'artboard', label: 'Jump to artboard' },
+            { value: 'url', label: 'Open a URL' },
+          ]}
+          className="w-full min-w-0"
+          testId="link-kind"
+        />
+        {kind === 'artboard' && (
+          <Select
+            value={design.artboards.some((a) => a.id === el.link?.artboard) ? el.link!.artboard! : (design.artboards[0]?.id ?? '')}
+            onChange={(artboard) => set({ link: { kind: 'artboard', artboard } })}
+            options={design.artboards.map((a) => ({ value: a.id, label: a.name }))}
+            className="w-full min-w-0"
+            disabled={design.artboards.length === 0}
+            testId="link-artboard"
+          />
+        )}
+      </Row>
+      {kind === 'url' && <Input value={el.link?.url ?? ''} onChange={(e) => set({ link: { kind: 'url', url: e.target.value } })} placeholder="https://…" />}
+    </Section>
+  );
+}
+
 function TextSection({ artboard, el, theme }: { artboard: Artboard; el: TextElement; theme: DesignTheme }) {
   const set = (changes: Partial<TextElement>) => patch(artboard.id, el.id, changes);
   const [text, setText] = useState(el.text);
   useEffect(() => setText(el.text), [el.text]);
   return (
-    <Section title="Text">
+    <Section title="Text" action={<ImportFontButton />}>
       <Textarea data-testid="prop-text" value={text} rows={3} onChange={(e) => setText(e.target.value)} onBlur={() => text !== el.text && set({ text })} className="text-[12.5px]" />
       <FontSelect value={el.font} theme={theme} onChange={(font) => set({ font: font === 'body' ? undefined : font })} />
       <Row>
@@ -433,17 +531,47 @@ function ImageSection({ el, set }: { el: ImageElement; set: (c: Partial<ImageEle
     const refs = paths.length ? (await invoke('attachments:fromPaths', paths.slice(0, 1))).filter((r) => r.kind === 'image') : [];
     if (refs[0]) set({ src: `attachment:${refs[0].id}`, alt: refs[0].name });
   };
+  const crop = el.crop ?? { x: 0, y: 0, w: 1, h: 1 };
+  const setCrop = (patch: Partial<ImageCrop>) => set({ crop: { ...crop, ...patch } });
+  const filters = el.filters ?? {};
+  const setFilters = (patch: Partial<ImageFilters>) => set({ filters: { ...filters, ...patch } });
   return (
-    <Section title="Image">
-      <Button size="sm" variant="outline" className="w-full" onClick={() => void replace()}>
-        {el.src ? 'Replace image…' : 'Choose image…'}
-      </Button>
-      <Row>
-        <Select value={el.fit ?? 'cover'} onChange={(fit) => set({ fit })} options={[{ value: 'cover', label: 'Fill (crop)' }, { value: 'contain', label: 'Fit' }]} className="w-full min-w-0" />
-        <NumberField label="Rad" value={el.radius ?? 0} onChange={(radius) => set({ radius: radius || undefined })} min={0} />
-      </Row>
-      <Input value={el.alt ?? ''} onChange={(e) => set({ alt: e.target.value || undefined })} placeholder="Description (alt text)" />
-    </Section>
+    <>
+      <Section title="Image">
+        <Button size="sm" variant="outline" className="w-full" onClick={() => void replace()}>
+          {el.src ? 'Replace image…' : 'Choose image…'}
+        </Button>
+        <Row>
+          <Select value={el.fit ?? 'cover'} onChange={(fit) => set({ fit })} options={[{ value: 'cover', label: 'Fill (crop)' }, { value: 'contain', label: 'Fit' }]} className="w-full min-w-0" disabled={!!el.crop} />
+          <NumberField label="Rad" value={el.radius ?? 0} onChange={(radius) => set({ radius: radius || undefined })} min={0} />
+        </Row>
+        <Input value={el.alt ?? ''} onChange={(e) => set({ alt: e.target.value || undefined })} placeholder="Description (alt text)" />
+      </Section>
+      <Section
+        title="Crop"
+        action={
+          el.crop && (
+            <button className="text-[12px] text-muted-foreground hover:text-foreground" onClick={() => set({ crop: undefined })}>
+              Reset
+            </button>
+          )
+        }
+      >
+        <Row>
+          <NumberField label="X" value={Math.round(crop.x * 100)} onChange={(v) => setCrop({ x: v / 100 })} min={0} max={99} suffix="%" />
+          <NumberField label="Y" value={Math.round(crop.y * 100)} onChange={(v) => setCrop({ y: v / 100 })} min={0} max={99} suffix="%" />
+          <NumberField label="W" value={Math.round(crop.w * 100)} onChange={(v) => setCrop({ w: Math.max(1, v) / 100 })} min={1} max={100} suffix="%" />
+          <NumberField label="H" value={Math.round(crop.h * 100)} onChange={(v) => setCrop({ h: Math.max(1, v) / 100 })} min={1} max={100} suffix="%" />
+        </Row>
+      </Section>
+      <Section title="Filters">
+        <Row>
+          <NumberField label="Bright" value={Math.round((filters.brightness ?? 1) * 100)} onChange={(v) => setFilters({ brightness: v / 100 })} min={0} max={300} suffix="%" />
+          <NumberField label="Cont" value={Math.round((filters.contrast ?? 1) * 100)} onChange={(v) => setFilters({ contrast: v / 100 })} min={0} max={300} suffix="%" />
+          <NumberField label="Sat" value={Math.round((filters.saturate ?? 1) * 100)} onChange={(v) => setFilters({ saturate: v / 100 })} min={0} max={300} suffix="%" />
+        </Row>
+      </Section>
+    </>
   );
 }
 
@@ -555,6 +683,20 @@ function ArtboardPanel({ artboard, design }: { artboard: Artboard; design: Desig
         <NumberField label="W" value={artboard.width} onChange={(width) => update((a) => (a.width = Math.round(width)))} min={50} max={8000} />
         <NumberField label="H" value={artboard.height} onChange={(height) => update((a) => (a.height = Math.round(height)))} min={50} max={8000} />
       </Row>
+      <Select
+        value={artboard.transition ?? 'none'}
+        onChange={(v) => update((a) => (a.transition = v === 'none' ? undefined : (v as Artboard['transition'])))}
+        options={[
+          { value: 'none', label: 'No transition' },
+          { value: 'fade', label: 'Fade' },
+          { value: 'slide-left', label: 'Slide left' },
+          { value: 'slide-right', label: 'Slide right' },
+          { value: 'slide-up', label: 'Slide up' },
+          { value: 'slide-down', label: 'Slide down' },
+        ]}
+        className="w-full"
+      />
+      <div className="text-[11px] text-muted-foreground">Present transition into this artboard from the previous one.</div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[11.5px] text-muted-foreground">Background</span>
@@ -575,8 +717,9 @@ function ArtboardPanel({ artboard, design }: { artboard: Artboard; design: Desig
 function ThemePanel({ design }: { design: Design }) {
   const change = useDesignEditor((s) => s.change);
   const theme = design.theme;
+  const { data: customFonts } = useFontsQuery();
   return (
-    <Section title="Theme">
+    <Section title="Theme" action={<ImportFontButton />}>
       <div className="grid grid-cols-2 gap-1.5" data-testid="theme-presets">
         {THEMES.map((preset) => (
           <button
@@ -620,9 +763,12 @@ function ThemePanel({ design }: { design: Design }) {
           <div key={key} className="flex items-center gap-2 text-[12px] text-fg-2">
             <span className="w-14 capitalize">{key}</span>
             <Select
-              value={FONTS.some((f) => f.name === theme.fonts[key]) ? theme.fonts[key] : FONTS[0].name}
+              value={FONTS.some((f) => f.name === theme.fonts[key]) || customFonts?.some((f) => f.family === theme.fonts[key]) ? theme.fonts[key] : FONTS[0].name}
               onChange={(font) => change((d) => (d.theme.fonts[key] = font))}
-              options={FONTS.map((f) => ({ value: f.name, label: <span style={{ fontFamily: `'${f.name}'` }}>{f.name}</span> }))}
+              options={[
+                ...FONTS.map((f) => ({ value: f.name, label: <span style={{ fontFamily: `'${f.name}'` }}>{f.name}</span> })),
+                ...(customFonts ?? []).map((f) => ({ value: f.family, label: <span style={{ fontFamily: `'${f.family}'` }}>{f.family} ✦</span> })),
+              ]}
               className="min-w-0 flex-1"
             />
           </div>

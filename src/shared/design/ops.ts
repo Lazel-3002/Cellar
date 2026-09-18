@@ -93,27 +93,34 @@ export function reorderElement(artboard: Artboard, id: string, change: OrderChan
   artboard.elements.splice(target, 0, el);
 }
 
+/** " → links to a3" / " → opens https://…", or "" when the element has no link. */
+function linkSuffix(el: DesignElement): string {
+  if (!el.link) return '';
+  return el.link.kind === 'artboard' ? ` → links to ${el.link.artboard}` : ` → opens ${el.link.url}`;
+}
+
 /** One line per element, for tool results and the prompt. */
 export function describeElement(el: DesignElement): string {
   const pos = `at ${Math.round(el.x)},${Math.round(el.y)} size ${Math.round(el.w)}×${Math.round(el.h)}`;
   const name = el.name ? ` [${el.name}]` : '';
+  const link = linkSuffix(el);
   switch (el.type) {
     case 'text': {
       const text = plainText(el.text).replace(/\s+/g, ' ').trim();
       const excerpt = text.length > 60 ? `${text.slice(0, 59)}…` : text;
-      return `${el.id} text${name} "${excerpt}" ${pos}, ${el.size}px${el.weight && el.weight >= 600 ? ' bold' : ''}${el.font ? ` ${el.font}` : ''}${el.color ? `, color ${el.color}` : ''}${el.list ? `, ${el.list} list` : ''}`;
+      return `${el.id} text${name} "${excerpt}" ${pos}, ${el.size}px${el.weight && el.weight >= 600 ? ' bold' : ''}${el.font ? ` ${el.font}` : ''}${el.color ? `, color ${el.color}` : ''}${el.list ? `, ${el.list} list` : ''}${link}`;
     }
     case 'rect':
     case 'ellipse':
-      return `${el.id} ${el.type}${name} ${pos}, fill ${el.gradient ? 'gradient' : el.fill ?? 'none'}${el.radius ? `, radius ${el.radius}` : ''}`;
+      return `${el.id} ${el.type}${name} ${pos}, fill ${el.gradient ? 'gradient' : el.fill ?? 'none'}${el.radius ? `, radius ${el.radius}` : ''}${link}`;
     case 'line':
-      return `${el.id} line${name} from ${Math.round(el.x)},${Math.round(el.y)} to ${Math.round(el.x + el.w)},${Math.round(el.y + el.h)}, ${el.stroke ?? 'muted'}`;
+      return `${el.id} line${name} from ${Math.round(el.x)},${Math.round(el.y)} to ${Math.round(el.x + el.w)},${Math.round(el.y + el.h)}, ${el.stroke ?? 'muted'}${link}`;
     case 'image':
-      return `${el.id} image${name} ${pos}${el.src ? '' : ' (empty placeholder)'}`;
+      return `${el.id} image${name} ${pos}${el.src ? '' : ' (empty placeholder)'}${link}`;
     case 'chart':
-      return `${el.id} chart${name} ${el.chart.kind} of ${el.chart.series.map((s) => s.name).join(', ')} (${el.chart.labels.length} labels) ${pos}`;
+      return `${el.id} chart${name} ${el.chart.kind} of ${el.chart.series.map((s) => s.name).join(', ')} (${el.chart.labels.length} labels) ${pos}${link}`;
     case 'svg':
-      return `${el.id} svg${name} ${pos}`;
+      return `${el.id} svg${name} ${pos}${link}`;
   }
 }
 

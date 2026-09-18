@@ -1,8 +1,19 @@
 import PptxGenJS from 'pptxgenjs';
+import { findArtboard } from '@shared/design/ops';
 import { inlineRuns, paragraphs } from '@shared/design/text';
 import { chartPalette, fontName, gradientCss, gradientStops, hex6, mixColors, parseRgb, resolveColor } from '@shared/design/theme';
 import type { Artboard, ChartElement, DesignElement, DesignTheme, TextElement } from '@shared/types/design';
 import type { ResolvedImage } from './images';
+
+/** A hotspot's `hyperlink` option, resolving an artboard link to the exported deck's own slide numbers (1-based). */
+function hyperlinkFor(artboards: Artboard[], link: DesignElement['link']): PptxGenJS.HyperlinkProps | undefined {
+  if (!link) return undefined;
+  if (link.kind === 'url') return link.url ? { url: link.url } : undefined;
+  const target = findArtboard({ artboards }, link.artboard);
+  if (!target) return undefined;
+  const slide = artboards.indexOf(target) + 1;
+  return slide > 0 ? { slide } : undefined;
+}
 
 export interface PptxAssets {
   image(src: string): Promise<ResolvedImage | null>;
@@ -20,7 +31,12 @@ function transparency(color: string, opacity = 1): number | undefined {
   return alpha >= 1 ? undefined : Math.round((1 - alpha) * 100);
 }
 
-function textRuns(el: TextElement): PptxGenJS.TextProps[] {
+/**
+ * `hyperlink` is passed in as each run's own option, not the shape's: pptxgenjs 4.0.1's `addText` never
+ * assigns a relationship id for a shape-level hyperlink (only `addShape`/`addImage` do), so a shape-level
+ * one silently renders a dangling `<a:hlinkClick>`. Per-run hyperlinks go through the working code path.
+ */
+function textRuns(el: TextElement, hyperlink: PptxGenJS.HyperlinkProps | undefined): PptxGenJS.TextProps[] {
   const lines = paragraphs(el.text);
   const out: PptxGenJS.TextProps[] = [];
   lines.forEach((line, li) => {
@@ -31,6 +47,7 @@ function textRuns(el: TextElement): PptxGenJS.TextProps[] {
         text: el.uppercase ? run.text.toUpperCase() : run.text,
         options: {
           ...(run.bold ? { bold: true } : {}),
+          ...(hyperlink ? { hyperlink } : {}),
           ...(last && li < lines.length - 1 ? { breakLine: true } : {}),
           ...(ri === 0 && el.list && line.trim() ? { bullet: el.list === 'number' ? { type: 'number' } : true } : {}),
           ...(ri === 0 && el.list ? { paraSpaceAfter: Math.round(el.size * 0.35 * 0.75) } : {}),
@@ -81,11 +98,12 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
     for (const el of artboard.elements) {
       if (el.hidden) continue;
       const rotate = el.rotation ? { rotate: el.rotation } : {};
+      const hyperlink = hyperlinkFor(artboards, el.link);
       switch (el.type) {
         case 'text': {
           const color = resolveColor(el.color, theme, 'text');
           const fill = el.fill ? resolveColor(el.fill, theme, 'transparent') : 'transparent';
-          slide.addText(textRuns(el), {
+          slide.addText(textRuns(el, hyperlink), {
             ...pos(el),
             ...rotate,
             fontFace: fontName(el.font, theme),
@@ -127,6 +145,7 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
             line,
             ...(rounded ? { rectRadius: inch(radiusPx) } : {}),
             ...(el.shadow ? { shadow: { type: 'outer', color: '000000', opacity: 0.2, blur: 8, offset: 3, angle: 90 } } : {}),
+            ...(hyperlink ? { hyperlink } : {}),
           });
           break;
         }
@@ -139,6 +158,7 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
             h: Math.max(0.001, inch(Math.abs(el.h))),
             flipH: el.w < 0 !== el.h < 0 && el.w !== 0 && el.h !== 0,
             line: { color: hex6(color), width: Math.max(0.25, pt(el.strokeWidth ?? 2)), ...(el.dashed ? { dashType: 'dash' } : {}) },
+            ...(hyperlink ? { hyperlink } : {}),
           });
           break;
         }
@@ -159,15 +179,20 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
             }
           }
           const box = pos(el);
-          const ratio = Math.min(box.w / natural.width, box.h / natural.height);
-          slide.addImage({
-            data,
-            ...rotate,
-            ...(el.fit === 'contain'
-              ? { x: box.x + (box.w - natural.width * ratio) / 2, y: box.y + (box.h - natural.height * ratio) / 2, w: natural.width * ratio, h: natural.height * ratio }
-              : { x: box.x, y: box.y, w: natural.width * (box.w / natural.width), h: natural.height * (box.w / natural.width), sizing: { type: 'cover', w: box.w, h: box.h } }),
-            ...(el.alt ? { altText: el.alt } : {}),
-          });
+          const crop = el.crop && el.crop.w > 0 && el.crop.h > 0 ? el.crop : null;
+          let placement: Pick<PptxGenJS.ImageProps, 'x' | 'y' | 'w' | 'h' | 'sizing'>;
+          if (crop) {
+            // pptxgenjs computes the crop rect as fractions of the image's own w/h, so the outer w/h here stand for
+            // "the full source image at the scale where the crop rect equals our display box" — sizing.w/h is the
+            // box actually shown, and sizing.x/y is the crop offset in that same scale.
+            placement = { x: box.x, y: box.y, w: box.w / crop.w, h: box.h / crop.h, sizing: { type: 'crop', x: (crop.x * box.w) / crop.w, y: (crop.y * box.h) / crop.h, w: box.w, h: box.h } };
+          } else if (el.fit === 'contain') {
+            const ratio = Math.min(box.w / natural.width, box.h / natural.height);
+            placement = { x: box.x + (box.w - natural.width * ratio) / 2, y: box.y + (box.h - natural.height * ratio) / 2, w: natural.width * ratio, h: natural.height * ratio };
+          } else {
+            placement = { x: box.x, y: box.y, w: natural.width * (box.w / natural.width), h: natural.height * (box.w / natural.width), sizing: { type: 'cover', w: box.w, h: box.h } };
+          }
+          slide.addImage({ data, ...rotate, ...placement, ...(el.alt ? { altText: el.alt } : {}), ...(hyperlink ? { hyperlink } : {}) });
           break;
         }
         case 'chart': {
@@ -214,7 +239,7 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
         }
         case 'svg': {
           const png = assets.rasterize ? await assets.rasterize(el.svg, el.w * 2, el.h * 2) : null;
-          slide.addImage({ data: png ? `image/png;base64,${png.toString('base64')}` : `image/svg+xml;base64,${Buffer.from(el.svg).toString('base64')}`, ...pos(el), ...rotate });
+          slide.addImage({ data: png ? `image/png;base64,${png.toString('base64')}` : `image/svg+xml;base64,${Buffer.from(el.svg).toString('base64')}`, ...pos(el), ...rotate, ...(hyperlink ? { hyperlink } : {}) });
           break;
         }
       }

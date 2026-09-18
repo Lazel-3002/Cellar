@@ -1,10 +1,18 @@
-import type { Artboard, Design, DesignElement, DesignElementType, DesignFormat, DesignTheme, Gradient, TextElement } from '../types/design';
+import type { Artboard, Design, DesignElement, DesignElementType, DesignFormat, DesignTheme, DesignTransition, Gradient, ImageCrop, ImageFilters, LinkTarget, TextElement } from '../types/design';
 import { normalizeChart } from './charts';
 import { sanitizeSvg } from './svg';
 import { estimateTextHeight } from './text';
 import { customizeTheme, defaultTheme, fontName, normalizeColor, parseSize, THEMES } from './theme';
 
 export const LIMITS = { artboards: 80, elements: 400, text: 20_000, dataUrl: 3_000_000 };
+
+const TRANSITIONS: DesignTransition[] = ['fade', 'slide-left', 'slide-right', 'slide-up', 'slide-down'];
+
+/** A `DesignTransition` from loose text ("fade", "slide left", "slideLeft"…), or undefined when it doesn't match one. */
+export function normalizeTransition(value: unknown): DesignTransition | undefined {
+  const text = String(value ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+  return (TRANSITIONS as string[]).includes(text) ? (text as DesignTransition) : undefined;
+}
 
 const TYPE_ALIASES: Record<string, DesignElementType> = {
   text: 'text',
@@ -201,6 +209,57 @@ function color(value: unknown): string | undefined {
   return normalizeColor(value) ?? undefined;
 }
 
+/** A hotspot target: `{kind, artboard}`/`{kind, url}`, or the shorthand `href`/`url` fields meaning a URL link. */
+function linkTarget(raw: Record<string, unknown>): LinkTarget | undefined {
+  const value = raw.link;
+  if (value && typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    const kind = String(v.kind ?? (v.artboard !== undefined ? 'artboard' : v.url !== undefined ? 'url' : '')).toLowerCase();
+    if (kind === 'artboard' && typeof v.artboard === 'string' && v.artboard.trim()) return { kind: 'artboard', artboard: v.artboard.trim().slice(0, 80) };
+    if (kind === 'url' && typeof v.url === 'string' && v.url.trim()) return { kind: 'url', url: v.url.trim().slice(0, 2000) };
+    return undefined;
+  }
+  // Not `url`: that key is already claimed as an alias for an image's own `src`.
+  if (typeof raw.href === 'string' && raw.href.trim()) return { kind: 'url', url: raw.href.trim().slice(0, 2000) };
+  return undefined;
+}
+
+/** A crop rectangle: 0–1 fractions of the source image (or 0–100 as percentages), kept inside the image's bounds. */
+function imageCrop(value: unknown): ImageCrop | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const v = value as Record<string, unknown>;
+  const frac = (n: unknown, fallback: number) => {
+    const num = Number(n);
+    return Number.isFinite(num) ? clamp(num > 1 ? num / 100 : num, 0, 1) : fallback;
+  };
+  const w = frac(v.w ?? v.width, 1);
+  const h = frac(v.h ?? v.height, 1);
+  if (w <= 0 || h <= 0) return undefined;
+  const x = clamp(frac(v.x, 0), 0, 1 - w);
+  const y = clamp(frac(v.y, 0), 0, 1 - h);
+  return { x, y, w, h };
+}
+
+/** Brightness/contrast/saturate as CSS `filter()` multipliers (1 = unchanged). */
+function imageFilters(value: unknown): ImageFilters | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const v = value as Record<string, unknown>;
+  const num = (n: unknown) => {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return undefined;
+    // A value over 3 is almost certainly a percentage ("120" meaning 120%) rather than a literal multiplier.
+    return clamp(x > 3 ? x / 100 : x, 0, 3);
+  };
+  const out: ImageFilters = {};
+  const brightness = num(v.brightness);
+  const contrast = num(v.contrast);
+  const saturate = num(v.saturate ?? v.saturation);
+  if (brightness !== undefined) out.brightness = brightness;
+  if (contrast !== undefined) out.contrast = contrast;
+  if (saturate !== undefined) out.saturate = saturate;
+  return Object.keys(out).length ? out : undefined;
+}
+
 function resolveImageSrc(value: unknown): string {
   if (typeof value !== 'string') return '';
   const src = value.trim();
@@ -235,6 +294,7 @@ export function normalizeElement(input: unknown, ctx: NormalizeContext): { eleme
     locked: bool(raw.locked) || undefined,
     hidden: bool(raw.hidden) || undefined,
     groupId: typeof raw.groupId === 'string' && raw.groupId.trim() ? raw.groupId.trim().replace(/[^\w-]/g, '').slice(0, 40) : undefined,
+    link: linkTarget(raw),
   };
 
   let element: DesignElement;
@@ -346,6 +406,8 @@ export function normalizeElement(input: unknown, ctx: NormalizeContext): { eleme
       fit,
       ...(length(raw.radius, 1) !== undefined ? { radius: clamp(length(raw.radius, 1)!, 0, 5000) } : {}),
       ...(typeof raw.alt === 'string' ? { alt: raw.alt.slice(0, 200) } : {}),
+      ...(imageCrop(raw.crop) ? { crop: imageCrop(raw.crop) } : {}),
+      ...(imageFilters(raw.filters) ? { filters: imageFilters(raw.filters) } : {}),
     };
     hRaw = element.h;
   } else if (type === 'chart') {
@@ -447,6 +509,7 @@ export function normalizeArtboard(raw: unknown, theme: DesignTheme, ids: Set<str
     ...(g ? { gradient: g } : {}),
     elements,
     ...(typeof input.notes === 'string' && input.notes.trim() ? { notes: input.notes.slice(0, 10_000) } : {}),
+    ...(normalizeTransition(input.transition) ? { transition: normalizeTransition(input.transition) } : {}),
   };
 }
 

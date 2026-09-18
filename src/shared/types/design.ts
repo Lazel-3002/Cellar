@@ -50,6 +50,14 @@ export interface Gradient {
   to?: string;
 }
 
+/** Where a hotspot goes when clicked, in Present and in the exported HTML page. */
+export interface LinkTarget {
+  kind: 'artboard' | 'url';
+  /** artboard: id, name or 1-based number (resolved lazily, so it never goes stale if artboards are renamed). */
+  artboard?: string;
+  url?: string;
+}
+
 interface ElementBase {
   id: string;
   /** Optional label shown in the layers list. */
@@ -66,6 +74,8 @@ interface ElementBase {
   hidden?: boolean;
   /** Elements sharing an id are one group: clicking any member selects them all, and they move and rotate together. */
   groupId?: string;
+  /** Makes this element a clickable hotspot in Present and in exported HTML/PDF/PowerPoint. */
+  link?: LinkTarget;
 }
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
@@ -117,13 +127,31 @@ export interface LineElement extends ElementBase {
   dashed?: boolean;
 }
 
+export interface ImageCrop {
+  /** 0–1 fractions of the source image's own width/height. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface ImageFilters {
+  /** 1 = unchanged, like the CSS filter functions they map to. */
+  brightness?: number;
+  contrast?: number;
+  saturate?: number;
+}
+
 export interface ImageElement extends ElementBase {
   type: 'image';
   /** `attachment:<id>` for images added to Cellar, or a data: URL. Empty shows a placeholder. */
   src: string;
+  /** Ignored once `crop` is set: cropping always fills the frame exactly. */
   fit?: 'cover' | 'contain';
   radius?: number;
   alt?: string;
+  crop?: ImageCrop;
+  filters?: ImageFilters;
 }
 
 export type ChartKind = 'bar' | 'hbar' | 'line' | 'area' | 'pie' | 'donut';
@@ -166,6 +194,8 @@ export interface SvgElement extends ElementBase {
 export type DesignElement = TextElement | ShapeElement | LineElement | ImageElement | ChartElement | SvgElement;
 export type DesignElementType = DesignElement['type'];
 
+export type DesignTransition = 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down';
+
 export interface Artboard {
   id: string;
   name: string;
@@ -177,6 +207,8 @@ export interface Artboard {
   elements: DesignElement[];
   /** Speaker notes for slides. */
   notes?: string;
+  /** How Present transitions into this artboard from the previous one; unset plays instantly. */
+  transition?: DesignTransition;
 }
 
 export interface Design {
@@ -232,6 +264,24 @@ export interface DesignExportRequest {
   artboardIds?: string[];
   /** PNG scale factor (default 2). */
   scale?: number;
+}
+
+/** A font imported into Cellar (a file or a Google Font), usable by name anywhere a font is picked. */
+export interface FontSummary {
+  id: string;
+  family: string;
+  source: 'upload' | 'google';
+  size: number;
+  createdAt: number;
+}
+
+/** One saved snapshot of a design, listed in the version history panel (without the full `data`). */
+export interface DesignVersionSummary {
+  id: string;
+  version: number;
+  source: 'agent' | 'user';
+  name: string | null;
+  createdAt: number;
 }
 
 export interface DesignChangedEvent {

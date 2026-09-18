@@ -1,7 +1,7 @@
 import { normalizeDesign } from '@shared/design/normalize';
 import { defaultTheme, FORMAT_DEFAULTS, themeById } from '@shared/design/theme';
 import type { TaskStatus } from '@shared/types/agent';
-import type { Artboard, Design, DesignFormat, DesignStartOptions, DesignSummary, DesignTheme } from '@shared/types/design';
+import type { Artboard, Design, DesignFormat, DesignStartOptions, DesignSummary, DesignTheme, DesignVersionSummary } from '@shared/types/design';
 import { all, get, run } from '../db/client';
 import { bus } from '../lib/events';
 import { newId, safeJsonParse } from '../lib/util';
@@ -98,16 +98,53 @@ export function listDesigns(): DesignSummary[] {
 
 function write(design: Design, source: 'agent' | 'user'): Design {
   const next = { ...design, version: design.version + 1, updatedAt: Date.now() };
-  run(
-    'UPDATE designs SET format = ?, data = ?, version = ?, updated_at = ? WHERE id = ?',
-    next.format,
-    JSON.stringify({ theme: next.theme, artboards: next.artboards } satisfies StoredData),
-    next.version,
-    next.updatedAt,
-    next.id,
-  );
+  const data = JSON.stringify({ theme: next.theme, artboards: next.artboards } satisfies StoredData);
+  run('UPDATE designs SET format = ?, data = ?, version = ?, updated_at = ? WHERE id = ?', next.format, data, next.version, next.updatedAt, next.id);
+  run('INSERT INTO design_versions (id, design_id, version, data, source, name, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)', newId(), next.id, next.version, data, source, next.updatedAt);
   bus.emit('design:changed', { designId: next.id, conversationId: next.conversationId, version: next.version, source });
   return next;
+}
+
+interface DesignVersionRow {
+  id: string;
+  version: number;
+  source: 'agent' | 'user';
+  name: string | null;
+  created_at: number;
+}
+
+/** Every saved snapshot of a design, newest first (without the full data, which can be large). */
+export function listVersions(designId: string): DesignVersionSummary[] {
+  return all<DesignVersionRow>('SELECT id, version, source, name, created_at FROM design_versions WHERE design_id = ? ORDER BY version DESC', designId).map((row) => ({
+    id: row.id,
+    version: row.version,
+    source: row.source,
+    name: row.name,
+    createdAt: row.created_at,
+  }));
+}
+
+/** One snapshot's full design content, as it stood at that version. */
+export function getVersionSnapshot(designId: string, versionRowId: string): Design {
+  const current = getDesign(designId);
+  const row = get<{ data: string }>('SELECT data FROM design_versions WHERE id = ? AND design_id = ?', versionRowId, designId);
+  if (!row) throw new Error('That version is gone.');
+  const data = safeJsonParse<StoredData>(row.data, { theme: defaultTheme(), artboards: [] });
+  return normalizeDesign({ title: current.title, format: current.format, theme: data.theme, artboards: data.artboards }, { id: current.id, conversationId: current.conversationId, createdAt: current.createdAt });
+}
+
+/** Restores an old snapshot by writing it as a new, latest version — history is never rewritten in place. */
+export function restoreVersion(designId: string, versionRowId: string): Design {
+  const snapshot = getVersionSnapshot(designId, versionRowId);
+  const current = getDesign(designId);
+  return write({ ...snapshot, version: current.version }, 'user');
+}
+
+/** Gives a saved version a custom label (or clears it back to the auto-generated one). */
+export function renameVersion(designId: string, versionRowId: string, name: string | null): void {
+  const trimmed = name?.trim().slice(0, 80) || null;
+  const { changes } = run('UPDATE design_versions SET name = ? WHERE id = ? AND design_id = ?', trimmed, versionRowId, designId);
+  if (changes === 0) throw new Error('That version is gone.');
 }
 
 /** Saves a design edited in the canvas. */

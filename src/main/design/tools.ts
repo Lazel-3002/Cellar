@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { CHART_KINDS } from '@shared/design/charts';
 import { checkArtboard } from '@shared/design/check';
 import { LAYOUT_NAMES, layoutContent, layoutName, layoutsFor } from '@shared/design/layouts';
-import { canonicalFields, elementIds, newArtboardId, normalizeElement, patchElement, LIMITS } from '@shared/design/normalize';
+import { canonicalFields, elementIds, newArtboardId, normalizeElement, normalizeTransition, patchElement, LIMITS } from '@shared/design/normalize';
 import { buildLayout, describeArtboard, describeElement, duplicateArtboard, findArtboard, findElement, reorderElement, resizeArtboard, type OrderChange } from '@shared/design/ops';
 import { ARTBOARD_PRESETS, customizeTheme, FORMAT_DEFAULTS, normalizeColor, parseSize, themeById, THEMES } from '@shared/design/theme';
 import type { Artboard, Design, DesignElement } from '@shared/types/design';
@@ -55,6 +55,8 @@ const elementSchema = z
     stroke: z.string().optional().describe('Border or line color'),
     radius: num.optional().describe('Corner radius in px'),
     src: z.string().optional().describe('image: "attachment:<id>" of an image the user attached; empty for a placeholder'),
+    crop: z.looseObject({ x: num.optional(), y: num.optional(), w: num.optional(), h: num.optional() }).optional().describe('image: crop rectangle as 0-1 (or 0-100) fractions of the source image; overrides fit'),
+    filters: z.looseObject({ brightness: num.optional(), contrast: num.optional(), saturate: num.optional() }).optional().describe('image: 1 (or 100%) is unchanged'),
     chart: z
       .looseObject({
         kind: z.string().optional().describe(CHART_KINDS.join(', ')),
@@ -66,6 +68,10 @@ const elementSchema = z
       })
       .optional(),
     svg: z.string().optional().describe('svg: a complete <svg> for an icon, logo or illustration'),
+    link: z
+      .looseObject({ kind: z.string().optional().describe('"artboard" or "url"'), artboard: z.string().optional().describe('Target artboard id, name or number'), url: z.string().optional() })
+      .optional()
+      .describe('Makes this element a clickable hotspot in Present and in exported HTML/PDF/PowerPoint: jump to another artboard, or open a URL'),
   })
   .describe('An element. Coordinates are pixels from the artboard top-left.');
 
@@ -196,6 +202,7 @@ export const createArtboardTool = defineTool({
     position: z.number().int().optional().describe('1-based position (default: last)'),
     copy_of: z.string().optional().describe('Duplicate this artboard (id or name) instead of starting empty'),
     notes: z.string().optional().describe('Speaker notes'),
+    transition: z.string().optional().describe('How Present transitions into this artboard: none (default), fade, slide-left, slide-right, slide-up or slide-down'),
   }),
   async run(args, ctx) {
     const errors: string[] = [];
@@ -220,6 +227,11 @@ export const createArtboardTool = defineTool({
       }
       if (args.background && normalizeColor(args.background)) artboard.background = normalizeColor(args.background)!;
       if (args.notes?.trim()) artboard.notes = args.notes.slice(0, 10_000);
+      if (args.transition) {
+        const transition = normalizeTransition(args.transition);
+        if (transition) artboard.transition = transition;
+        else errors.push(`Unknown transition "${args.transition}". Use none, fade, slide-left, slide-right, slide-up or slide-down.`);
+      }
       const at = args.position ? Math.max(0, Math.min(d.artboards.length, args.position - 1)) : d.artboards.length;
       d.artboards.splice(at, 0, artboard);
       addElements(d, artboard, args.elements, errors);
@@ -247,6 +259,7 @@ export const updateArtboardTool = defineTool({
     size: z.string().optional().describe('Preset or "WIDTHxHEIGHT"'),
     background: z.string().optional(),
     notes: z.string().optional(),
+    transition: z.string().optional().describe('How Present transitions into this artboard: none, fade, slide-left, slide-right, slide-up or slide-down'),
     layout: z.string().optional().describe('Rebuild from this layout (replaces the elements)'),
     content: contentSchema.optional(),
     elements: z.array(elementSchema).optional().describe('Replace all elements with these'),
@@ -268,6 +281,14 @@ export const updateArtboardTool = defineTool({
         } else errors.push(`"${args.background}" is not a color; use a theme color name or hex.`);
       }
       if (args.notes !== undefined) artboard.notes = args.notes.slice(0, 10_000) || undefined;
+      if (args.transition !== undefined) {
+        if (args.transition.trim().toLowerCase() === 'none') artboard.transition = undefined;
+        else {
+          const transition = normalizeTransition(args.transition);
+          if (transition) artboard.transition = transition;
+          else errors.push(`Unknown transition "${args.transition}". Use none, fade, slide-left, slide-right, slide-up or slide-down.`);
+        }
+      }
       const layout = layoutName(args.layout);
       if (args.layout && !layout) errors.push(`Unknown layout "${args.layout}". Layouts: ${LAYOUT_NAMES.join(', ')}.`);
       if (layout || args.elements) {

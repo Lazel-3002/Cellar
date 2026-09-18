@@ -7,7 +7,7 @@ import { ARTBOARD_PRESETS, fontName } from '@shared/design/theme';
 import type { Artboard, Design, DesignElement, LineElement, TextElement } from '@shared/types/design';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
 import { cn } from '@/lib/utils';
-import { artboardOffsets, useDesignEditor } from '@/stores/design';
+import { artboardOffsets, useDesignEditor, useDesignLayout } from '@/stores/design';
 import { ArtboardView } from './ArtboardView';
 import { addArtboard, addElement, expandToGroups, imagesFromFiles, isWholeGroup, placeImage } from './actions';
 
@@ -97,6 +97,8 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
   const panY = useDesignEditor((s) => s.panY);
   const tool = useDesignEditor((s) => s.tool);
   const editingTextId = useDesignEditor((s) => s.editingTextId);
+  const showGrid = useDesignLayout((s) => s.showGrid);
+  const gridSize = useDesignLayout((s) => s.gridSize);
   const offsets = useMemo(() => artboardOffsets(design), [design]);
   const drag = useRef<Drag | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
@@ -257,6 +259,10 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
       if (exclude.has(el.id) || el.hidden || el.type === 'line') continue;
       xs.push(el.x, el.x + el.w / 2, el.x + el.w);
       ys.push(el.y, el.y + el.h / 2, el.y + el.h);
+    }
+    if (showGrid) {
+      for (const edge of [box.x, box.x + box.w / 2, box.x + box.w]) xs.push(Math.round(edge / gridSize) * gridSize);
+      for (const edge of [box.y, box.y + box.h / 2, box.y + box.h]) ys.push(Math.round(edge / gridSize) * gridSize);
     }
     let bestX: { d: number; at: number } | null = null;
     for (const edge of [box.x, box.x + box.w / 2, box.x + box.w]) for (const c of xs) if (Math.abs(c - edge) <= threshold && (!bestX || Math.abs(c - edge) < Math.abs(bestX.d))) bestX = { d: c - edge, at: c };
@@ -531,6 +537,16 @@ export function DesignCanvas({ containerRef, running }: { containerRef: React.Re
           <div key={artboard.id} className="absolute top-0" style={{ left: offsets.get(artboard.id), width: artboard.width, height: artboard.height, boxShadow: `0 ${2 / zoom}px ${18 / zoom}px rgba(0,0,0,0.22)` }}>
             <ArtboardView artboard={artboard} theme={design.theme} flagOverflow editingId={editingTextId} />
             {editingTextId && artboard.elements.some((el) => el.id === editingTextId) && <TextEditor artboard={artboard} element={artboard.elements.find((el) => el.id === editingTextId) as TextElement} />}
+            {showGrid && (
+              <div
+                data-canvas-ui
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  backgroundImage: 'linear-gradient(to right, rgba(127,127,127,0.4) 1px, transparent 1px), linear-gradient(to bottom, rgba(127,127,127,0.4) 1px, transparent 1px)',
+                  backgroundSize: `${gridSize}px ${gridSize}px`,
+                }}
+              />
+            )}
           </div>
         ))}
       </div>

@@ -172,11 +172,18 @@ interface DesignLayoutState {
   chatWidth: number;
   inspectorTab: 'properties' | 'layers';
   sidebar: boolean;
+  /** Canvas-only aids: never saved with the design, never seen by the model. */
+  showGrid: boolean;
+  gridSize: number;
+  showRulers: boolean;
   setChatOpen: (open: boolean) => void;
   setInspectorOpen: (open: boolean) => void;
   setChatWidth: (width: number) => void;
   setInspectorTab: (tab: 'properties' | 'layers') => void;
   setSidebar: (open: boolean) => void;
+  setShowGrid: (show: boolean) => void;
+  setGridSize: (size: number) => void;
+  setShowRulers: (show: boolean) => void;
 }
 
 export const useDesignLayout = create<DesignLayoutState>()(
@@ -187,12 +194,22 @@ export const useDesignLayout = create<DesignLayoutState>()(
       chatWidth: 380,
       inspectorTab: 'properties',
       sidebar: false,
+      showGrid: false,
+      gridSize: 20,
+      showRulers: false,
       setChatOpen: (chatOpen) => set({ chatOpen }),
       setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
       setChatWidth: (chatWidth) => set({ chatWidth: Math.max(300, Math.min(640, chatWidth)) }),
       setInspectorTab: (inspectorTab) => set({ inspectorTab }),
       setSidebar: (sidebar) => set({ sidebar }),
+      setShowGrid: (showGrid) => set({ showGrid }),
+      setGridSize: (size) => set({ gridSize: Math.max(4, Math.min(500, Math.round(size))) }),
+      setShowRulers: (showRulers) => set({ showRulers }),
     }),
-    { name: 'cellar-design-layout', storage: createJSONStorage(() => localStorage), partialize: (s) => ({ chatOpen: s.chatOpen, inspectorOpen: s.inspectorOpen, chatWidth: s.chatWidth, inspectorTab: s.inspectorTab }) },
+    {
+      name: 'cellar-design-layout',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ chatOpen: s.chatOpen, inspectorOpen: s.inspectorOpen, chatWidth: s.chatWidth, inspectorTab: s.inspectorTab, showGrid: s.showGrid, gridSize: s.gridSize, showRulers: s.showRulers }),
+    },
   ),
 );

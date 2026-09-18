@@ -5,9 +5,21 @@ import { artboardSvg, designHtml } from '@shared/design/render';
 import type { Design, DesignExportRequest } from '@shared/types/design';
 import { newId } from '../lib/util';
 import { paths } from '../system/paths';
+import { fontFaceCss } from './fonts';
 import { resolveImage, toDataUrl } from './images';
 import { artboardsToPptx } from './pptx';
 import { getDesign } from './store';
+
+/** Every font family this design actually refers to (the theme's, plus any element's own), so exports only embed what they use. */
+export function usedFontFamilies(design: Design): string[] {
+  const families = new Set<string>([design.theme.fonts.heading, design.theme.fonts.body]);
+  for (const artboard of design.artboards) {
+    for (const el of artboard.elements) {
+      if ((el.type === 'text' || el.type === 'chart') && el.font && el.font !== 'heading' && el.font !== 'body') families.add(el.font);
+    }
+  }
+  return [...families];
+}
 
 /** Offline, script-free rendering: only file: and data: URLs load. */
 export const RENDER_PARTITION = 'cellar-pdf';
@@ -134,8 +146,9 @@ export async function artboardPreview(design: Design, artboardId: string, maxEdg
   try {
     const urls = await imageUrls(design, [artboardId]);
     const imageUrl = (src: string) => urls.get(src) ?? '';
+    const fontFaces = fontFaceCss(usedFontFamilies(design));
     const scale = Math.min(1, maxEdge / Math.max(board.width, board.height));
-    const png = await renderPng(designHtml(design, [artboardId], { mode: 'png', imageUrl }), board.width, board.height, scale);
+    const png = await renderPng(designHtml(design, [artboardId], { mode: 'png', imageUrl, fontFaces }), board.width, board.height, scale);
     return png.toString('base64');
   } catch {
     return null;
@@ -174,17 +187,18 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
 
   const urls = await imageUrls(design, ids);
   const imageUrl = (src: string) => urls.get(src) ?? '';
+  const fontFaces = fontFaceCss(usedFontFamilies(design));
   if (request.format === 'pdf') {
     const path = await ask(`${title}.pdf`, [{ name: 'PDF', extensions: ['pdf'] }]);
     if (!path) return null;
-    await writeFile(path, await renderPdf(designHtml(design, ids, { mode: 'pdf', imageUrl })));
+    await writeFile(path, await renderPdf(designHtml(design, ids, { mode: 'pdf', imageUrl, fontFaces })));
     return path;
   }
 
   if (request.format === 'html') {
     const path = await ask(`${title}.html`, [{ name: 'HTML page', extensions: ['html'] }]);
     if (!path) return null;
-    await writeFile(path, designHtml(design, ids, { mode: 'html', imageUrl }), 'utf8');
+    await writeFile(path, designHtml(design, ids, { mode: 'html', imageUrl, fontFaces }), 'utf8');
     return path;
   }
 
@@ -200,7 +214,7 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
       const board = boards[0];
       const path = await ask(`${title} - ${fileSafe(board.name)}.svg`, [{ name: 'SVG image', extensions: ['svg'] }]);
       if (!path) return null;
-      await writeFile(path, artboardSvg(board, design.theme, { imageUrl }), 'utf8');
+      await writeFile(path, artboardSvg(board, design.theme, { imageUrl, fontFaces }), 'utf8');
       return path;
     }
     const folder = await askFolder('Choose a folder for the SVG files');
@@ -208,7 +222,7 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
     await mkdir(folder, { recursive: true });
     for (const [i, board] of boards.entries()) {
       const name = `${String(i + 1).padStart(2, '0')} ${fileSafe(board.name)}.svg`;
-      await writeFile(join(folder, name), artboardSvg(board, design.theme, { imageUrl }), 'utf8');
+      await writeFile(join(folder, name), artboardSvg(board, design.theme, { imageUrl, fontFaces }), 'utf8');
     }
     return folder;
   }
@@ -218,7 +232,7 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
     const board = boards[0];
     const path = await ask(`${title} - ${fileSafe(board.name)}.png`, [{ name: 'PNG image', extensions: ['png'] }]);
     if (!path) return null;
-    await writeFile(path, await renderPng(designHtml(design, [board.id], { mode: 'png', imageUrl }), board.width, board.height, scale));
+    await writeFile(path, await renderPng(designHtml(design, [board.id], { mode: 'png', imageUrl, fontFaces }), board.width, board.height, scale));
     return path;
   }
   const folder = await askFolder('Choose a folder for the PNG files');
@@ -226,7 +240,7 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
   await mkdir(folder, { recursive: true });
   for (const [i, board] of boards.entries()) {
     const name = `${String(i + 1).padStart(2, '0')} ${fileSafe(board.name)}.png`;
-    await writeFile(join(folder, name), await renderPng(designHtml(design, [board.id], { mode: 'png', imageUrl }), board.width, board.height, scale));
+    await writeFile(join(folder, name), await renderPng(designHtml(design, [board.id], { mode: 'png', imageUrl, fontFaces }), board.width, board.height, scale));
   }
   return folder;
 }

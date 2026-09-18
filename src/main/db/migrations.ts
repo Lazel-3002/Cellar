@@ -287,4 +287,29 @@ export const migrations: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  /* 9: Design version history */ `
+  CREATE TABLE design_versions (
+    id TEXT PRIMARY KEY,
+    design_id TEXT NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    source TEXT NOT NULL,
+    name TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX design_versions_design ON design_versions(design_id, version DESC);
+  `,
+  /* 10: Custom fonts for Design */ `
+  CREATE TABLE fonts (
+    id TEXT PRIMARY KEY,
+    family TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_ref TEXT,
+    mime TEXT NOT NULL,
+    data BLOB NOT NULL,
+    size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX fonts_family ON fonts(family);
+  `,
 ];

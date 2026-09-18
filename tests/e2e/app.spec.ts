@@ -781,11 +781,49 @@ test('design: a model builds slides on the canvas, the user edits them and expor
     await expect(edited).toHaveCSS('color', 'rgb(217, 45, 32)');
     await win.screenshot({ path: join(project, 'test-results', 'e2e-design.png') });
 
+    // The grid toggle is canvas-only: it does not touch the saved design.
+    const gridButton = win.getByRole('button', { name: 'Grid  G' });
+    await gridButton.click();
+    await expect(gridButton).toHaveClass(/bg-selected/);
+    await win.keyboard.press('g');
+    await expect(gridButton).not.toHaveClass(/bg-selected/);
+
+    // A Present transition on the artboard, set from the Inspector.
+    await win.getByTestId('artboard-label').first().click();
+    await win.getByRole('combobox').filter({ hasText: 'No transition' }).click();
+    await win.getByRole('option', { name: 'Fade' }).click();
+    await win.keyboard.press('F5');
+    await expect(win.getByTestId('present')).toBeVisible();
+    await win.keyboard.press('Escape');
+    await expect(win.getByTestId('present')).toBeHidden();
+
+    // Version history lists both the model's and the user's saves.
+    await win.getByTestId('design-title').click();
+    await win.getByRole('menuitem', { name: 'Version history' }).click();
+    await expect(win.getByText('by the model').first()).toBeVisible({ timeout: 10_000 });
+    await expect(win.getByText('by you').first()).toBeVisible();
+    await win.keyboard.press('Escape');
+
+    // A hotspot: link the title to the other artboard, then click it in Present to jump there.
+    await edited.click();
+    await win.getByTestId('link-kind').click();
+    await win.getByRole('option', { name: 'Jump to artboard' }).click();
+    await win.getByTestId('link-artboard').click();
+    await win.getByRole('option', { name: 'Growth' }).click();
+    await win.keyboard.press('F5');
+    const present = win.getByTestId('present');
+    await expect(present).toBeVisible();
+    await present.getByText('Bean Club Co.').click();
+    await expect(present.getByText('Members per month')).toBeVisible();
+    await win.keyboard.press('Escape');
+    await expect(present).toBeHidden();
+
     // Exports go through the save dialog.
     const pdf = join(out, 'deck.pdf');
     const pptx = join(out, 'deck.pptx');
     const png = join(out, 'cover.png');
-    for (const [label, file] of [['PDF (all artboards)', pdf], ['PowerPoint (.pptx)', pptx], ['PNG (selected artboard)', png]] as const) {
+    const html = join(out, 'deck.html');
+    for (const [label, file] of [['PDF (all artboards)', pdf], ['PowerPoint (.pptx)', pptx], ['PNG (selected artboard)', png], ['HTML page (every artboard)', html]] as const) {
       await app.evaluate(({ dialog }, target) => {
         dialog.showSaveDialog = (async () => ({ canceled: false, filePath: target })) as unknown as typeof dialog.showSaveDialog;
       }, file);
@@ -798,6 +836,7 @@ test('design: a model builds slides on the canvas, the user edits them and expor
     expect(pngBytes.readUInt32BE(16)).toBeGreaterThan(1000);
     expect(pngBytes.readUInt32BE(16) / pngBytes.readUInt32BE(20)).toBeCloseTo(16 / 9, 1);
     expect(readFileSync(pptx).subarray(0, 2).toString()).toBe('PK');
+    expect(readFileSync(html, 'utf8')).toContain('<a href="#a2"');
     const conversationId = (await win.evaluate(() => location.hash)).split('/').pop()!;
     const saved = await ipc<{ artboards: Array<{ elements: Array<{ type: string; text?: string; color?: string }> }> }>('design:get', conversationId);
     expect(saved.artboards[0].elements.find((e) => e.text === 'Bean Club Co.')?.color).toBe('#D92D20');

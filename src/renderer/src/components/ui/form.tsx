@@ -66,10 +66,11 @@ export interface SelectOption<T extends string> {
   description?: string;
 }
 
-export function Select<T extends string>({ value, onChange, options, className, disabled, placeholder }: { value: T; onChange: (v: T) => void; options: SelectOption<T>[]; className?: string; disabled?: boolean; placeholder?: string }) {
+export function Select<T extends string>({ value, onChange, options, className, disabled, placeholder, testId }: { value: T; onChange: (v: T) => void; options: SelectOption<T>[]; className?: string; disabled?: boolean; placeholder?: string; testId?: string }) {
   return (
     <RadixSelect.Root value={value} onValueChange={(v) => onChange(v as T)} disabled={disabled}>
       <RadixSelect.Trigger
+        data-testid={testId}
         className={cn(
           'no-drag inline-flex h-8 min-w-28 items-center justify-between gap-2 rounded-lg border border-composer-border bg-composer px-2.5 text-[13px] text-foreground outline-none data-[disabled]:opacity-40',
           className,

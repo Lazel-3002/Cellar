@@ -1,6 +1,6 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { chartSvg } from '@shared/design/charts';
-import { artboardStyle, boxStyle, imageFrameStyle, lineSvg, placeholderSvg, shapeStyle, textStyle } from '@shared/design/render';
+import { artboardStyle, boxStyle, imageFrameStyle, imageStyle, lineSvg, placeholderSvg, shapeStyle, textStyle } from '@shared/design/render';
 import { svgDataUrl } from '@shared/design/svg';
 import { inlineRuns, paragraphs } from '@shared/design/text';
 import { fontName } from '@shared/design/theme';
@@ -51,9 +51,11 @@ interface ElementViewProps {
   /** Outline text boxes whose text does not fit (canvas only). */
   flagOverflow?: boolean;
   editing?: boolean;
+  /** Present-mode only: clicking a hotspot jumps to another artboard or opens a URL, instead of selecting it. */
+  onElementClick?: (el: DesignElement) => void;
 }
 
-export const ElementView = memo(function ElementView({ el, theme, flagOverflow, editing }: ElementViewProps) {
+export const ElementView = memo(function ElementView({ el, theme, flagOverflow, editing, onElementClick }: ElementViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
   useLayoutEffect(() => {
@@ -62,26 +64,39 @@ export const ElementView = memo(function ElementView({ el, theme, flagOverflow, 
     setOverflow(node.scrollHeight > node.clientHeight + Math.max(2, el.size * 0.15));
   }, [flagOverflow, el, theme]);
   const chart = useMemo(() => (el.type === 'chart' ? chartSvg(el.chart, el.w, el.h, { theme, color: el.color, font: el.font ? fontName(el.font, theme) : undefined }) : ''), [el, theme]);
-  const common = { 'data-element-id': el.id, 'data-element-type': el.type };
+  const linkable = !!(el.link && onElementClick);
+  const cursor = linkable ? { cursor: 'pointer' } : undefined;
+  const common = {
+    'data-element-id': el.id,
+    'data-element-type': el.type,
+    ...(linkable
+      ? {
+          onClick: (e: MouseEvent) => {
+            e.stopPropagation();
+            onElementClick!(el);
+          },
+        }
+      : {}),
+  };
 
   switch (el.type) {
     case 'text':
       return (
-        <div ref={ref} {...common} style={{ ...css(textStyle(el, theme)), ...(editing ? { visibility: 'hidden' } : {}), ...(overflow ? { outline: `${Math.max(1, el.size * 0.04)}px dashed #e5484d`, outlineOffset: 2 } : {}) }} data-overflow={overflow || undefined}>
+        <div ref={ref} {...common} style={{ ...css(textStyle(el, theme)), ...cursor, ...(editing ? { visibility: 'hidden' } : {}), ...(overflow ? { outline: `${Math.max(1, el.size * 0.04)}px dashed #e5484d`, outlineOffset: 2 } : {}) }} data-overflow={overflow || undefined}>
           <TextContent el={el} />
         </div>
       );
     case 'rect':
     case 'ellipse':
-      return <div {...common} style={css(shapeStyle(el, theme))} />;
+      return <div {...common} style={{ ...css(shapeStyle(el, theme)), ...cursor }} />;
     case 'line':
-      return <div {...common} style={{ ...css(boxStyle(el)), overflow: 'visible' }} dangerouslySetInnerHTML={{ __html: lineSvg(el, theme) }} />;
+      return <div {...common} style={{ ...css(boxStyle(el)), overflow: 'visible', ...cursor }} dangerouslySetInnerHTML={{ __html: lineSvg(el, theme) }} />;
     case 'image': {
       const url = el.src ? imageSrcUrl(el.src) : '';
       return (
-        <div {...common} style={css(imageFrameStyle(el, theme))}>
+        <div {...common} style={{ ...css(imageFrameStyle(el, theme)), ...cursor }}>
           {url ? (
-            <img src={url} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit ?? 'cover', display: 'block', pointerEvents: 'none' }} />
+            <img src={url} alt={el.alt ?? ''} draggable={false} style={{ ...css(imageStyle(el)), pointerEvents: 'none' }} />
           ) : (
             <div style={{ position: 'absolute', left: '35%', top: '35%', width: '30%', height: '30%' }} dangerouslySetInnerHTML={{ __html: placeholderSvg(theme) }} />
           )}
@@ -89,10 +104,10 @@ export const ElementView = memo(function ElementView({ el, theme, flagOverflow, 
       );
     }
     case 'chart':
-      return <div {...common} style={css(boxStyle(el))} dangerouslySetInnerHTML={{ __html: chart }} />;
+      return <div {...common} style={{ ...css(boxStyle(el)), ...cursor }} dangerouslySetInnerHTML={{ __html: chart }} />;
     case 'svg':
       return (
-        <div {...common} style={css(boxStyle(el))}>
+        <div {...common} style={{ ...css(boxStyle(el)), ...cursor }}>
           <img src={svgDataUrl(el.svg)} alt="" draggable={false} style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
         </div>
       );
@@ -100,11 +115,11 @@ export const ElementView = memo(function ElementView({ el, theme, flagOverflow, 
 });
 
 /** An artboard at 100% size (scale it with a CSS transform). */
-export function ArtboardView({ artboard, theme, flagOverflow, editingId, className, style }: { artboard: Artboard; theme: DesignTheme; flagOverflow?: boolean; editingId?: string | null; className?: string; style?: CSSProperties }) {
+export function ArtboardView({ artboard, theme, flagOverflow, editingId, onElementClick, className, style }: { artboard: Artboard; theme: DesignTheme; flagOverflow?: boolean; editingId?: string | null; onElementClick?: (el: DesignElement) => void; className?: string; style?: CSSProperties }) {
   return (
     <div className={className} style={{ ...css(artboardStyle(artboard, theme)), ...style }} data-artboard-id={artboard.id}>
       {artboard.elements.map((el) => (
-        <ElementView key={el.id} el={el} theme={theme} flagOverflow={flagOverflow} editing={editingId === el.id} />
+        <ElementView key={el.id} el={el} theme={theme} flagOverflow={flagOverflow} editing={editingId === el.id} onElementClick={onElementClick} />
       ))}
     </div>
   );

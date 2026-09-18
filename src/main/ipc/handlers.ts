@@ -114,10 +114,12 @@ export function registerIpcHandlers(): void {
     const filters =
       kind === 'knowledge'
         ? [{ name: 'Documents', extensions: ['txt', 'md', 'pdf', 'json', 'csv', 'html', 'xml', 'yaml', 'yml', 'py', 'js', 'ts', 'tsx', 'java', 'go', 'rs', 'c', 'cpp', 'cs'] }]
-        : [
-            { name: 'Images, PDFs and text', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'json', 'csv', 'html', 'py', 'js', 'ts', 'tsx', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'yaml', 'yml', 'xml'] },
-            { name: 'All files', extensions: ['*'] },
-          ];
+        : kind === 'fonts'
+          ? [{ name: 'Fonts', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]
+          : [
+              { name: 'Images, PDFs and text', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'json', 'csv', 'html', 'py', 'js', 'ts', 'tsx', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'yaml', 'yml', 'xml'] },
+              { name: 'All files', extensions: ['*'] },
+            ];
     const options = { properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>, filters };
     const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
     return result.canceled ? [] : result.filePaths;

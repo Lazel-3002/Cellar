@@ -1,0 +1,151 @@
+Cellar Design — session summary (2026-09-18/19)
+=================================================
+
+Context
+-------
+Asked for a design review of Cellar's Design module (the canvas where a local model
+and a person co-build slides/documents/posters/web/mobile mockups). I identified 8
+gaps and the user asked to close all 8, in priority order, each shipped with tests
+before moving to the next:
+
+  1. Custom font import
+  2. Interactive hotspots / lightweight prototype mode
+  3. Reusable components (symbols/instances)
+  4. Vector pen tool + boolean shape ops
+  5. Grid/ruler overlay
+  6. Present-mode transitions
+  7. Image crop/filters
+  8. Named version history
+
+A full technical plan (data model, file-by-file changes, agent-tool surface, export
+behavior, test plan for each) was written and approved before implementation. It's
+saved at: C:\Users\w11\.claude\plans\iridescent-bouncing-fox.md — read that first if
+picking this back up, it has the exact design for the two features not yet built.
+
+Build order was resequenced by risk/dependency, not the priority list above:
+version history and grid/ruler first (fully independent), then transitions and
+crop/filters (touch the schema but nothing else), then fonts, then the two that
+share groundwork (hotspots, components), with the pen tool last as the highest-risk
+item. This is where the session was interrupted (user going to sleep), so:
+
+DONE THIS SESSION (all shipped with passing tests)
+---------------------------------------------------
+1. Named version history
+   - New `design_versions` table (migration 9); every save (agent or user) now
+     appends a snapshot via the single `write()` choke point in
+     src/main/design/store.ts. Restore writes the old snapshot back as a NEW
+     version (history is never rewritten in place).
+   - New IPC: design:versions:list/get/restore/rename.
+   - New renderer panel: src/renderer/src/components/design/VersionHistory.tsx,
+     opened from the design title's dropdown menu ("Version history").
+
+2. Grid/ruler overlay
+   - Canvas-only, never saved with the design, never seen by the model. New state
+     in the (renamed-in-place) useDesignLayout store: showGrid, gridSize,
+     showRulers.
+   - Canvas.tsx: grid overlay div per artboard + grid points added as extra snap
+     candidates. New src/renderer/src/components/design/Rulers.tsx for the
+     top/left tick strips. Toolbar buttons + "g" keyboard shortcut.
+
+3. Present-mode transitions
+   - New `Artboard.transition` field (fade/slide-left/right/up/down), validated in
+     normalize.ts. Present.tsx now keeps the outgoing artboard mounted briefly and
+     cross-fades/slides via a class-flip pattern. Inspector dropdown to set it.
+     Model-facing (create_artboard/update_artboard tool input).
+   - PowerPoint export: confirmed (by reading pptxgenjs 4.0.1's actual source, not
+     just its types) that it has no transition support at all — documented as a
+     limitation rather than half-implemented.
+
+4. Image crop/filters
+   - New `ImageElement.crop` (0-1 fractional rect) and `.filters`
+     (brightness/contrast/saturate). One new shared `imageStyle()` in
+     src/shared/design/render.ts used by BOTH the canvas (ArtboardView.tsx) and
+     every export, so they can't drift apart.
+   - PowerPoint crop: implemented for real using pptxgenjs's `sizing:{type:'crop'}`
+     — the exact math was derived from reading the library's own source and then
+     verified against a real generated .pptx's XML in a unit test (not guessed).
+     PowerPoint filters: no primitive exists in the library; documented, not faked.
+
+5. Custom font import
+   - New app-wide `fonts` table (migration 10), holding font bytes as a BLOB (not
+     files on disk — fonts need a different lifetime than attachments, which get
+     swept after 24h). src/main/design/fonts.ts: magic-byte sniffing for
+     ttf/otf/woff/woff2, plus a Google Fonts downloader.
+   - Exports embed only the font families a given design actually uses, as
+     offline @font-face data-URLs (src/main/design/export.ts's usedFontFamilies +
+     fontFaceCss, spliced into render.ts's designHtml/artboardSvg).
+   - Editor: an "Import font..." popover (file picker or a Google Font name) next
+     to every font picker; a useCustomFonts() hook injects a <style> tag so the
+     live canvas renders them too. Human-editor-only — the model can already set
+     any font name, it just needs one imported first.
+   - PowerPoint: same limitation as today's non-Windows fonts (substitutes on
+     machines without it) — explicitly not solvable, documented.
+
+6. Interactive hotspots / lightweight prototype mode
+   - New `ElementBase.link` field (`{kind:'artboard', artboard}` or
+     `{kind:'url', url}`) — ANY element can be a hotspot, not just special
+     "button" elements. Resolved lazily (via the existing findArtboard()) so a
+     link can never go stale if artboards are renamed.
+   - Present.tsx: clicking a linked element jumps to that artboard or opens the
+     URL, instead of advancing to the next slide.
+   - HTML export: real `<a href="#artboardId">` / `<a href="url" target=_blank>`
+     anchors, zero JS needed. PDF export gets real internal links as a bonus
+     (Chromium's printToPDF preserves same-document anchors).
+   - PowerPoint: real native hyperlinks via pptxgenjs's HyperlinkProps. This
+     caught an actual bug in pptxgenjs 4.0.1: a shape-level `hyperlink` option on
+     `addText()` never gets a relationship id assigned (only addShape/addImage do
+     that correctly) — found by writing a real test against the generated XML,
+     not by trusting the types. Fixed by attaching the hyperlink to each text RUN
+     instead of the shape, which goes through the code path that actually works.
+   - Inspector: a "Link" section on every element (None / Jump to artboard /
+     Open a URL).
+   - Verified end-to-end in the real Electron app via Playwright, not just unit
+     tests: link an element, enter Present, click it, confirm the jump; export
+     HTML and grep the file for the real anchor.
+
+Every feature above was typechecked, unit-tested (design.test.ts — 18 tests in
+the "design model" describe block alone by the end, plus dedicated "design
+versions" and "custom fonts" blocks), and the full suite (305 tests) stayed green
+throughout. The one existing Playwright e2e test for Design was extended
+incrementally and re-run against the real built app at each checkpoint (not just
+mocked) — it now also covers grid, transitions, version history, and hotspots.
+
+NOT DONE YET
+------------
+7. Reusable components (symbols/instances) — NOT STARTED (only read the current
+   types file for context, made zero edits). The approved plan's design:
+     - New `DesignComponent` {id,name,w,h,elements} on `Design.components[]`,
+       and a new `ComponentElement {type:'component', componentId}` — the 7th
+       element type, genuinely needed since an instance is a reference.
+     - No per-instance overrides in v1 — instances are unmodified stamps of the
+       master; a "Detach" action breaks the link for one-off edits.
+     - Editing the master: a NEW route/page that loads a synthetic single-
+       artboard Design into the SAME useDesignEditor store (reusing Canvas/
+       Inspector completely unmodified), with its OWN save function that merges
+       the edited elements back into design.components[id] via the existing
+       design:save IPC (fetching the latest real design first, replacing just
+       that one component, submitting the merge) — NOT a new save endpoint.
+     - Every render entrypoint (render.ts, ArtboardView.tsx, pptx.ts) needs a
+       `components` list threaded through to resolve/scale a ComponentElement.
+     - Full details, including exact file-by-file changes, are in the plan file
+       referenced above.
+
+8. Vector pen tool + boolean shape ops — NOT STARTED. Planned to reuse the
+   existing `svg` element type entirely (zero new element types): a polygon-only
+   pen tool (not bezier), boolean ops (union/subtract/intersect) via one small
+   new dependency (a pure-JS polygon clipper), confined to a new
+   src/shared/design/boolean.ts plus a new interaction mode in Canvas.tsx. See
+   the plan file for the full design — this was flagged as the highest-risk item
+   and deliberately sequenced last so nothing else depends on it.
+
+Verification commands (all passing as of this commit)
+-------------------------------------------------------
+  npm run typecheck
+  npm test                              (305 tests)
+  npm run build && npx playwright test -g design   (1 e2e test, real Electron app)
+
+To pick this back up: read the plan file, implement feature 7 then 8 in the same
+style (small normalize.ts additions with alias tables, shared render helpers used
+by both canvas and export, unit tests that check real generated output — like the
+pptx XML — rather than trusting assumptions), and keep running the full suite +
+the design e2e test after each one.

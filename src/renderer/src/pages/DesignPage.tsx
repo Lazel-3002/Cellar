@@ -13,7 +13,9 @@ import {
   FileCode,
   FileImage,
   FileText,
+  Grid3x3,
   Hand,
+  History,
   Image as ImageIcon,
   LayoutTemplate,
   Maximize,
@@ -28,6 +30,7 @@ import {
   Plus,
   Presentation,
   Redo2,
+  Ruler,
   Smartphone,
   Square,
   Star,
@@ -48,10 +51,13 @@ import { ArtboardThumbnail } from '@/components/design/ArtboardView';
 import { DesignCanvas, fitView } from '@/components/design/Canvas';
 import { Inspector } from '@/components/design/Inspector';
 import { Present } from '@/components/design/Present';
+import { Rulers } from '@/components/design/Rulers';
+import { VersionHistory } from '@/components/design/VersionHistory';
 import { AgentTurn, UserTurn } from '@/components/task/Transcript';
 import { IconButton } from '@/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { Badge, EmptyState, Spinner, Tip } from '@/components/ui/misc';
+import { useCustomFonts } from '@/lib/fonts';
 import { invoke, onEvent } from '@/lib/ipc';
 import { useConversation } from '@/lib/queries';
 import type { Icon } from '@/lib/tasks';
@@ -282,8 +288,9 @@ function DesignHeader({ conversationId, status, onPresent, canvasRef }: { conver
   const canUndo = useDesignEditor((s) => s.past.length > 0);
   const canRedo = useDesignEditor((s) => s.future.length > 0);
   const saving = useDesignEditor((s) => s.revision !== s.savedRevision);
-  const { chatOpen, setChatOpen, inspectorOpen, setInspectorOpen } = useDesignLayout();
+  const { chatOpen, setChatOpen, inspectorOpen, setInspectorOpen, showGrid, setShowGrid, showRulers, setShowRulers } = useDesignLayout();
   const [renaming, setRenaming] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [title, setTitle] = useState(design.title);
   useEffect(() => setTitle(design.title), [design.title]);
   const store = useDesignEditor.getState;
@@ -350,6 +357,9 @@ function DesignHeader({ conversationId, status, onPresent, canvasRef }: { conver
             >
               Duplicate design
             </MenuItem>
+            <MenuItem icon={<History />} onSelect={() => setHistoryOpen(true)}>
+              Version history
+            </MenuItem>
             <MenuSeparator />
             <MenuItem
               icon={<Trash />}
@@ -402,6 +412,12 @@ function DesignHeader({ conversationId, status, onPresent, canvasRef }: { conver
           <Plus className="size-3.5" />
         </IconButton>
       </div>
+      <IconButton label="Grid  G" active={showGrid} onClick={() => setShowGrid(!showGrid)}>
+        <Grid3x3 className="size-[15px]" strokeWidth={1.8} />
+      </IconButton>
+      <IconButton label="Rulers" active={showRulers} onClick={() => setShowRulers(!showRulers)}>
+        <Ruler className="size-[15px]" strokeWidth={1.8} />
+      </IconButton>
       <IconButton label="Present  F5" onClick={onPresent} disabled={design.artboards.length === 0}>
         <Play className="size-[15px]" strokeWidth={1.8} />
       </IconButton>
@@ -441,6 +457,7 @@ function DesignHeader({ conversationId, status, onPresent, canvasRef }: { conver
       <IconButton label={inspectorOpen ? 'Hide properties' : 'Show properties'} onClick={() => setInspectorOpen(!inspectorOpen)} className="mr-2">
         {inspectorOpen ? <PanelRightClose className="size-[16px]" strokeWidth={1.8} /> : <PanelRightOpen className="size-[16px]" strokeWidth={1.8} />}
       </IconButton>
+      {historyOpen && <VersionHistory designId={design.id} open={historyOpen} onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }
@@ -541,6 +558,7 @@ function DesignChat({ conversationId, running, onClose, flush }: { conversationI
 }
 
 export function DesignEditorPage() {
+  useCustomFonts();
   const { conversationId } = useParams({ from: '/design/$conversationId' });
   const navigate = useNavigate();
   const setIncognito = useUi((s) => s.setIncognito);
@@ -550,7 +568,7 @@ export function DesignEditorPage() {
   const design = useDesignEditor((s) => (s.conversationId === conversationId ? s.design : null));
   const revision = useDesignEditor((s) => s.revision);
   const savedRevision = useDesignEditor((s) => s.savedRevision);
-  const { chatOpen, setChatOpen, inspectorOpen } = useDesignLayout();
+  const { chatOpen, setChatOpen, inspectorOpen, showRulers } = useDesignLayout();
   const canvasRef = useRef<HTMLDivElement>(null);
   const saving = useRef(false);
   const fitted = useRef<string | null>(null);
@@ -670,6 +688,7 @@ export function DesignEditorPage() {
         }
         return;
       }
+      if (key === 'g' && !e.altKey) return handled(), useDesignLayout.getState().setShowGrid(!useDesignLayout.getState().showGrid);
       const toolKey: Record<string, DesignTool> = { v: 'select', h: 'hand', t: 'text', r: 'rect', o: 'ellipse', l: 'line' };
       if (toolKey[key] && !e.altKey) return handled(), s.setTool(toolKey[key]);
     };
@@ -728,6 +747,7 @@ export function DesignEditorPage() {
       {chatOpen && <DesignChat conversationId={conversationId} running={running?.id ?? null} onClose={() => setChatOpen(false)} flush={save} />}
       <div className="relative min-w-0 flex-1">
         <DesignCanvas containerRef={canvasRef} running={!!running} />
+        {showRulers && <Rulers containerRef={canvasRef} />}
         {!chatOpen && (
           <button onClick={() => setChatOpen(true)} className="absolute bottom-4 left-4 flex h-9 items-center gap-2 rounded-full border border-composer-border bg-composer px-3.5 text-[13px] text-fg-2 shadow-lg hover:text-foreground">
             <MessageSquare className="size-4" /> Chat

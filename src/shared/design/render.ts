@@ -1,4 +1,5 @@
-import type { Artboard, Design, DesignElement, DesignTheme, ImageElement, LineElement, ShapeElement, TextElement } from '../types/design';
+import type { Artboard, Design, DesignElement, DesignTheme, ImageElement, LineElement, LinkTarget, ShapeElement, TextElement } from '../types/design';
+import { findArtboard } from './ops';
 import { chartSvg, escapeXml } from './charts';
 import { svgDataUrl } from './svg';
 import { inlineRuns, paragraphs } from './text';
@@ -72,6 +73,30 @@ export function imageFrameStyle(el: ImageElement, theme: DesignTheme): Style {
   return style;
 }
 
+/** The `<img>` itself (not its frame): crop pre-scales/shifts it to fill the frame exactly; filters are plain CSS. Shared by the canvas and every export, so both render identically. */
+export function imageStyle(el: ImageElement): Style {
+  const style: Style = { display: 'block' };
+  const crop = el.crop;
+  if (crop && crop.w > 0 && crop.h > 0) {
+    style.position = 'absolute';
+    style.width = `${Math.round((100 / crop.w) * 1000) / 1000}%`;
+    style.height = `${Math.round((100 / crop.h) * 1000) / 1000}%`;
+    style.left = `${Math.round(((-100 * crop.x) / crop.w) * 1000) / 1000}%`;
+    style.top = `${Math.round(((-100 * crop.y) / crop.h) * 1000) / 1000}%`;
+  } else {
+    style.width = '100%';
+    style.height = '100%';
+    style.objectFit = el.fit ?? 'cover';
+  }
+  const filters = [
+    el.filters?.brightness !== undefined && el.filters.brightness !== 1 ? `brightness(${el.filters.brightness})` : '',
+    el.filters?.contrast !== undefined && el.filters.contrast !== 1 ? `contrast(${el.filters.contrast})` : '',
+    el.filters?.saturate !== undefined && el.filters.saturate !== 1 ? `saturate(${el.filters.saturate})` : '',
+  ].filter(Boolean);
+  if (filters.length) style.filter = filters.join(' ');
+  return style;
+}
+
 export function artboardStyle(artboard: Artboard, theme: DesignTheme): Style {
   return {
     position: 'relative',
@@ -102,6 +127,12 @@ export function placeholderSvg(theme: DesignTheme): string {
 export interface HtmlOptions {
   /** URL for an image element's src (attachment ids become data URLs in exports). */
   imageUrl: (src: string) => string;
+  /** `@font-face` rules (as data URLs) for any custom fonts this design uses, so exports render them offline. */
+  fontFaces?: string;
+  /** Only 'html' and 'pdf' carry every artboard as one addressable page/section, so only those wrap hotspots in a real `<a>`. */
+  mode?: 'pdf' | 'png' | 'html';
+  /** Resolves a hotspot to an href ("#a2" or an external URL); set by `designHtml`/`artboardSvg`, which know every artboard's id. */
+  linkHref?: (link: LinkTarget) => string | null;
 }
 
 function textHtml(el: TextElement): string {
@@ -121,7 +152,7 @@ function textHtml(el: TextElement): string {
     .join('');
 }
 
-export function elementHtml(el: DesignElement, theme: DesignTheme, options: HtmlOptions): string {
+function elementBodyHtml(el: DesignElement, theme: DesignTheme, options: HtmlOptions): string {
   switch (el.type) {
     case 'text':
       return `<div style="${escapeXml(cssText(textStyle(el, theme)))}">${textHtml(el)}</div>`;
@@ -133,7 +164,7 @@ export function elementHtml(el: DesignElement, theme: DesignTheme, options: Html
     case 'image': {
       const frame = escapeXml(cssText(imageFrameStyle(el, theme)));
       if (!el.src) return `<div style="${frame}"><div style="position:absolute;left:35%;top:35%;width:30%;height:30%">${placeholderSvg(theme)}</div></div>`;
-      return `<div style="${frame}"><img alt="${escapeXml(el.alt ?? '')}" src="${escapeXml(options.imageUrl(el.src))}" style="width:100%;height:100%;object-fit:${el.fit ?? 'cover'};display:block"></div>`;
+      return `<div style="${frame}"><img alt="${escapeXml(el.alt ?? '')}" src="${escapeXml(options.imageUrl(el.src))}" style="${escapeXml(cssText(imageStyle(el)))}"></div>`;
     }
     case 'chart':
       return `<div style="${escapeXml(cssText(boxStyle(el)))}">${chartSvg(el.chart, el.w, el.h, { theme, color: el.color, font: el.font ? fontName(el.font, theme) : undefined })}</div>`;
@@ -142,8 +173,19 @@ export function elementHtml(el: DesignElement, theme: DesignTheme, options: Html
   }
 }
 
+export function elementHtml(el: DesignElement, theme: DesignTheme, options: HtmlOptions): string {
+  const body = elementBodyHtml(el, theme, options);
+  const wrappable = el.link && (options.mode === 'html' || options.mode === 'pdf');
+  const href = wrappable ? options.linkHref?.(el.link!) : null;
+  if (!href) return body;
+  // An <a> around an absolutely-positioned <div> doesn't affect its position (it isn't itself positioned), so the div's own layout is untouched.
+  const external = el.link!.kind === 'url';
+  return `<a href="${escapeXml(href)}" style="text-decoration:none;color:inherit"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${body}</a>`;
+}
+
 export function artboardHtml(artboard: Artboard, theme: DesignTheme, options: HtmlOptions): string {
-  return `<div class="artboard" style="${escapeXml(cssText(artboardStyle(artboard, theme)))}">${artboard.elements.map((el) => elementHtml(el, theme, options)).join('')}</div>`;
+  // The id is what a hotspot's href="#..." target actually points to (see designHtml's linkHref).
+  return `<div class="artboard" id="${escapeXml(artboard.id)}" style="${escapeXml(cssText(artboardStyle(artboard, theme)))}">${artboard.elements.map((el) => elementHtml(el, theme, options)).join('')}</div>`;
 }
 
 /**
@@ -153,15 +195,17 @@ export function artboardHtml(artboard: Artboard, theme: DesignTheme, options: Ht
  */
 export function designHtml(design: Pick<Design, 'title' | 'theme' | 'artboards'>, artboardIds: string[] | undefined, options: HtmlOptions & { mode: 'pdf' | 'png' | 'html' }): string {
   const boards = design.artboards.filter((a) => !artboardIds?.length || artboardIds.includes(a.id));
+  const linkHref = (link: LinkTarget): string | null => (link.kind === 'url' ? (link.url ?? null) : (() => { const target = findArtboard(design, link.artboard); return target ? `#${target.id}` : null; })());
+  const opts: HtmlOptions & { mode: 'pdf' | 'png' | 'html' } = { ...options, linkHref };
   const pages = boards
     .map((a, i) => {
-      const inner = artboardHtml(a, design.theme, options);
+      const inner = artboardHtml(a, design.theme, opts);
       return options.mode === 'pdf' ? `<section class="page" style="page:p${i};width:${a.width}px;height:${a.height}px">${inner}</section>` : options.mode === 'html' ? `<section class="board">${inner}</section>` : inner;
     })
     .join('');
   const pageRules = options.mode === 'pdf' ? boards.map((a, i) => `@page p${i}{size:${a.width}px ${a.height}px;margin:0}`).join('') : '';
   const bodyRules = options.mode === 'html' ? 'body{display:flex;flex-direction:column;align-items:center;gap:32px;padding:32px;background:#e9e9e9}.board{box-shadow:0 4px 24px rgba(0,0,0,0.18)}' : '';
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeXml(design.title)}</title><style>${pageRules}
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeXml(design.title)}</title><style>${options.fontFaces ?? ''}${pageRules}
 html,body{margin:0;padding:0;background:transparent;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page{overflow:hidden;break-after:page}.page:last-child{break-after:auto}
 .artboard *{margin:0}
@@ -172,5 +216,6 @@ ${bodyRules}
 /** A single artboard as a standalone SVG document: the same markup as the HTML export, embedded via foreignObject so fonts, gradients and images render identically. */
 export function artboardSvg(artboard: Artboard, theme: DesignTheme, options: HtmlOptions): string {
   const inner = artboardHtml(artboard, theme, options);
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${artboard.width}" height="${artboard.height}" viewBox="0 0 ${artboard.width} ${artboard.height}"><foreignObject width="100%" height="100%"><xhtml:div xmlns="http://www.w3.org/1999/xhtml" style="width:${artboard.width}px;height:${artboard.height}px;position:relative;overflow:hidden">${inner}</xhtml:div></foreignObject></svg>`;
+  const style = options.fontFaces ? `<style>${options.fontFaces}</style>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${artboard.width}" height="${artboard.height}" viewBox="0 0 ${artboard.width} ${artboard.height}">${style}<foreignObject width="100%" height="100%"><xhtml:div xmlns="http://www.w3.org/1999/xhtml" style="width:${artboard.width}px;height:${artboard.height}px;position:relative;overflow:hidden">${inner}</xhtml:div></foreignObject></svg>`;
 }
