@@ -11,7 +11,19 @@ import { attachmentFromBytes } from '../chat/attachments';
 import { defineTool, ToolError, type AgentTool, type ToolContext } from '../agent/tools/types';
 import { checkedUrl, download, webFetch, webSearch } from '../agent/tools/web';
 import { formatBytes } from '../lib/util';
+import { artboardPreview } from './export';
 import { getDesign, updateDesign } from './store';
+
+/** Hands a vision-capable model a screenshot of what it just built, instead of only the text outline. Best effort. */
+async function attachPreview(ctx: ToolContext, design: Design, artboardIds: string[]): Promise<void> {
+  if (!ctx.recordResultImages || !artboardIds.length) return;
+  const shots: Array<{ mime: string; base64: string }> = [];
+  for (const id of artboardIds.slice(0, 2)) {
+    const base64 = await artboardPreview(design, id);
+    if (base64) shots.push({ mime: 'image/png', base64 });
+  }
+  if (shots.length) await ctx.recordResultImages(shots);
+}
 
 const num = z.union([z.number(), z.string()]);
 
@@ -161,6 +173,11 @@ export const setThemeTool = defineTool({
     const { design } = updateDesign(designId(ctx), (d) => {
       d.theme = customizeTheme(d.theme, { preset: args.preset, colors: args.colors, fonts: args.fonts });
     });
+    if (design.artboards.length) {
+      const selected = ctx.task.design?.selection?.artboardId;
+      const board = (selected ? design.artboards.find((a) => a.id === selected) : undefined) ?? design.artboards[0];
+      await attachPreview(ctx, design, [board.id]);
+    }
     return `Theme is now "${design.theme.name}": ${Object.entries(design.theme.colors).map(([k, v]) => `${k} ${v}`).join(', ')}; heading font ${design.theme.fonts.heading}, body font ${design.theme.fonts.body}.`;
   },
 });
@@ -209,6 +226,7 @@ export const createArtboardTool = defineTool({
       return artboard.id;
     });
     const artboard = design.artboards.find((a) => a.id === result)!;
+    await attachPreview(ctx, design, [artboard.id]);
     return report(design, artboard, `Created artboard ${artboard.id} "${artboard.name}".`, errors);
   },
 });
@@ -267,6 +285,7 @@ export const updateArtboardTool = defineTool({
       return artboard.id;
     });
     const artboard = design.artboards.find((a) => a.id === result)!;
+    await attachPreview(ctx, design, [artboard.id]);
     return report(design, artboard, `Updated artboard ${artboard.id}.`, errors);
   },
 });
@@ -333,6 +352,7 @@ export const editElementsTool = defineTool({
         lines.push(`Moved ${item.id} ${to === 'front' || to === 'back' ? `to the ${to}` : to}`);
       }
     });
+    await attachPreview(ctx, design, [...touched]);
     const problems = [...touched].flatMap((id) => {
       const artboard = design.artboards.find((a) => a.id === id);
       return artboard ? checkArtboard(artboard, design.theme).map((p) => `${artboard.id}: ${p}`) : [];

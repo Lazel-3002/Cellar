@@ -1,6 +1,6 @@
 import PptxGenJS from 'pptxgenjs';
 import { inlineRuns, paragraphs } from '@shared/design/text';
-import { chartPalette, fontName, gradientStops, hex6, mixColors, parseRgb, resolveColor } from '@shared/design/theme';
+import { chartPalette, fontName, gradientCss, gradientStops, hex6, mixColors, parseRgb, resolveColor } from '@shared/design/theme';
 import type { Artboard, ChartElement, DesignElement, DesignTheme, TextElement } from '@shared/types/design';
 import type { ResolvedImage } from './images';
 
@@ -8,6 +8,8 @@ export interface PptxAssets {
   image(src: string): Promise<ResolvedImage | null>;
   /** PNG of an SVG, when a renderer is available (PowerPoint shows SVG only in recent versions). */
   rasterize?(svg: string, width: number, height: number): Promise<Buffer | null>;
+  /** A real gradient PNG, when a renderer is available (a native PowerPoint shape can only fill with a flat color). */
+  gradient?(css: string, width: number, height: number, radius: number, shape: 'rect' | 'ellipse'): Promise<Buffer | null>;
 }
 
 const SLIDE_WIDTH_IN = 13.333;
@@ -63,12 +65,17 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
     const pt = (px: number) => Math.round(px * k * 72 * 10) / 10;
     const inch = (px: number) => Math.round(px * k * 10000) / 10000;
     const pos = (el: Pick<DesignElement, 'x' | 'y' | 'w' | 'h'>) => ({ x: ox + inch(el.x), y: oy + inch(el.y), w: Math.max(0.01, inch(el.w)), h: Math.max(0.01, inch(el.h)) });
-    const bg = artboard.gradient ? resolveColor(gradientStops(artboard.gradient)[0].color, theme, 'background') : resolveColor(artboard.background, theme, 'background');
-    slide.background = { color: hex6(bg === 'transparent' ? '#FFFFFF' : bg) };
+    const flatBg = resolveColor(artboard.gradient ? gradientStops(artboard.gradient)[0].color : artboard.background, theme, 'background');
+    const bg = flatBg === 'transparent' ? '#FFFFFF' : flatBg;
+    const bgGradientPng = artboard.gradient && assets.gradient ? await assets.gradient(gradientCss(artboard.gradient, theme), artboard.width, artboard.height, 0, 'rect') : null;
+    const bgData = bgGradientPng ? `image/png;base64,${bgGradientPng.toString('base64')}` : null;
     if (ox > 0.001 || oy > 0.001) {
       // Letterbox artboards of other proportions on the slide.
       slide.background = { color: '000000' };
-      slide.addShape('rect', { x: ox, y: oy, w: inch(artboard.width), h: inch(artboard.height), fill: { color: hex6(bg) }, line: { type: 'none' } });
+      if (bgData) slide.addImage({ data: bgData, x: ox, y: oy, w: inch(artboard.width), h: inch(artboard.height) });
+      else slide.addShape('rect', { x: ox, y: oy, w: inch(artboard.width), h: inch(artboard.height), fill: { color: hex6(bg) }, line: { type: 'none' } });
+    } else {
+      slide.background = bgData ? { data: bgData } : { color: hex6(bg) };
     }
 
     for (const el of artboard.elements) {
@@ -102,14 +109,23 @@ export async function artboardsToPptx(artboards: Artboard[], theme: DesignTheme,
         }
         case 'rect':
         case 'ellipse': {
-          const fillColor = el.gradient ? resolveColor(gradientStops(el.gradient)[0].color, theme, 'primary') : resolveColor(el.fill, theme, 'transparent');
           const rounded = el.type === 'rect' && !!el.radius;
-          slide.addShape(el.type === 'ellipse' ? 'ellipse' : rounded ? 'roundRect' : 'rect', {
+          const shapeType = el.type === 'ellipse' ? 'ellipse' : rounded ? 'roundRect' : 'rect';
+          const radiusPx = rounded ? Math.min(el.radius!, el.w / 2, el.h / 2) : 0;
+          const line = el.stroke && (el.strokeWidth ?? 1) > 0 ? { color: hex6(resolveColor(el.stroke, theme, 'text')), width: Math.max(0.25, pt(el.strokeWidth ?? 1)) } : { type: 'none' as const };
+          const gradientPng = el.gradient && assets.gradient ? await assets.gradient(gradientCss(el.gradient, theme), Math.max(1, Math.round(el.w * 2)), Math.max(1, Math.round(el.h * 2)), radiusPx * 2, el.type) : null;
+          if (gradientPng) {
+            slide.addImage({ data: `image/png;base64,${gradientPng.toString('base64')}`, ...pos(el), ...rotate, ...(transparency('#000000', el.opacity) !== undefined ? { transparency: transparency('#000000', el.opacity) } : {}) });
+            if (line.type !== 'none') slide.addShape(shapeType, { ...pos(el), ...rotate, fill: { type: 'none' }, line, ...(rounded ? { rectRadius: inch(radiusPx) } : {}) });
+            break;
+          }
+          const fillColor = el.gradient ? resolveColor(gradientStops(el.gradient)[0].color, theme, 'primary') : resolveColor(el.fill, theme, 'transparent');
+          slide.addShape(shapeType, {
             ...pos(el),
             ...rotate,
             fill: fillColor === 'transparent' ? { type: 'none' } : { color: hex6(fillColor), ...(transparency(fillColor, el.opacity) !== undefined ? { transparency: transparency(fillColor, el.opacity) } : {}) },
-            line: el.stroke && (el.strokeWidth ?? 1) > 0 ? { color: hex6(resolveColor(el.stroke, theme, 'text')), width: Math.max(0.25, pt(el.strokeWidth ?? 1)) } : { type: 'none' },
-            ...(rounded ? { rectRadius: inch(Math.min(el.radius!, el.w / 2, el.h / 2)) } : {}),
+            line,
+            ...(rounded ? { rectRadius: inch(radiusPx) } : {}),
             ...(el.shadow ? { shadow: { type: 'outer', color: '000000', opacity: 0.2, blur: 8, offset: 3, angle: 90 } } : {}),
           });
           break;

@@ -3,6 +3,15 @@
 Every entry here is a real released version. See `docs/ROADMAP.md` for the fuller
 milestone-by-milestone story of how Cellar got here.
 
+## 7.8.0 — 2026-09-18
+**A Design that sees its own canvas, and real gradients in PowerPoint**
+
+### Added
+- Design: after creating or editing an artboard, changing its theme, or recoloring/resizing elements, a vision-capable model is now shown a screenshot of what it just built — the same mechanism the browser tools already use for `browse_screenshot` — instead of reasoning from the text outline and layout check alone.
+
+### Fixed
+- Design → PowerPoint export: a gradient fill on a shape or an artboard background used to flatten to its first stop's color, since a native PowerPoint shape can only fill with one flat color. It's now rasterized from the exact CSS the canvas paints into a real PNG and placed as a picture, so exported decks actually show the gradient. This also fixes Cowork's `create_pptx`, which shares the same exporter.
+
 ## 7.7.0 — 2026-09-18
 **Following up with one model**
 

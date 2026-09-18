@@ -6,8 +6,8 @@ import { logger } from '../lib/log';
 import { newId } from '../lib/util';
 import { settings } from '../services/settings';
 import { paths } from '../system/paths';
-import { rasterizeSvg } from '../design/export';
-import { setPdfRenderer, setSvgRasterizer } from './documents';
+import { rasterizeGradient, rasterizeSvg } from '../design/export';
+import { setGradientRasterizer, setPdfRenderer, setSvgRasterizer } from './documents';
 
 const log = logger('cowork');
 const PDF_PARTITION = 'cellar-pdf';
@@ -30,6 +30,7 @@ export function installPdfRenderer(): void {
     }
   });
   setSvgRasterizer(rasterizeSvg);
+  setGradientRasterizer(rasterizeGradient);
 }
 
 /**

@@ -96,6 +96,21 @@ export async function rasterizeSvg(svg: string, width: number, height: number): 
   }
 }
 
+/**
+ * A gradient rendered as a real PNG, from the same CSS a browser paints (`gradientCss`), for exporters
+ * that cannot fill a native shape with more than a flat color (PowerPoint).
+ */
+export async function rasterizeGradient(css: string, width: number, height: number, radius = 0, shape: 'rect' | 'ellipse' = 'rect'): Promise<Buffer | null> {
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}div{width:${w}px;height:${h}px;background:${css};border-radius:${shape === 'ellipse' ? '50%' : `${Math.max(0, Math.round(radius))}px`}}</style></head><body><div></div></body></html>`;
+  try {
+    return await renderPng(html, w, h, 1);
+  } catch {
+    return null;
+  }
+}
+
 async function imageUrls(design: Design, artboardIds: string[]): Promise<Map<string, string>> {
   const urls = new Map<string, string>();
   for (const artboard of design.artboards) {
@@ -107,6 +122,24 @@ async function imageUrls(design: Design, artboardIds: string[]): Promise<Map<str
     }
   }
   return urls;
+}
+
+/**
+ * A capped-size screenshot of one artboard as it stands right now, so a vision-capable model can see
+ * what it just built instead of reasoning from the text outline alone. Best effort: never throws.
+ */
+export async function artboardPreview(design: Design, artboardId: string, maxEdge = 960): Promise<string | null> {
+  const board = design.artboards.find((a) => a.id === artboardId);
+  if (!board) return null;
+  try {
+    const urls = await imageUrls(design, [artboardId]);
+    const imageUrl = (src: string) => urls.get(src) ?? '';
+    const scale = Math.min(1, maxEdge / Math.max(board.width, board.height));
+    const png = await renderPng(designHtml(design, [artboardId], { mode: 'png', imageUrl }), board.width, board.height, scale);
+    return png.toString('base64');
+  } catch {
+    return null;
+  }
 }
 
 const fileSafe = (name: string) => [...name].filter((c) => c.charCodeAt(0) >= 32).join('').replace(/[<>:"/\\|?*]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Design';
@@ -134,7 +167,7 @@ export async function exportDesign(request: DesignExportRequest, target: ExportT
   if (request.format === 'pptx') {
     const path = await ask(`${title}.pptx`, [{ name: 'PowerPoint', extensions: ['pptx'] }]);
     if (!path) return null;
-    const bytes = await artboardsToPptx(boards, design.theme, { title: design.title }, { image: resolveImage, rasterize: rasterizeSvg });
+    const bytes = await artboardsToPptx(boards, design.theme, { title: design.title }, { image: resolveImage, rasterize: rasterizeSvg, gradient: rasterizeGradient });
     await writeFile(path, bytes);
     return path;
   }

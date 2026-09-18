@@ -34,12 +34,19 @@ import { parseLooseJson } from './text-protocol';
 /* ───────────────────────── Shared: themes, charts and images ───────────────────────── */
 
 export type SvgRasterizer = (svg: string, width: number, height: number) => Promise<Buffer | null>;
+export type GradientRasterizer = (css: string, width: number, height: number, radius: number, shape: 'rect' | 'ellipse') => Promise<Buffer | null>;
 
 let svgRasterizer: SvgRasterizer | null = null;
+let gradientRasterizer: GradientRasterizer | null = null;
 
 /** Installed by the app: turns chart SVGs into PNGs for Word and PowerPoint. */
 export function setSvgRasterizer(rasterizer: SvgRasterizer | null): void {
   svgRasterizer = rasterizer;
+}
+
+/** Installed by the app: turns a gradient into a real PNG for PowerPoint, which can't fill a shape with one. */
+export function setGradientRasterizer(rasterizer: GradientRasterizer | null): void {
+  gradientRasterizer = rasterizer;
 }
 
 export interface DocumentOptions {
@@ -427,6 +434,7 @@ export async function createPptx(slides: SlideInput[], title?: string, options: 
   return artboardsToPptx(artboards, theme, { title: title ?? slides[0]?.title ?? 'Presentation' }, {
     image: async (src) => images.get(src) ?? null,
     rasterize: svgRasterizer ?? undefined,
+    gradient: gradientRasterizer ?? undefined,
   });
 }
 

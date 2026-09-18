@@ -258,12 +258,22 @@ Real software (throwaway profiles, Ollama qwen3.5:9b):
 - **Cowork** (`scripts/cowork-smoke.mjs`): from meeting notes, a one-page `status.pdf` in the corporate theme with a styled table and a bar chart, and `sync.pptx` with cover, stats and cards slides.
 
 ### Known gaps and follow-ups from M5
-- **Canvas:** no groups, rotation handle (rotation is set in the inspector), gradient editing or rich text within a line beyond **bold** spans. Text boxes do not push other elements when they grow.
-- **Layout estimates:** text heights are estimated before a browser measures them. The canvas outlines real overflow, but the model only sees the estimate.
-- **Models:** small models often write long final summaries despite the instruction. Vision models do not yet see a rendered image of the canvas.
-- **Export:** PowerPoint slides use the first artboard's proportions (others are letterboxed). Gradients export as their first color. No SVG or HTML export. Fonts are Windows/Office fonts, so other systems substitute.
-- **Documents:** Word charts need the app's renderer (in tests they become data tables). Remote images are not downloaded.
+- **Canvas:** rich text within a line is still limited to **bold** spans (no italics/links/inline color runs). Text boxes do not push other elements when they grow.
+- **Layout estimates:** text heights are still estimated before a browser measures them for the model's own feedback (the canvas itself outlines the real overflow). Since M5.1 the model also gets a screenshot after every change, which catches most of what the estimate misses.
+- **Models:** small models often write long final summaries despite the instruction.
+- **Export:** PowerPoint slides still follow the first artboard's proportions, with other sizes letterboxed and centered — PowerPoint has one slide size for the whole deck, so mixed-size artboards in one export can't avoid this. Fonts are Windows/Office fonts, so other systems substitute.
+- **Documents:** Word charts need the app's renderer (in tests they become data tables). Cowork's `create_pdf`/`create_docx` still only embed images already in the working folder, not fetched from the web (Design's own `fetch_image` tool, added in M5.1, is separate and unaffected).
 - **Testing:** an e2e chat test can time out picking a model while Ollama is busy unloading a large model. It passes on rerun.
+
+### M5.1 Canvas polish, real export fidelity, and a model that can see its own canvas
+
+Four follow-up passes, each reusing machinery the milestone already had rather than growing a parallel one:
+
+- **Groups, rotation and gradients** (`0fbc587`): elements share a `groupId` so click, marquee, move, resize and rotate treat a group as one unit (Group/Ungroup via Ctrl+G / Ctrl+Shift+G); a drag handle above the selection rotates in place (Shift snaps to 15°, groups orbit their center); gradients support linear/radial with an arbitrary stop list, with an Inspector editor for shape fills and artboard backgrounds.
+- **SVG and HTML export** (`90a9711`): `artboardSvg()` renders one artboard as a standalone, self-contained SVG; `designHtml()` gained an `'html'` mode that stacks every artboard into one portable page. Both are in the Export menu alongside PDF/PPTX/PNG.
+- **Web search and image download** (`f73edb9`): `fetch_image` downloads a direct image URL into Cellar's attachment store (an `attachment:<id>` ref ready for an image element), and `web_search`/`web_fetch` are available in Design sessions too, so the model can find a reference before fetching it — all three gated behind the existing "Cowork web access" setting.
+- **A model that sees its own canvas:** `create_artboard`, `update_artboard`, `edit_elements` and `set_theme` now hand a vision-capable model a screenshot of the artboard it just touched (`recordResultImages`, the same mechanism the browser tools use for `browse_screenshot`), instead of only the text outline and layout check. Best effort and silent on failure, so a model without vision, or a render that fails, sees no difference.
+- **Real gradients in PowerPoint:** a gradient fill on a shape or an artboard background used to flatten to its first stop's color, because a native pptxgenjs shape can only fill with one flat color. It is now rasterized from the exact CSS the canvas paints (`gradientCss`) into a real PNG and placed as a picture, with the stroke (if any) drawn on top as a separate outline shape. This also fixes Cowork's `create_pptx`, which shares the same exporter.
 
 ## M6 Math — delivered
 
