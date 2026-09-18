@@ -3,6 +3,10 @@
 Every entry here is a real released version. See `docs/ROADMAP.md` for the fuller
 milestone-by-milestone story of how Cellar got here.
 
+## 7.5.1 — 2026-09-18
+### Fixed
+- "Check for updates" always failed silently: `electron-updater`'s `autoUpdater` export is a lazy getter that Node's CJS/ESM interop doesn't surface as a named export, so it was always `undefined`. Auto-update had never actually worked before this fix.
+
 ## 7.5.0 — 2026-09-18
 **Usage stats and this changelog**
 

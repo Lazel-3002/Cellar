@@ -27,7 +27,11 @@ let autoUpdaterPromise: Promise<AutoUpdater | null> | null = null;
 function loadAutoUpdater(): Promise<AutoUpdater | null> {
   if (!app.isPackaged) return Promise.resolve(null);
   if (!autoUpdaterPromise) {
-    autoUpdaterPromise = import('electron-updater').then(({ autoUpdater }) => {
+    // electron-updater exports `autoUpdater` via a lazy getter that Node's CJS/ESM interop
+    // does not pick up as a named export (it resolves to undefined); the default export is
+    // the real module.exports object, so read it from there instead.
+    autoUpdaterPromise = import('electron-updater').then((mod) => {
+      const autoUpdater = (mod.default ?? mod).autoUpdater;
       autoUpdater.autoDownload = true;
       autoUpdater.autoInstallOnAppQuit = false;
       autoUpdater.logger = log;
