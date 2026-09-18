@@ -3,6 +3,13 @@
 Every entry here is a real released version. See `docs/ROADMAP.md` for the fuller
 milestone-by-milestone story of how Cellar got here.
 
+## 7.5.0 — 2026-09-18
+**Usage stats and this changelog**
+
+### Added
+- Settings > Usage: sessions, messages, total tokens, active days, peak hour and favorite model, with an activity heatmap and a per-model token chart.
+- "View changelog" in the profile menu, so you can see what changed without leaving the app.
+
 ## 7.4.0 — 2026-09-17
 **Undo, git and memory**
 
