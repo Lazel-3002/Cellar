@@ -184,6 +184,11 @@
   "182": "sucrase",
   "183": "vscode-languageserver-protocol",
   "184": "@xterm/addon-fit",
+  "185": "@tailwindcss/browser",
+  "186": "DownloadManager",
+  "187": "@types/react",
+  "188": "@types/react-dom",
+  "189": "@xterm/xterm",
   "190": "zustand",
   "193": "quants.ts",
   "198": "@fontsource-variable/inter"

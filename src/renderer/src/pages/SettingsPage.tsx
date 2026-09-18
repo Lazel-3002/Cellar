@@ -5,13 +5,14 @@ import { Check, FolderOpen, Plus, RefreshCw, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProviderConfig, ProviderStatus } from '@shared/types/providers';
 import type { AppSettings } from '@shared/types/settings';
+import type { UsageRange, UsageStats } from '@shared/types/stats';
 import type { RuntimeInstallProgress, RuntimeVariant } from '@shared/types/system';
 import type { VoiceProgress, WhisperVariant } from '@shared/types/voice';
 import { CellarMark } from '@/components/brand/Logo';
 import { ProviderStatusDot } from '@/components/models/bits';
 import { Button } from '@/components/ui/button';
 import { Field, Input, NumberInput, Segmented, Select, Switch, Textarea } from '@/components/ui/form';
-import { Badge, Kbd, Progress, Spinner } from '@/components/ui/misc';
+import { Badge, Kbd, Progress, Spinner, Tip } from '@/components/ui/misc';
 import { invoke, onEvent } from '@/lib/ipc';
 import {
   keys,
@@ -28,13 +29,15 @@ import {
   useTts,
   useUpdateSettings,
   useUpdateState,
+  useUsageStats,
   useVoice,
 } from '@/lib/queries';
 import { useSpeechVoices } from '@/lib/tts';
-import { cn, formatBytes } from '@/lib/utils';
+import { cn, formatBytes, formatCompact, parseLocalDate } from '@/lib/utils';
 
 const SECTIONS = [
   { id: 'general', label: 'General' },
+  { id: 'usage', label: 'Usage' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'cowork', label: 'Cowork' },
   { id: 'code', label: 'Code' },
@@ -438,6 +441,161 @@ function SpokenReplies({ s, update, bar, run, busy }: {
         </>
       )}
     </Card>
+  );
+}
+
+const CHART_COLORS = ['#D97757', '#2563EB', '#7C3AED', '#0D9488', '#DB2777', '#65A30D', '#B45309', '#C2410C'];
+/** Roughly 47,000 words at ~1.35 tokens/word — a fun scale for the token count, nothing precise. */
+const GATSBY_TOKENS = 63_000;
+
+const dayLabel = (s: string): string => parseLocalDate(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+function StatTile({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-divider bg-card px-4 py-3">
+      <div className="text-[12.5px] text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-[20px] font-medium tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function Heatmap({ days }: { days: UsageStats['heatmap'] }) {
+  const max = Math.max(1, ...days.map((d) => d.count));
+  const levelClass = ['bg-track', 'bg-brand/25', 'bg-brand/50', 'bg-brand/75', 'bg-brand'];
+  const level = (c: number) => (c === 0 ? 0 : Math.min(4, Math.ceil((c / max) * 4)));
+  return (
+    <div className="grid grid-flow-col grid-rows-7 gap-[3px] overflow-x-auto pb-1" style={{ gridAutoColumns: '11px' }}>
+      {days.map((d) => (
+        <Tip key={d.date} label={`${d.count} message${d.count === 1 ? '' : 's'} · ${dayLabel(d.date)}`}>
+          <div className={cn('size-[11px] rounded-[2px]', levelClass[level(d.count)])} />
+        </Tip>
+      ))}
+    </div>
+  );
+}
+
+function UsageOverview({ stats }: { stats: UsageStats }) {
+  const multiplier = stats.totalTokens > 0 ? Math.round(stats.totalTokens / GATSBY_TOKENS) : 0;
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-3">
+        <StatTile label="Sessions" value={stats.sessions.toLocaleString()} />
+        <StatTile label="Messages" value={stats.messages.toLocaleString()} />
+        <StatTile label="Total tokens" value={formatCompact(stats.totalTokens)} />
+        <StatTile label="Active days" value={stats.activeDays.toLocaleString()} />
+        <StatTile label="Peak hour" value={stats.peakHour} />
+        <StatTile label="Favorite model" value={stats.favoriteModel ?? '—'} />
+      </div>
+      <Card>
+        <div className="py-4">
+          <Heatmap days={stats.heatmap} />
+          {multiplier > 1 && (
+            <div className="mt-3 text-[12px] text-muted-foreground">You've used ~{multiplier.toLocaleString()}× more tokens than The Great Gatsby.</div>
+          )}
+        </div>
+      </Card>
+    </>
+  );
+}
+
+function UsageModels({ stats }: { stats: UsageStats }) {
+  const names = stats.models.map((m) => m.displayName);
+  const colorFor = (name: string) => CHART_COLORS[names.indexOf(name) % CHART_COLORS.length];
+  const totalAll = stats.models.reduce((s, m) => s + m.promptTokens + m.completionTokens, 0);
+
+  const groupSize = Math.max(1, Math.ceil(stats.dailyModelTokens.length / 24));
+  const groups: Array<{ label: string; byModel: Record<string, number>; total: number }> = [];
+  for (let i = 0; i < stats.dailyModelTokens.length; i += groupSize) {
+    const slice = stats.dailyModelTokens.slice(i, i + groupSize);
+    const byModel: Record<string, number> = {};
+    for (const day of slice) for (const [name, tokens] of Object.entries(day.byModel)) byModel[name] = (byModel[name] ?? 0) + tokens;
+    const total = Object.values(byModel).reduce((s, v) => s + v, 0);
+    groups.push({ label: dayLabel(slice[0].date), byModel, total });
+  }
+  const maxTotal = Math.max(1, ...groups.map((g) => g.total));
+
+  return (
+    <Card>
+      <div className="py-4">
+        {totalAll === 0 ? (
+          <div className="py-8 text-center text-[13px] text-muted-foreground">No usage in this period yet.</div>
+        ) : (
+          <>
+            <div className="flex h-[180px] items-end gap-[3px]">
+              {groups.map((g, i) => (
+                <Tip key={i} label={g.total === 0 ? g.label : `${g.label}: ${formatCompact(g.total)} tokens`}>
+                  <div className="flex h-full flex-1 flex-col justify-end gap-px">
+                    {names
+                      .filter((n) => g.byModel[n])
+                      .map((n) => (
+                        <div key={n} style={{ height: `${(g.byModel[n] / maxTotal) * 100}%`, background: colorFor(n) }} className="min-h-px w-full rounded-[1px]" />
+                      ))}
+                  </div>
+                </Tip>
+              ))}
+            </div>
+            <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+              <span>{groups[0]?.label}</span>
+              <span>{groups[groups.length - 1]?.label}</span>
+            </div>
+            <div className="mt-4 space-y-1.5 border-t border-divider pt-3">
+              {stats.models.map((m) => {
+                const total = m.promptTokens + m.completionTokens;
+                const pct = totalAll ? (total / totalAll) * 100 : 0;
+                return (
+                  <div key={m.displayName} className="flex items-center gap-2 text-[13px]">
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: colorFor(m.displayName) }} />
+                    <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
+                    <span className="text-[12px] text-muted-foreground tabular-nums">
+                      {formatCompact(m.promptTokens)} in · {formatCompact(m.completionTokens)} out
+                    </span>
+                    <span className="w-12 text-right text-[12px] font-medium tabular-nums">{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Usage() {
+  const [range, setRange] = useState<UsageRange>('all');
+  const [tab, setTab] = useState<'overview' | 'models'>('overview');
+  const { data, isLoading } = useUsageStats(range);
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'overview', label: 'Overview' },
+            { value: 'models', label: 'Models' },
+          ]}
+        />
+        <Segmented
+          value={range}
+          onChange={setRange}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: '30d', label: '30d' },
+            { value: '7d', label: '7d' },
+          ]}
+        />
+      </div>
+      {isLoading || !data ? (
+        <div className="py-10">
+          <Spinner />
+        </div>
+      ) : tab === 'overview' ? (
+        <UsageOverview stats={data} />
+      ) : (
+        <UsageModels stats={data} />
+      )}
+    </>
   );
 }
 
@@ -1130,6 +1288,7 @@ export function SettingsPage() {
   const { section } = useParams({ from: '/settings/$section' });
   const content: Record<string, ReactNode> = {
     general: <General />,
+    usage: <Usage />,
     appearance: <Appearance />,
     cowork: <Cowork />,
     code: <Code />,

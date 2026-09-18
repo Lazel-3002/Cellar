@@ -77,6 +77,7 @@ import type { HardwareInfo, RuntimeInfo, RuntimeInstallProgress, RuntimeRelease,
 import type { TranscriptionResult, TtsStatus, VoiceProgress, VoiceStatus, WhisperVariant } from './types/voice';
 import type { AppUpdateState } from './types/update';
 import type { LspCompletionItem, LspDiagnosticsEvent, LspLanguage, LspLocation, LspPosition } from './types/lsp';
+import type { UsageRange, UsageStats } from './types/stats';
 
 export type Platform = 'win32' | 'darwin' | 'linux' | 'aix' | 'android' | 'freebsd' | 'haiku' | 'openbsd' | 'sunos' | 'cygwin' | 'netbsd';
 
@@ -106,6 +107,7 @@ type Handler<A extends unknown[], R> = { args: A; result: R };
 
 export interface IpcInvokeMap {
   'app:info': Handler<[], AppInfo>;
+  'stats:usage': Handler<[range: UsageRange], UsageStats>;
   'system:hardware': Handler<[refresh?: boolean], HardwareInfo>;
   'system:openExternal': Handler<[url: string], void>;
   'system:showInFolder': Handler<[path: string], void>;
@@ -434,6 +436,7 @@ export type EventChannel = keyof IpcEventMap;
 
 const invokeChannelFlags: Record<InvokeChannel, true> = {
   'app:info': true,
+  'stats:usage': true,
   'system:hardware': true,
   'system:openExternal': true,
   'system:showInFolder': true,

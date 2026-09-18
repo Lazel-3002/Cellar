@@ -31,6 +31,8 @@ interface UiState {
   coworkSkipped: boolean;
   coworkProjectId: string | null;
   taskPanelOpen: boolean;
+  changelogOpen: boolean;
+  setChangelogOpen: (open: boolean) => void;
   setCoworkFolder: (folder: string | null) => void;
   setCoworkSkipped: (skipped: boolean) => void;
   setCoworkProject: (projectId: string | null) => void;
@@ -71,6 +73,8 @@ export const useUi = create<UiState>()(
       coworkSkipped: false,
       coworkProjectId: null,
       taskPanelOpen: true,
+      changelogOpen: false,
+      setChangelogOpen: (changelogOpen) => set({ changelogOpen }),
       setCoworkFolder: (coworkFolder) => set({ coworkFolder, coworkSkipped: false }),
       setCoworkSkipped: (coworkSkipped) => set(coworkSkipped ? { coworkSkipped, coworkFolder: null } : { coworkSkipped }),
       setCoworkProject: (coworkProjectId) => set({ coworkProjectId }),

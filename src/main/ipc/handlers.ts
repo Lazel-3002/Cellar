@@ -15,6 +15,7 @@ import { registerTerminalHandlers, terminals } from '../code/terminal';
 import { attachmentFromBytes, attachmentsFromPaths } from '../chat/attachments';
 import { chat } from '../chat/orchestrator';
 import { deleteConversations, listConversations, searchMessages } from '../db/chat-store';
+import { getUsageStats } from '../db/usage-stats';
 import { deleteProviderConfig, listProviderConfigs, saveProviderConfig, toPublicConfig } from '../db/provider-configs';
 import { downloads } from '../hub/downloads';
 import { quantFit, readme, repoDetail, searchModels } from '../hub/hf-api';
@@ -94,6 +95,7 @@ export function registerIpcHandlers(): void {
     modelsDir: settings.get().modelsDir,
     logsDir: paths().logs,
   }));
+  handle('stats:usage', (range) => getUsageStats(range));
   handle('system:hardware', (refresh) => detectHardware(refresh));
   handle('system:openExternal', async (url) => {
     const parsed = new URL(url);

@@ -227,12 +227,14 @@ export function Sidebar() {
 export function ProfileMenuContent() {
   const navigate = useNavigate();
   const { data: settings } = useSettings();
+  const setChangelogOpen = useUi((s) => s.setChangelogOpen);
   const go = (section: string) => void navigate({ to: '/settings/$section', params: { section } });
   return (
     <MenuContent side="top" align="start" className="w-60">
       <MenuItem shortcut="Ctrl+," onSelect={() => go('general')}>
         Settings
       </MenuItem>
+      <MenuItem onSelect={() => go('usage')}>Usage</MenuItem>
       <MenuItem onSelect={() => void navigate({ to: '/models' })}>My models</MenuItem>
       <MenuItem onSelect={() => void navigate({ to: '/discover', search: {} })}>Discover models</MenuItem>
       <MenuItem onSelect={() => go('engines')}>Engines & runtimes</MenuItem>
@@ -245,6 +247,7 @@ export function ProfileMenuContent() {
           </MenuCheckItem>
         ))}
       </MenuSub>
+      <MenuItem onSelect={() => setChangelogOpen(true)}>View changelog</MenuItem>
       <MenuItem onSelect={() => go('about')}>About Cellar</MenuItem>
       <MenuSeparator />
       <MenuItem onSelect={() => void invoke('window:action', 'quit')}>Quit</MenuItem>

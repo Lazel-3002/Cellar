@@ -13,6 +13,12 @@ export function formatBytes(bytes?: number, digits = 1): string {
   return `${value.toFixed(i >= 3 ? 2 : i === 0 ? 0 : digits)} ${units[i]}`;
 }
 
+/** Parses a `YYYY-MM-DD` string as a local-midnight Date, unlike `new Date(str)` which treats it as UTC. */
+export function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export function formatCompact(n?: number): string {
   if (n === undefined || !Number.isFinite(n)) return '—';
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);

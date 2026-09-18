@@ -5,6 +5,7 @@ import type { ToolScope } from '@shared/types/customize';
 import type { HfSearchQuery } from '@shared/types/hub';
 import type { ModelRef } from '@shared/types/models';
 import type { AppSettings, AppSettingsPatch } from '@shared/types/settings';
+import type { UsageRange } from '@shared/types/stats';
 import { useStreams } from '../stores/streams';
 import { invoke, onEvent } from './ipc';
 import { speak, speakReply } from './tts';
@@ -49,6 +50,7 @@ export const keys = {
   tts: ['tts'] as const,
   background: ['background'] as const,
   update: ['update'] as const,
+  usage: (range: UsageRange) => ['usage', range] as const,
 };
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => invoke('settings:get'), staleTime: Infinity });
@@ -62,6 +64,7 @@ export function useUpdateSettings() {
 }
 
 export const useAppInfo = () => useQuery({ queryKey: keys.appInfo, queryFn: () => invoke('app:info'), staleTime: Infinity });
+export const useUsageStats = (range: UsageRange) => useQuery({ queryKey: keys.usage(range), queryFn: () => invoke('stats:usage', range), staleTime: 60_000 });
 export const useHardware = () => useQuery({ queryKey: keys.hardware, queryFn: () => invoke('system:hardware', false), staleTime: 60_000 });
 export const useProviders = () => useQuery({ queryKey: keys.providers, queryFn: () => invoke('providers:status', false), staleTime: 15_000 });
 export const useProviderConfigs = () => useQuery({ queryKey: keys.providerConfigs, queryFn: () => invoke('providers:configs') });

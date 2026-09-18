@@ -9,6 +9,7 @@ import { useIpcSync, useSettings } from '@/lib/queries';
 import { useDesignLayout } from '@/stores/design';
 import { useMathLayout } from '@/stores/math';
 import { useUi } from '@/stores/ui';
+import { ChangelogDialog } from './ChangelogDialog';
 import { CodeSidebar } from './CodeSidebar';
 import { SearchPalette } from './SearchPalette';
 import { Sidebar } from './Sidebar';
@@ -43,6 +44,7 @@ export function AppShell() {
       </div>
       <SearchPalette />
       <LoadSettingsDialog />
+      <ChangelogDialog />
       <Toaster
         theme={settings?.theme === 'light' ? 'light' : 'dark'}
         position="bottom-right"
