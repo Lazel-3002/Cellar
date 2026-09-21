@@ -63,6 +63,7 @@ import type {
   MemoryTopic,
   MemoryUpdateResult,
   PluginInfo,
+  PluginMarketplaceEntry,
   SkillDetail,
   SkillInfo,
   SkillInput,
@@ -287,6 +288,10 @@ export interface IpcInvokeMap {
   'plugins:setEnabled': Handler<[id: string, enabled: boolean], void>;
   'plugins:remove': Handler<[id: string], void>;
   'plugins:reveal': Handler<[id: string], void>;
+  /** Search plugins in the Hugging Face marketplace. */
+  'plugins:marketplace:search': Handler<[query: { search?: string; sort?: string; limit?: number }], PluginMarketplaceEntry[]>;
+  /** Install a plugin from Hugging Face by repo ID. */
+  'plugins:marketplace:install': Handler<[repoId: string], PluginInfo>;
 
   'commands:list': Handler<[scope: ToolScope], CommandInfo[]>;
   'commands:get': Handler<[name: string], CommandDetail>;
@@ -589,6 +594,8 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'plugins:setEnabled': true,
   'plugins:remove': true,
   'plugins:reveal': true,
+  'plugins:marketplace:search': true,
+  'plugins:marketplace:install': true,
   'commands:list': true,
   'commands:get': true,
   'commands:expand': true,

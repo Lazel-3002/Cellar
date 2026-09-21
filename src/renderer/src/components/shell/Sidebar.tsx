@@ -1,6 +1,6 @@
 import { useState, type ComponentType, type SVGProps } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { BriefcaseBusiness, ChevronDown, Clock, Columns2, Ellipsis, FolderClosed, ListFilter, LoaderCircle, Palette, Pencil, Plus, Shapes, Sigma, Star, Trash } from 'lucide-react';
+import { BriefcaseBusiness, ChevronDown, Clock, Columns2, Ellipsis, FolderClosed, ListFilter, LoaderCircle, Palette, Pencil, Plus, Puzzle, Shapes, Sigma, Star, Trash } from 'lucide-react';
 import type { ConversationSummary } from '@shared/types/chat';
 import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
 import { Tip } from '@/components/ui/misc';
@@ -160,6 +160,7 @@ export function Sidebar() {
         <NavItem icon={Shapes} label="Artifacts" to="/artifacts" active={pathname.startsWith('/artifacts')} />
         <NavItem icon={Clock} label="Scheduled" to="/scheduled" active={pathname.startsWith('/scheduled')} />
         <NavItem icon={BriefcaseBusiness} label="Customize" to="/customize/skills" active={pathname.startsWith('/customize')} />
+        <NavItem icon={Puzzle} label="Plugins" to="/plugins" active={pathname.startsWith('/plugins')} />
       </nav>
 
       <div className="mt-[22px] flex h-6 items-center justify-between pr-2 pl-3.5">

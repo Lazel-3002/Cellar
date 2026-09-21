@@ -65,6 +65,26 @@ export interface PluginInfo {
   error?: string;
 }
 
+export interface PluginMarketplaceEntry {
+  /** Hugging Face repo ID like "owner/plugin-name" */
+  id: string;
+  name: string;
+  description: string;
+  version?: string;
+  author: string;
+  downloads: number;
+  likes: number;
+  tags: string[];
+  lastModified?: string;
+  gated?: boolean;
+}
+
+export interface PluginMarketplaceSearch {
+  search?: string;
+  sort?: 'downloads' | 'likes' | 'lastModified';
+  limit?: number;
+}
+
 export type ConnectorTransport = 'stdio' | 'http' | 'sse';
 
 /** allow: runs without asking · ask: approval card each time · off: hidden from models. */

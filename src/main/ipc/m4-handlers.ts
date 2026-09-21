@@ -10,6 +10,7 @@ import { updateMemoryFromConversation } from '../customize/memory-auto';
 import { editMemoryWithText } from '../customize/memory-edit';
 import { clearMemoryTopics, deleteMemoryTopic, listMemoryTopics, updateMemoryTopic } from '../customize/memory-topics';
 import { installPlugin, listPlugins, removePlugin, setPluginEnabled } from '../customize/plugins';
+import { installFromMarketplace, searchMarketplace } from '../plugins/marketplace';
 import { claudeSkillsAvailable, deleteSkill, getSkill, importClaudeSkills, importSkills, listSkills, saveSkill, setSkillEnabled } from '../customize/skills';
 import { listTools } from '../customize/tool-listing';
 import { embeddingIndex } from '../rag/embeddings';
@@ -89,6 +90,19 @@ export function registerM4Handlers(): void {
   handle('plugins:reveal', async (id) => {
     const plugin = (await listPlugins()).find((p) => p.id === id);
     if (plugin) await shell.openPath(plugin.dir);
+  });
+
+  handle('plugins:marketplace:search', async (query) => {
+    const validated = z.object({
+      search: z.string().optional(),
+      sort: z.enum(['downloads', 'likes', 'lastModified']).optional(),
+      limit: z.number().int().positive().max(100).optional(),
+    }).parse(query);
+    return searchMarketplace(validated);
+  });
+  handle('plugins:marketplace:install', async (repoId) => {
+    const results = await installFromMarketplace(z.string().min(1).max(4096).parse(repoId));
+    return results[0] ?? null;
   });
 
   handle('commands:list', (s) => listCommands(scope.parse(s)));

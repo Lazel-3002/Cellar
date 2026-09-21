@@ -40,6 +40,7 @@ export const keys = {
   quantFit: (repo: string, label: string) => ['quant-fit', repo, label] as const,
   skills: ['skills'] as const,
   plugins: ['plugins'] as const,
+  pluginMarketplaces: (q?: { search?: string; sort?: string }) => ['plugin-marketplaces', q ?? {}] as const,
   commands: (scope: string) => ['commands', scope] as const,
   connectors: ['connectors'] as const,
   memory: ['memory'] as const,
@@ -85,6 +86,16 @@ export const useDownloads = () => useQuery({ queryKey: keys.downloads, queryFn: 
 export const useRuntimes = () => useQuery({ queryKey: keys.runtimes, queryFn: () => invoke('runtimes:list', false), staleTime: 60_000 });
 export const useSkills = () => useQuery({ queryKey: keys.skills, queryFn: () => invoke('skills:list') });
 export const usePlugins = () => useQuery({ queryKey: keys.plugins, queryFn: () => invoke('plugins:list') });
+export function usePluginMarketplaces(query?: { search?: string; sort?: string }) {
+  return useQuery({ queryKey: keys.pluginMarketplaces(query), queryFn: () => invoke('plugins:marketplace:search', query ?? {}), staleTime: 60 * 60_000 });
+}
+export const useInstallPluginFromMarketplace = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (repoId: string) => invoke('plugins:marketplace:install', repoId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.plugins }),
+  });
+};
 export const useCommands = (scope: ToolScope) => useQuery({ queryKey: keys.commands(scope), queryFn: () => invoke('commands:list', scope), staleTime: 60_000 });
 export const useConnectors = () => useQuery({ queryKey: keys.connectors, queryFn: () => invoke('connectors:list') });
 export const useMemories = () => useQuery({ queryKey: keys.memory, queryFn: () => invoke('memory:list') });

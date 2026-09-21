@@ -14,6 +14,7 @@ import { PlaygroundPage } from './pages/PlaygroundPage';
 import { ProjectDetailPage, ProjectsPage } from './pages/ProjectsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TaskPage } from './pages/TaskPage';
+import { PluginsPage } from './pages/PluginsPage';
 
 const rootRoute = createRootRoute({ component: AppShell });
 
@@ -41,6 +42,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/scheduled', component: ScheduledPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/customize', component: () => <Navigate to="/customize/$section" params={{ section: 'skills' }} replace /> }),
   createRoute({ getParentRoute: () => rootRoute, path: '/customize/$section', component: CustomizePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/plugins', component: PluginsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/code', component: CodeHomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/code/$conversationId', component: CodeSessionPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/design', component: DesignHomePage }),
