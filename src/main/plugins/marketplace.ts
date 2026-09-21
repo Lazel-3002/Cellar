@@ -29,23 +29,36 @@ export async function searchMarketplace(query: PluginMarketplaceSearch): Promise
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.at < 60 * 60_000) return cached.results;
 
-  // Search for repositories with "claude-code-plugins" or similar tags
+  // Search broadly for Claude-related repositories
   const params = new URLSearchParams({
-    filter: 'claude-code-plugin',
     sort: query.sort || 'downloads',
     direction: '-1',
     limit: String(query.limit ?? 40),
   });
-  if (query.search?.trim()) params.set('search', query.search.trim());
+  
+  // Use broader search terms if user provides one, otherwise default to "claude"
+  const searchTerm = query.search?.trim() || 'claude';
+  params.set('search', searchTerm);
 
   try {
     const rows = await fetchJson(`${HF_BASE}/api/models?${params}`);
     const results: PluginMarketplaceEntry[] = [];
+    
+    // Quick filter: only process repos that mention Claude, agent, or plugin in tags/description
     for (const r of rows as Array<{ id: string; likes?: number; downloads?: number; tags?: string[]; pipeline_tag?: string; lastModified?: string; createdAt?: string; gated?: boolean | string }>) {
-      // Filter to only repositories that look like plugins (have .claude-plugin or skills/ or commands/)
       const id = r.id;
       if (!id) continue;
       
+      // Skip repos that clearly aren't plugins (e.g., models without plugin-related keywords)
+      const allTags = (r.tags || []).join(' ').toLowerCase();
+      const isRelevant = 
+        allTags.includes('claude') ||
+        allTags.includes('agent') ||
+        allTags.includes('mcp') ||
+        allTags.includes('plugin');
+      
+      if (!isRelevant) continue;
+
       try {
         // Check if this repo contains plugin files
         const tree = await fetchJson(`${HF_BASE}/api/models/${id}/tree/main?recursive=true`);
