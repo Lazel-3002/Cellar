@@ -36,6 +36,7 @@ import { paths } from '../system/paths';
 import { applyTitleBarTheme } from '../window';
 import { registerDesignHandlers } from '../design/ipc';
 import { registerMathHandlers } from '../math/ipc';
+import { registerStudyHandlers } from '../study/ipc';
 import { registerM4Handlers } from './m4-handlers';
 import { handle } from './register';
 
@@ -66,6 +67,15 @@ const sendSchema = z.object({
   designSelection: z.object({ artboardId: z.string().max(60), elementIds: z.array(z.string().max(60)).max(400) }).nullable().optional(),
   math: z.object({ topic: z.string().max(400).optional(), paper: z.enum(['grid', 'dots', 'lined', 'plain']).optional(), angleMode: z.enum(['deg', 'rad']).optional() }).optional(),
   mathSelection: z.object({ blockId: z.string().max(60) }).nullable().optional(),
+  studyContext: z
+    .object({
+      page: z.number().int().min(1).max(100_000),
+      scope: z.enum(['page', 'pages', 'upto', 'book']),
+      pages: z.string().max(400).optional(),
+      from: z.number().int().min(1).max(100_000).optional(),
+      selection: z.object({ page: z.number().int().min(1).max(100_000), text: z.string().max(8000) }).optional(),
+    })
+    .optional(),
 });
 
 const approvalSchema = z.object({ action: z.enum(['allow', 'allow-all', 'deny']), feedback: z.string().max(4000).optional() });
@@ -116,6 +126,8 @@ export function registerIpcHandlers(): void {
         ? [{ name: 'Documents', extensions: ['txt', 'md', 'pdf', 'json', 'csv', 'html', 'xml', 'yaml', 'yml', 'py', 'js', 'ts', 'tsx', 'java', 'go', 'rs', 'c', 'cpp', 'cs'] }]
         : kind === 'fonts'
           ? [{ name: 'Fonts', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]
+          : kind === 'pdf'
+            ? [{ name: 'PDF', extensions: ['pdf'] }]
           : [
               { name: 'Images, PDFs and text', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'json', 'csv', 'html', 'py', 'js', 'ts', 'tsx', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'yaml', 'yml', 'xml'] },
               { name: 'All files', extensions: ['*'] },
@@ -361,4 +373,5 @@ export function registerIpcHandlers(): void {
   registerM4Handlers();
   registerDesignHandlers();
   registerMathHandlers();
+  registerStudyHandlers();
 }

@@ -43,6 +43,18 @@ import type {
 import type { BrowserBounds, BrowserLoginStatus, BrowserState, BrowserTab } from './types/browser';
 import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary, DesignVersionSummary, FontSummary } from './types/design';
 import type { MathBoard, MathBoardSummary, MathChangedEvent, MathExportRequest, MathStartOptions } from './types/math';
+import type {
+  BookChat,
+  BookSummary,
+  StudyAnnotation,
+  StudyChangedEvent,
+  StudyGotoEvent,
+  StudyImportProgress,
+  StudyMode,
+  StudyPageHit,
+  StudyRenderRequest,
+  StudySession,
+} from './types/study';
 import type { DownloadJob, HfModelSummary, HfRepoDetail, HfSearchQuery, QuantFit, StartDownloadInput } from './types/hub';
 import type {
   LoadConfig,
@@ -117,7 +129,7 @@ export interface IpcInvokeMap {
   'system:openExternal': Handler<[url: string], void>;
   'system:showInFolder': Handler<[path: string], void>;
   'system:pickDirectory': Handler<[title?: string], string | null>;
-  'system:pickFiles': Handler<[kind?: 'attachments' | 'knowledge' | 'fonts'], string[]>;
+  'system:pickFiles': Handler<[kind?: 'attachments' | 'knowledge' | 'fonts' | 'pdf'], string[]>;
   'window:setTheme': Handler<[theme: 'dark' | 'light'], void>;
   'window:action': Handler<[action: WindowAction], void>;
 
@@ -430,6 +442,32 @@ export interface IpcInvokeMap {
   'math:solve': Handler<[request: import('./math/solve').SolveRequest], import('./math/solve').Solution & { text: string }>;
   /** Generates a practice test with answers and worked solutions. */
   'math:quiz': Handler<[request: import('./math/quiz').QuizRequest], import('./math/quiz').GeneratedQuiz>;
+
+  /** Study: the shelf of books. */
+  'study:list': Handler<[], BookSummary[]>;
+  /** Adds PDFs to the shelf (a file already there opens the existing book); returns each book's latest chat. */
+  'study:import': Handler<[paths: string[]], Array<{ bookId: string; conversationId: string; title: string; existing: boolean }>>;
+  /** The latest chat about a book, created when there is none. */
+  'study:open': Handler<[bookId: string], { conversationId: string }>;
+  'study:get': Handler<[conversationId: string], StudySession>;
+  /** The PDF itself, for the viewer. */
+  'study:bytes': Handler<[bookId: string], Uint8Array>;
+  /** Saves the annotation layer; fails when `baseVersion` is no longer the latest (reload and retry). */
+  'study:save': Handler<[bookId: string, annotations: StudyAnnotation[], baseVersion: number], { version: number }>;
+  'study:setPage': Handler<[bookId: string, page: number], void>;
+  'study:rename': Handler<[bookId: string, title: string], void>;
+  /** Removes the book, its notes and its chats. */
+  'study:delete': Handler<[bookId: string], void>;
+  'study:chats': Handler<[bookId: string], BookChat[]>;
+  'study:newChat': Handler<[bookId: string], { conversationId: string }>;
+  'study:setMode': Handler<[conversationId: string, mode: StudyMode], void>;
+  /** Asks where to save and writes a copy of the PDF with the notes drawn in; null when cancelled. */
+  'study:export': Handler<[bookId: string], string | null>;
+  'study:search': Handler<[bookId: string, query: string], StudyPageHit[]>;
+  /** The viewer's answer to a `study:render` request. */
+  'study:rendered': Handler<[requestId: string, png: string | null], void>;
+  /** pdf.js's own data files (character maps, standard fonts, image decoders), which the viewer cannot fetch from file://. */
+  'study:pdfAsset': Handler<[kind: 'cMapUrl' | 'standardFontDataUrl' | 'wasmUrl', filename: string], Uint8Array>;
 }
 
 export interface IpcEventMap {
@@ -465,6 +503,12 @@ export interface IpcEventMap {
   'quick:shown': Record<string, never>;
   'design:changed': DesignChangedEvent;
   'math:changed': MathChangedEvent;
+  'study:changed': StudyChangedEvent;
+  /** The model turned the page. */
+  'study:goto': StudyGotoEvent;
+  /** Main wants a picture of a page from an open viewer (for a vision model). */
+  'study:render': StudyRenderRequest;
+  'study:progress': StudyImportProgress;
   'update:changed': AppUpdateState;
 }
 
@@ -701,6 +745,22 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'math:calculate': true,
   'math:solve': true,
   'math:quiz': true,
+  'study:list': true,
+  'study:import': true,
+  'study:open': true,
+  'study:get': true,
+  'study:bytes': true,
+  'study:save': true,
+  'study:setPage': true,
+  'study:rename': true,
+  'study:delete': true,
+  'study:chats': true,
+  'study:newChat': true,
+  'study:setMode': true,
+  'study:export': true,
+  'study:search': true,
+  'study:rendered': true,
+  'study:pdfAsset': true,
 };
 
 const eventChannelFlags: Record<EventChannel, true> = {
@@ -732,6 +792,10 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'quick:shown': true,
   'design:changed': true,
   'math:changed': true,
+  'study:changed': true,
+  'study:goto': true,
+  'study:render': true,
+  'study:progress': true,
   'update:changed': true,
 };
 

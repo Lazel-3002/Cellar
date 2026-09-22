@@ -147,6 +147,7 @@ export function RecentsPage() {
                     {c.kind === 'code' && <Badge tone="outline">Code</Badge>}
                     {c.kind === 'design' && <Badge tone="outline">Design</Badge>}
                     {c.kind === 'math' && <Badge tone="outline">Math</Badge>}
+                    {c.kind === 'study' && <Badge tone="outline">Study</Badge>}
                     {c.projectName && <Badge>{c.projectName}</Badge>}
                   </div>
                   <div className="text-[12px] text-muted-foreground">Last message {relativeTime(c.updatedAt)}</div>

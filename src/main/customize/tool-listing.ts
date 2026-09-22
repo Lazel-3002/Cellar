@@ -8,6 +8,7 @@ import { pdfAvailable } from '../agent/documents';
 import { chatBaseTools, codeToolsFor, extraTools, toolsFor, type AgentTool } from '../agent/tools';
 import { designToolsFor } from '../design/tools';
 import { MATH_TOOLS } from '../math/tools';
+import { studyTools } from '../study/tools';
 import { chat } from '../chat/orchestrator';
 import { providers } from '../providers/registry';
 import { settings } from '../services/settings';
@@ -53,6 +54,15 @@ const GROUPS: Record<string, string> = {
   forget: 'Memory',
   search_chats: 'Past chats',
   read_chat: 'Past chats',
+  read_pages: 'Book',
+  search_book: 'Book',
+  go_to_page: 'Book',
+  highlight: 'Writing on the book',
+  add_note: 'Writing on the book',
+  write_answer: 'Writing on the book',
+  mark_answer: 'Writing on the book',
+  erase: 'Writing on the book',
+  look_at_page: 'Book',
 };
 
 function describe(tool: AgentTool): ToolInfo {
@@ -72,6 +82,8 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
   let incognito = false;
   let permissionMode: PermissionMode = scope === 'task' ? app.coworkPermissionMode : codePermissionMode(app.codeMode, app.codeAutoAcceptEdits);
   let codeMode: CodeMode = app.codeMode;
+  let studyMode: 'tutor' | 'solve' = 'tutor';
+  let vision = false;
   if (conversationId) {
     try {
       const { conversation } = chat.getConversation(conversationId);
@@ -79,6 +91,7 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
       if (conversation.task) {
         permissionMode = conversation.task.permissionMode;
         codeMode = conversation.task.code?.mode ?? codeMode;
+        studyMode = conversation.task.study?.mode ?? studyMode;
       }
     } catch {
       // new conversation
@@ -86,6 +99,7 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
   }
   if (modelRef) {
     const entry = await providers.findModel(modelRef).catch(() => undefined);
+    vision = !!entry?.capabilities.vision;
     if (entry && !entry.capabilities.tools) {
       notes.push(
         scope === 'chat'
@@ -97,6 +111,8 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
   const base =
     scope === 'chat'
       ? chatBaseTools(app)
+      : scope === 'study'
+        ? studyTools({ mode: studyMode, vision })
       : scope === 'math'
         ? MATH_TOOLS
         : scope === 'design'
@@ -109,9 +125,9 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
     settings: app,
     skills: skills.length > 0,
     incognito,
-    readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && permissionMode === 'plan',
-    browser: scope !== 'math' && scope !== 'design',
-    reminders: scope !== 'math' && scope !== 'design',
+    readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && scope !== 'study' && permissionMode === 'plan',
+    browser: scope !== 'math' && scope !== 'design' && scope !== 'study',
+    reminders: scope !== 'math' && scope !== 'design' && scope !== 'study',
   });
   const tools = [...base, ...extras].map(describe);
   const connectorPolicies = new Map<string, string>();

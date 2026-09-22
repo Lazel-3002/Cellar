@@ -8,6 +8,7 @@ import { useAppInfo } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { useDesignLayout } from '@/stores/design';
 import { useMathLayout } from '@/stores/math';
+import { useStudyLayout } from '@/stores/study';
 import { useUi } from '@/stores/ui';
 
 function AppMenu() {
@@ -68,9 +69,18 @@ export function TitleBar() {
   const setDesignSidebar = useDesignLayout((s) => s.setSidebar);
   const mathSidebar = useMathLayout((s) => s.sidebar);
   const setMathSidebar = useMathLayout((s) => s.setSidebar);
-  // The design editor and the board keep the sidebar closed unless it is opened there, so the work gets the room.
-  const sidebarOpen = isDesignEditor ? designSidebar : isMathBoard ? mathSidebar : mainSidebar;
-  const toggleSidebar = isDesignEditor ? () => setDesignSidebar(!designSidebar) : isMathBoard ? () => setMathSidebar(!mathSidebar) : toggleMainSidebar;
+  const isStudyReader = pathname.startsWith('/study/');
+  const studySidebar = useStudyLayout((s) => s.sidebar);
+  const setStudySidebar = useStudyLayout((s) => s.setSidebar);
+  // The design editor, the board and the book keep the sidebar closed unless it is opened there, so the work gets the room.
+  const sidebarOpen = isDesignEditor ? designSidebar : isMathBoard ? mathSidebar : isStudyReader ? studySidebar : mainSidebar;
+  const toggleSidebar = isDesignEditor
+    ? () => setDesignSidebar(!designSidebar)
+    : isMathBoard
+      ? () => setMathSidebar(!mathSidebar)
+      : isStudyReader
+        ? () => setStudySidebar(!studySidebar)
+        : toggleMainSidebar;
   const mac = window.cellar.platform === 'darwin';
 
   const toggleIncognito = () => {

@@ -1,4 +1,4 @@
-import { memo, useMemo, type AnchorHTMLAttributes, type ComponentType } from 'react';
+import { memo, useMemo, type AnchorHTMLAttributes, type ComponentType, type ReactNode } from 'react';
 import { createCodePlugin } from '@streamdown/code';
 import { createMathPlugin } from '@streamdown/math';
 import { createMermaidPlugin } from '@streamdown/mermaid';
@@ -12,6 +12,7 @@ import { cn, toBase64 } from '@/lib/utils';
 import { ArtifactCard } from './ArtifactCard';
 import { InlineImage } from './InlineImage';
 import { InlineViz } from './InlineViz';
+import { usePageLinks, withPageLinks } from './PageLinks';
 
 const plugins = {
   code: createCodePlugin({ themes: ['github-light', 'github-dark-default'] }),
@@ -63,10 +64,12 @@ interface MarkdownProps {
 }
 
 export const Markdown = memo(function Markdown({ content, streaming, conversationId, className, artifacts = true }: MarkdownProps) {
+  const pageLinks = usePageLinks();
   const source = useMemo(() => {
-    if (!artifacts) return content;
-    return withInlineImages(withVizBlocks(withArtifactCards(content)), !!streaming);
-  }, [content, artifacts, streaming]);
+    const withPages = pageLinks ? withPageLinks(content, pageLinks.pageCount) : content;
+    if (!artifacts) return withPages;
+    return withInlineImages(withVizBlocks(withArtifactCards(withPages)), !!streaming);
+  }, [content, artifacts, streaming, pageLinks]);
   const components = useMemo(() => {
     const Card: ComponentType<Record<string, unknown>> = (props) => (
       <ArtifactCard
@@ -92,8 +95,19 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
         {children}
       </a>
     );
-    return { 'artifact-card': Card, 'inline-viz': Viz, 'inline-image': Image, a: Anchor } as Components;
-  }, [conversationId]);
+    const PageLink: ComponentType<Record<string, unknown> & { children?: ReactNode }> = (props) => (
+      <button
+        type="button"
+        className="study-page-link"
+        data-testid="page-link"
+        onClick={() => pageLinks?.goTo(Number(props.page))}
+        title={`Go to page ${String(props.page)}`}
+      >
+        {props.children}
+      </button>
+    );
+    return { 'artifact-card': Card, 'inline-viz': Viz, 'inline-image': Image, 'page-link': PageLink, a: Anchor } as Components;
+  }, [conversationId, pageLinks]);
 
   return (
     <Streamdown
@@ -104,7 +118,7 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
       plugins={plugins}
       shikiTheme={['github-light', 'github-dark-default']}
       controls={{ table: true, code: true, mermaid: { download: true, copy: true, fullscreen: true, panZoom: true } }}
-      allowedTags={{ 'artifact-card': ['identifier', 'title', 'kind', 'open'], 'inline-viz': ['kind', 'content', 'open'], 'inline-image': ['query'] }}
+      allowedTags={{ 'artifact-card': ['identifier', 'title', 'kind', 'open'], 'inline-viz': ['kind', 'content', 'open'], 'inline-image': ['query'], 'page-link': ['page', 'to'] }}
       components={components}
       linkSafety={{ enabled: false }}
       lineNumbers={false}

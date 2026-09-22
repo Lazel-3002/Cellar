@@ -5,6 +5,7 @@ import { CodeHomePage, CodeSessionPage } from './pages/CodePage';
 import { CustomizePage } from './pages/CustomizePage';
 import { DesignEditorPage, DesignHomePage } from './pages/DesignPage';
 import { MathBoardPage, MathHomePage } from './pages/MathPage';
+import { StudyHomePage, StudyReaderPage } from './pages/StudyPage';
 import { ScheduledPage } from './pages/ScheduledPage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
@@ -49,6 +50,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/design/$conversationId', component: DesignEditorPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/math', component: MathHomePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/math/$conversationId', component: MathBoardPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/study', component: StudyHomePage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/study/$conversationId', component: StudyReaderPage }),
 ] as const;
 
 const routeTree = rootRoute.addChildren([...routes]);

@@ -31,6 +31,8 @@ export interface CellarPaths {
   designs: string;
   /** Working folders of Math sessions. */
   boards: string;
+  /** Study: copies of imported PDFs, one per book. */
+  books: string;
   /** Claude Desktop's config and Claude Code's skills, for importing. */
   claudeDesktopConfig: string;
   claudeSkills: string;
@@ -70,6 +72,7 @@ export function initPaths(userData: string, artifactRuntimeDir: string): CellarP
     piper: join(cellarHome, 'piper'),
     designs: join(cellarHome, 'designs'),
     boards: join(cellarHome, 'boards'),
+    books: join(cellarHome, 'books'),
     claudeDesktopConfig: join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json'),
     claudeSkills: join(home, '.claude', 'skills'),
     scheduledRegistry: join(cellarHome, 'scheduled_tasks.json'),

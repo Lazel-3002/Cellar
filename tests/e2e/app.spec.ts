@@ -973,6 +973,136 @@ test('math: a tutor fills a board, the calculator and whiteboard work, and a tes
   }
 });
 
+/** A two-page worksheet like a textbook's exercise page, drawn with pdf-lib. */
+async function worksheetPdf(file: string): Promise<void> {
+  const { PDFDocument, StandardFonts } = await import('pdf-lib');
+  const doc = await PDFDocument.create();
+  doc.setTitle('Science Workbook');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const first = doc.addPage([595, 842]);
+  const lines: Array<[string, number]> = [
+    ['Chapter 3 Exercises', 780],
+    ['1. What is the unit of force?', 740],
+    ['..............................................', 718],
+    ['2. Photosynthesis happens in the ________ of the cell.', 680],
+    ['3. Explain why leaves are green.', 640],
+    ['4. A car travels 120 km in 2 hours. What is its speed?', 520],
+  ];
+  for (const [text, y] of lines) first.drawText(text, { x: 60, y, size: 12, font });
+  const second = doc.addPage([595, 842]);
+  second.drawText('Light travels at about 300000 km per second.', { x: 60, y: 780, size: 12, font });
+  writeFileSync(file, await doc.save());
+}
+
+test('study: a PDF opens beside a tutor that checks the page, writes answers and turns pages', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cellar-study-'));
+  try {
+    const pdf = join(dir, 'Science Workbook.pdf');
+    await worksheetPdf(pdf);
+    await openSidebar();
+    await win.getByRole('link', { name: 'Study', exact: true }).click();
+    await expect(win.getByTestId('study-home')).toBeVisible();
+    await expect(win.getByText('Study with your book')).toBeVisible();
+
+    // Adding the PDF (the file dialog cannot be driven, so through the same IPC the button uses).
+    const [added] = await ipc<Array<{ bookId: string; conversationId: string; title: string; existing: boolean }>>('study:import', [pdf]);
+    expect(added).toMatchObject({ title: 'Science Workbook', existing: false });
+    await win.evaluate((id) => (location.hash = `#/study/${id}`), added.conversationId);
+    await expect(win.getByTestId('study-reader')).toBeVisible({ timeout: 20_000 });
+    const page1 = win.locator('.page[data-page-number="1"]');
+    await expect(page1.locator('.textLayer')).toContainText('What is the unit of force?', { timeout: 20_000 });
+    await expect(win.getByTestId('study-toolbar')).toContainText('/ 2');
+
+    // Typing an answer on the page, under question 1.
+    const box = (await page1.locator('.cellar-study-overlay').boundingBox())!;
+    const at = (x: number, y: number) => ({ x: box.x + (x / 595) * box.width, y: box.y + (y / 842) * box.height });
+    await win.getByTestId('study-tool-text').click();
+    const spot = at(64, 120);
+    await win.mouse.click(spot.x, spot.y);
+    await win.getByTestId('study-text-editor').fill('Newton');
+    await win.getByTestId('study-text-editor').press('Escape');
+    await expect(page1.getByTestId('study-text')).toHaveText('Newton');
+    await expect
+      .poll(async () => (await ipc<{ book: { annotations: Array<{ type: string; text?: string }> } }>('study:get', added.conversationId)).book.annotations.map((a) => a.text), { timeout: 10_000 })
+      .toContain('Newton');
+
+    // Tutor mode: the page is checked, marked and annotated, but no answer is written.
+    await win.getByTestId('study-tool-select').click();
+    await selectModel('mock-reader');
+    const chat = win.getByTestId('study-chat');
+    await expect(chat.getByTestId('study-context')).toContainText('This page (p. 1)');
+    await chat.getByTestId('composer-input').fill('Check my answers');
+    await chat.getByTestId('composer-send').click();
+    await expect(chat).toContainText('Question 1 is right', { timeout: 30_000 });
+    await expect(page1.getByTestId('study-highlight')).toHaveCount(1);
+    await expect(page1.getByTestId('study-mark')).toContainText('✓');
+    await expect(page1.getByTestId('study-note')).toHaveCount(1);
+    const tutorRequest = mock.requests.filter((r) => r.model === 'mock-reader' && r.tools?.length).at(-1)!;
+    expect(tutorRequest.tools?.map((t) => t.function.name)).not.toContain('write_answer');
+    const system = String(tutorRequest.messages[0].content);
+    expect(system).toContain('Tutor mode');
+    expect(system).toContain('the user wrote "Newton"');
+    await page1.getByTestId('study-note').click();
+    await expect(page1.getByTestId('study-note-card')).toContainText('chlorophyll reflects');
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-study-tutor.png') });
+
+    // The reply cites p. 2: clicking it turns the page.
+    await chat.getByTestId('page-link').last().click();
+    await expect(win.getByTestId('study-page-input')).toHaveValue('2');
+
+    // Solve mode: the answer goes onto the blank in question 2.
+    await chat.getByRole('button', { name: 'Solve', exact: true }).click();
+    await win.getByTestId('study-page-input').fill('1');
+    await win.getByTestId('study-page-input').press('Enter');
+    await expect(win.getByTestId('study-page-input')).toHaveValue('1');
+    await chat.getByTestId('composer-input').fill('Fill in question 2');
+    await chat.getByTestId('composer-send').click();
+    await expect(chat).toContainText('Wrote chloroplasts', { timeout: 30_000 });
+    await expect(page1.getByTestId('study-text').filter({ hasText: 'chloroplasts' })).toBeVisible();
+
+    // The pen draws on the page, and undo takes the stroke back.
+    await win.getByTestId('study-tool-pen').click();
+    const a = at(380, 110);
+    const b = at(460, 130);
+    await win.mouse.move(a.x, a.y);
+    await win.mouse.down();
+    await win.mouse.move(b.x, b.y, { steps: 10 });
+    await win.mouse.up();
+    await expect(page1.locator('svg [data-annotation] path')).toHaveCount(1);
+    await win.getByTestId('study-undo').click();
+    await expect(page1.locator('svg [data-annotation] path')).toHaveCount(0);
+    await win.getByTestId('study-tool-select').click();
+
+    // Choosing pages sends them along: page 2's text reaches the model.
+    await chat.getByRole('button', { name: 'Tutor', exact: true }).click();
+    await chat.getByTestId('study-scope').click();
+    await win.getByRole('menuitem', { name: 'Pages I choose…' }).click();
+    await chat.getByTestId('study-pages-input').fill('1-2');
+    await expect(chat.getByTestId('study-context')).toContainText('Pages 1–2');
+    await chat.getByTestId('composer-input').fill('How fast is light?');
+    await chat.getByTestId('composer-send').click();
+    await expect(chat).toContainText('300000 km per second', { timeout: 30_000 });
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-study.png') });
+
+    // Export: a copy of the PDF with the notes drawn in.
+    const exported = join(dir, 'with-notes.pdf');
+    await app.evaluate(({ dialog }, target) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: target })) as unknown as typeof dialog.showSaveDialog;
+    }, exported);
+    await win.getByTestId('study-export').click();
+    await expect.poll(() => existsSync(exported), { timeout: 30_000 }).toBe(true);
+    expect(readFileSync(exported).subarray(0, 5).toString()).toBe('%PDF-');
+
+    // The shelf shows the book with its notes.
+    await openSidebar();
+    await win.getByRole('link', { name: 'Study', exact: true }).click();
+    await expect(win.getByTestId('book-list')).toContainText('Science Workbook');
+    await expect(win.getByTestId('book-list')).toContainText('notes');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('playground: two models answer the same prompt, one after the other', async () => {
   await openSidebar();
   await win.getByRole('link', { name: 'Playground', exact: true }).click();

@@ -335,4 +335,47 @@ export const migrations: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  /* 12: Study — books (a copy of the PDF lives on disk), their text by page, and annotations */ `
+  CREATE TABLE books (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    hash TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    page_count INTEGER NOT NULL,
+    pages TEXT NOT NULL,
+    outline TEXT NOT NULL DEFAULT '[]',
+    last_page INTEGER NOT NULL DEFAULT 1,
+    annotations TEXT NOT NULL DEFAULT '[]',
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX books_updated ON books(updated_at DESC);
+  CREATE INDEX books_hash ON books(hash);
+
+  CREATE TABLE book_pages (
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    lines TEXT NOT NULL,
+    PRIMARY KEY (book_id, page)
+  );
+
+  CREATE VIRTUAL TABLE book_fts USING fts5(
+    content,
+    book_id UNINDEXED,
+    page UNINDEXED,
+    tokenize = 'unicode61 remove_diacritics 2'
+  );
+
+  CREATE TABLE book_vectors (
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    dims INTEGER NOT NULL,
+    vector BLOB NOT NULL,
+    PRIMARY KEY (book_id, page, model)
+  );
+  `,
 ];

@@ -121,7 +121,7 @@ export async function startMockServer(): Promise<MockServer> {
     }
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }, { id: 'mock-browser' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }, { id: 'mock-browser' }, { id: 'mock-reader' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -143,9 +143,11 @@ export async function startMockServer(): Promise<MockServer> {
         }
         // /update-memory (and the automatic pass): reply with the extraction JSON it asks for, and
         // with nothing to keep unless the transcript actually holds something durable.
-        if (parsed.messages.some((m) => m.role === 'system' && String(m.content).includes('You maintain a private memory profile'))) {
-          const keep = /sourdough/i.test(prompt);
-          send({ content: keep ? '{"upsert": [{"category": "topic", "title": "Baking", "content": "Bakes sourdough bread at the weekend."}], "remove": []}' : '{"upsert": [], "remove": []}' }, 'stop');
+        // The memory pass carries the transcript in its system prompt and wants {"upserts", "removals"}.
+        const memoryPass = parsed.messages.find((m) => m.role === 'system' && /You are a memory manager|You maintain a private memory profile/.test(String(m.content)));
+        if (memoryPass) {
+          const keep = /sourdough/i.test(String(memoryPass.content).split('Conversation:').pop() ?? '');
+          send({ content: keep ? '{"upserts": [{"category": "topic", "title": "Baking", "content": "Bakes sourdough bread at the weekend.", "confidence": 0.9}], "removals": []}' : '{"upserts": [], "removals": []}' }, 'stop');
           res.end('data: [DONE]\n\n');
           return;
         }
@@ -224,6 +226,33 @@ export async function startMockServer(): Promise<MockServer> {
             send({}, 'tool_calls');
           } else {
             send({ content: selected ? 'Added a reminder.' : 'That is the theorem, a worked example and three questions.' }, 'stop');
+          }
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-reader' && parsed.tools?.length) {
+          // Scripted Study tutor: checks the page in Tutor mode, fills in an answer in Solve mode.
+          const lastUser = parsed.messages.map((m) => m.role).lastIndexOf('user');
+          const results = parsed.messages.slice(lastUser).filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const system = String(parsed.messages[0]?.content ?? '');
+          const toolCall = (index: number, id: string, name: string, args: string) => {
+            send({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] });
+            for (const piece of args.match(/.{1,24}/gs) ?? []) send({ tool_calls: [{ index, function: { arguments: piece } }] });
+          };
+          const solve = system.includes('Solve mode');
+          if (results.length === 0 && solve) {
+            toolCall(0, 'w1', 'write_answer', JSON.stringify({ page: 1, question: '2', answer: 'chloroplasts' }));
+            send({}, 'tool_calls');
+          } else if (results.length === 0 && /check/i.test(prompt)) {
+            send({ content: 'Let me look at your page.' });
+            toolCall(0, 'h1', 'highlight', JSON.stringify({ page: 1, text: 'Photosynthesis happens in the', color: 'green' }));
+            toolCall(1, 'm1', 'mark_answer', JSON.stringify({ page: 1, question: '1', verdict: 'correct', comment: 'yes' }));
+            toolCall(2, 'n1', 'add_note', JSON.stringify({ page: 1, near: '3', text: 'Think about which light chlorophyll reflects.' }));
+            send({}, 'tool_calls');
+          } else if (results.length === 0) {
+            send({ content: system.includes('Light travels') ? 'Page 2 says light travels at about 300000 km per second (p. 2).' : 'This page has four questions.' }, 'stop');
+          } else {
+            send({ content: solve ? 'Wrote chloroplasts on the blank in question 2.' : 'Question 1 is right. For question 3, see p. 2.' }, 'stop');
           }
           res.end('data: [DONE]\n\n');
           return;

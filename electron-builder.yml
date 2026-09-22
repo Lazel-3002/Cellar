@@ -24,6 +24,8 @@ files:
   - '!**/node_modules/node-pty/**/*.pdb'
   # Headers for building node-pty from source; never loaded at runtime.
   - '!**/node_modules/node-addon-api/**'
+  # Study: the renderer bundles pdf.js itself; main only serves its fonts, character maps and image decoders.
+  - '!**/node_modules/pdfjs-dist/{build,legacy,web,types,image_decoders}/**'
 asarUnpack:
   # Native modules, helper executables and the conout worker script must be real files.
   - '**/node_modules/node-pty/**'

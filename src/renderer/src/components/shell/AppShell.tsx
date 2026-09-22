@@ -8,6 +8,7 @@ import { useAppCommands, useBrowserReveal, useThemeSync } from '@/lib/hooks';
 import { useIpcSync, useSettings } from '@/lib/queries';
 import { useDesignLayout } from '@/stores/design';
 import { useMathLayout } from '@/stores/math';
+import { useStudyLayout } from '@/stores/study';
 import { useUi } from '@/stores/ui';
 import { ChangelogDialog } from './ChangelogDialog';
 import { CodeSidebar } from './CodeSidebar';
@@ -28,18 +29,20 @@ export function AppShell() {
   const isCode = pathname.startsWith('/code');
   const isDesignEditor = pathname.startsWith('/design/');
   const isMathBoard = pathname.startsWith('/math/');
+  const isStudyReader = pathname.startsWith('/study/');
   const designSidebar = useDesignLayout((s) => s.sidebar);
   const mathSidebar = useMathLayout((s) => s.sidebar);
+  const studySidebar = useStudyLayout((s) => s.sidebar);
 
   return (
     <Tooltip.Provider delayDuration={450}>
       <div className="relative flex h-full w-full overflow-hidden bg-background text-foreground">
         <TitleBar />
-        {(isDesignEditor ? designSidebar : isMathBoard ? mathSidebar : sidebarOpen) && (isCode ? <CodeSidebar /> : <Sidebar />)}
+        {(isDesignEditor ? designSidebar : isMathBoard ? mathSidebar : isStudyReader ? studySidebar : sidebarOpen) && (isCode ? <CodeSidebar /> : <Sidebar />)}
         <main className="relative h-full min-w-0 flex-1">
           <Outlet />
         </main>
-        {artifactOpen && !browserOpen && !isCode && !pathname.startsWith('/design') && !pathname.startsWith('/math') && <ArtifactPanel />}
+        {artifactOpen && !browserOpen && !isCode && !pathname.startsWith('/design') && !pathname.startsWith('/math') && !pathname.startsWith('/study') && <ArtifactPanel />}
         {browserOpen && <BrowserPanel />}
       </div>
       <SearchPalette />

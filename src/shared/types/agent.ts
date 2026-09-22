@@ -2,8 +2,9 @@
 import type { CodeSessionInfo } from './code';
 import type { DesignSessionInfo } from './design';
 import type { MathSessionInfo } from './math';
+import type { StudySessionInfo } from './study';
 
-export type ConversationKind = 'chat' | 'task' | 'code' | 'design' | 'math';
+export type ConversationKind = 'chat' | 'task' | 'code' | 'design' | 'math' | 'study';
 
 /**
  * - ask: file changes and commands wait for approval
@@ -64,14 +65,16 @@ export interface TaskState {
   design?: DesignSessionInfo;
   /** Present for Math sessions. */
   math?: MathSessionInfo;
+  /** Present for Study chats. */
+  study?: StudySessionInfo;
 }
 
 /**
  * connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget.
- * design and math: canvas or board changes (undoable, never ask). browser: the built-in Chromium panel.
+ * design, math and study: canvas, board or book changes (undoable, never ask). browser: the built-in Chromium panel.
  * module: `call`, which delegates work to another Cellar module.
  */
-export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math' | 'browser' | 'module';
+export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math' | 'study' | 'browser' | 'module';
 
 export type ToolPartStatus = 'streaming' | 'awaiting-approval' | 'running' | 'done' | 'error' | 'denied' | 'cancelled';
 

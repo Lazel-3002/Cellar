@@ -2,6 +2,7 @@ import type { AgentPart, ConversationKind, TaskStartOptions, TaskState, TaskStat
 import type { CodeMode, CodeStartOptions } from './code';
 import type { DesignSelection, DesignStartOptions } from './design';
 import type { MathSelection, MathStartOptions } from './math';
+import type { StudyContext } from './study';
 import type { InferenceParams, ModelRef } from './models';
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -129,6 +130,8 @@ export interface SendMessageInput {
   math?: MathStartOptions;
   /** Math sessions: the block the user has selected (null clears it). */
   mathSelection?: MathSelection | null;
+  /** Study chats: the page the user is on and what of the book goes with the message. */
+  studyContext?: StudyContext;
   /** Title for a new conversation (no generated title). Set by scheduled runs. */
   title?: string;
 }

@@ -1,7 +1,9 @@
 import type { ComponentType, SVGProps } from 'react';
 import {
   AppWindow,
+  BookOpen,
   Brain,
+  CheckCheck,
   Calculator,
   ChartSpline,
   File,
@@ -13,13 +15,17 @@ import {
   FileText,
   FolderOpen,
   Globe,
+  Eraser,
+  Eye,
   Hand,
+  Highlighter,
   History,
   LayoutTemplate,
   ListChecks,
   ListTodo,
   Map as MapIcon,
   Palette,
+  PenLine,
   PenTool,
   Plug,
   Presentation,
@@ -32,6 +38,7 @@ import {
   SquareFunction,
   SquareTerminal,
   Stethoscope,
+  StickyNote,
   TextSearch,
   Workflow,
   Wrench,
@@ -54,6 +61,8 @@ export const conversationRoute = (kind: ConversationKind) =>
       ? ('/design/$conversationId' as const)
       : kind === 'math'
         ? ('/math/$conversationId' as const)
+        : kind === 'study'
+          ? ('/study/$conversationId' as const)
         : kind === 'task'
           ? ('/task/$conversationId' as const)
           : ('/chat/$conversationId' as const);
@@ -166,6 +175,24 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>
     }
     case 'make_quiz':
       return { icon: ListChecks, done: 'Made a test on', active: 'Making a test on', failed: "Couldn't make the test", target: text(args.topic) || (Array.isArray(args.questions) ? `${args.questions.length} questions` : undefined) };
+    case 'read_pages':
+      return { icon: BookOpen, done: 'Read', active: 'Reading', failed: "Couldn't read", target: `page${/[-–,\s]/.test(String(args.pages ?? '')) ? 's' : ''} ${String(args.pages ?? '')}` };
+    case 'search_book':
+      return { icon: Search, done: 'Searched the book for', active: 'Searching the book for', failed: "Couldn't search the book for", target: text(args.query) };
+    case 'go_to_page':
+      return { icon: BookOpen, done: 'Turned to', active: 'Turning to', failed: "Couldn't turn to", target: `p. ${String(args.page ?? '')}` };
+    case 'highlight':
+      return { icon: Highlighter, done: 'Highlighted', active: 'Highlighting', failed: "Couldn't highlight", target: short(text(args.text), 56) };
+    case 'add_note':
+      return { icon: StickyNote, done: 'Left a note', active: 'Leaving a note', failed: "Couldn't leave a note", target: args.page ? `on p. ${String(args.page)}` : undefined };
+    case 'write_answer':
+      return { icon: PenLine, done: 'Wrote', active: 'Writing', failed: "Couldn't write", target: `${short(text(args.answer), 40)}${args.question ? ` (question ${short(String(args.question), 24)})` : ''}` };
+    case 'mark_answer':
+      return { icon: CheckCheck, done: `Marked ${text(args.verdict) || 'an answer'}:`, active: 'Marking', failed: "Couldn't mark", target: `question ${short(String(args.question ?? ''), 32)}` };
+    case 'erase':
+      return { icon: Eraser, done: 'Erased', active: 'Erasing', failed: "Couldn't erase", target: Array.isArray(args.ids) ? args.ids.join(', ') : text(args.ids) };
+    case 'look_at_page':
+      return { icon: Eye, done: 'Looked at', active: 'Looking at', failed: "Couldn't look at", target: args.page ? `p. ${String(args.page)}` : 'the page' };
     case 'get_diagnostics':
       return { icon: Stethoscope, done: 'Checked for problems in', active: 'Checking for problems in', failed: "Couldn't check", target: path || 'the project' };
     case 'skill':

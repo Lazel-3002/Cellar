@@ -119,6 +119,7 @@ On first launch:
 | `node scripts/m4-smoke.mjs <provider> <chat model> [embedding model]` | Real-model M4 check: connector and web search in a chat, memory, project embeddings, whisper.cpp install and transcription (`SMOKE_SKIP=chat,rag,voice`) |
 | `node scripts/design-smoke.mjs <provider> <model or name=…> ["<prompt>"]` | Real-model Design session: builds a design, edits the selected title in a follow-up, exports PDF, PowerPoint and PNG, and takes screenshots (`SMOKE_FORMAT`, `SMOKE_THEME`, `SMOKE_FOLLOWUP`) |
 | `node scripts/math-smoke.mjs <provider> <model or name=…> ["<prompt>"]` | Real-model Math session: builds a board, checks the derivations against Cellar's own solvers, answers a test question, exports a PDF and a study sheet, and takes screenshots (`SMOKE_FOLLOWUP`) |
+| `node scripts/study-smoke.mjs [provider] [model]` | Real-model Study session on a generated Turkish science chapter with the student's answers already on it: checks them in Tutor mode, answers from the whole book, fills in a blank in Solve mode, exports the PDF with the notes, and prints every annotation it placed |
 | `node scripts/verify-downloads.mjs [repo]` | Hub download, pause/resume, checksum, rescan and Ollama pull |
 | `node scripts/ipc-run.mjs '[["runtimes:list", true]]'` | Call backend IPC handlers directly |
 | `node scripts/verify-packaged.mjs` | Smoke-test the packaged build |

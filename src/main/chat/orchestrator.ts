@@ -3,6 +3,7 @@ import type { ApprovalDecision, ConversationKind, PermissionMode } from '@shared
 import type { CodeMode } from '@shared/types/code';
 import type { DesignStartOptions } from '@shared/types/design';
 import type { MathStartOptions } from '@shared/types/math';
+import type { StudyMode } from '@shared/types/study';
 import type {
   ChatStreamEvent,
   Conversation,
@@ -21,6 +22,7 @@ import { prepareDesignSession } from '../design/session';
 import { copyDesign, createDesign, designForConversation } from '../design/store';
 import { prepareMathSession } from '../math/session';
 import { boardForConversation, copyBoard, createBoard } from '../math/store';
+import { prepareStudySession } from '../study/session';
 import { connectors } from '../connectors/manager';
 import { assistantContext } from '../customize/context';
 import { activeSkills } from '../customize/skills';
@@ -87,7 +89,7 @@ class ChatOrchestrator {
 
   init(): void {
     run("UPDATE messages SET status = 'stopped' WHERE status = 'streaming'");
-    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code', 'design', 'math') AND json_extract(task, '$.status') IN ('running', 'waiting')");
+    run("UPDATE conversations SET task = json_set(task, '$.status', 'stopped') WHERE kind IN ('task', 'code', 'design', 'math', 'study') AND json_extract(task, '$.status') IN ('running', 'waiting')");
   }
 
   private store(conversationId: string): ChatStore {
@@ -138,11 +140,11 @@ class ChatOrchestrator {
     const isTask = kind !== 'chat';
     if (isTask && store.incognito) {
       throw new Error(
-        kind === 'code' ? 'Code sessions cannot be incognito.' : kind === 'design' ? 'Designs cannot be incognito.' : kind === 'math' ? 'Math boards cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.',
+        kind === 'code' ? 'Code sessions cannot be incognito.' : kind === 'design' ? 'Designs cannot be incognito.' : kind === 'math' ? 'Math boards cannot be incognito.' : kind === 'study' ? 'Study chats cannot be incognito.' : 'Cowork tasks cannot run in an incognito chat.',
       );
     }
     if (conversation && isTask && this.tasks.isRunningIn(conversation.id)) {
-      throw new Error(`This ${kind === 'code' ? 'session' : kind === 'design' ? 'design' : kind === 'math' ? 'board' : 'task'} is still working. Stop it or wait for it to finish first.`);
+      throw new Error(`This ${kind === 'code' ? 'session' : kind === 'design' ? 'design' : kind === 'math' ? 'board' : kind === 'study' ? 'chat' : 'task'} is still working. Stop it or wait for it to finish first.`);
     }
     if (!conversation) {
       const id = newId();
@@ -179,6 +181,11 @@ class ChatOrchestrator {
       store.updateConversation(conversation.id, { task });
       conversation = { ...conversation, task };
     }
+    if (kind === 'study' && input.studyContext && conversation.task?.study) {
+      const task = { ...conversation.task, study: { ...conversation.task.study, context: input.studyContext } };
+      store.updateConversation(conversation.id, { task });
+      conversation = { ...conversation, task };
+    }
     if (kind === 'math' && input.mathSelection !== undefined && conversation.task?.math) {
       const task = { ...conversation.task, math: { ...conversation.task.math, selection: input.mathSelection ?? undefined } };
       store.updateConversation(conversation.id, { task });
@@ -207,7 +214,7 @@ class ChatOrchestrator {
       settings: { ...conversation.settings, thinking: input.thinking },
       ...(conversation.title
         ? {}
-        : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : kind === 'design' ? 'New design' : kind === 'math' ? 'New board' : isTask ? 'New task' : 'New chat')) }),
+        : { title: fallbackTitle(content || user.attachments[0]?.name || (kind === 'code' ? 'New session' : kind === 'design' ? 'New design' : kind === 'math' ? 'New board' : kind === 'study' ? 'New chat' : isTask ? 'New task' : 'New chat')) }),
     });
     this.notify(conversation.id);
     if (isTask) {
@@ -287,6 +294,20 @@ class ChatOrchestrator {
     const board = createBoard(id, options, task.math!.boardId);
     this.notify(id);
     return { conversationId: id, boardId: board.id };
+  }
+
+  /** A new, empty chat about a book (the book and its notes are shared by all its chats). */
+  async createStudyChat(bookId: string, mode: StudyMode = 'tutor'): Promise<{ conversationId: string }> {
+    const id = newId();
+    const task = await prepareStudySession(bookId, 'done', mode);
+    const now = Date.now();
+    this.sqlite.createConversation({ id, kind: 'study', title: '', projectId: null, starred: false, currentLeafId: null, settings: {}, task, incognito: false, createdAt: now, updatedAt: now });
+    this.notify(id);
+    return { conversationId: id };
+  }
+
+  setStudyMode(conversationId: string, mode: StudyMode): void {
+    this.tasks.setStudyMode(this.store(conversationId), conversationId, mode);
   }
 
   /** A copy of a board in a new conversation (without the chat). */

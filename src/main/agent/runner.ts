@@ -22,6 +22,10 @@ import { designToolsFor } from '../design/tools';
 import { buildMathPrompt } from '../math/prompt';
 import { getBoard } from '../math/store';
 import { MATH_TOOLS } from '../math/tools';
+import { pagesText, pickPages, type PagePick } from '../study/context';
+import { buildStudyPrompt } from '../study/prompt';
+import { getBook } from '../study/store';
+import { studyTools } from '../study/tools';
 import type { ChatStore } from '../db/chat-store';
 import { bus } from '../lib/events';
 import { logger } from '../lib/log';
@@ -144,6 +148,7 @@ function agentNoun(kind: ConversationKind | undefined): { fallback: string; sett
   if (kind === 'chat') return { fallback: 'A chat', settings: '', mode: 'This chat' };
   if (kind === 'design') return { fallback: 'A design', settings: 'Settings → Cowork', mode: 'Design' };
   if (kind === 'math') return { fallback: 'A board', settings: 'Settings → Cowork', mode: 'Math' };
+  if (kind === 'study') return { fallback: 'A study chat', settings: 'Settings → Cowork', mode: 'Study' };
   return kind === 'code' ? { fallback: 'A Code session', settings: 'Settings → Code', mode: 'Code' } : { fallback: 'A Cowork task', settings: 'Settings → Cowork', mode: 'Cowork' };
 }
 
@@ -290,6 +295,13 @@ export class TaskRunner {
     });
   }
 
+  setStudyMode(store: ChatStore, conversationId: string, mode: 'tutor' | 'solve'): void {
+    this.updateTask(store, conversationId, (task) => {
+      if (!task.study) throw new Error('This is not a Study chat.');
+      task.study = { ...task.study, mode };
+    });
+  }
+
   setCodeMode(store: ChatStore, conversationId: string, mode: CodeMode, autoAcceptEdits: boolean): void {
     this.updateTask(store, conversationId, (task) => {
       if (!task.code) throw new Error('This is not a Code session.');
@@ -420,7 +432,7 @@ export class TaskRunner {
       // Cowork tasks and Code sessions outside git keep the original so an edit can be undone;
       // git Code sessions already have that in the checkout's history.
       beforeChange: !code || !code.isGit ? (abs) => snapshotBeforeChange(conversationId, workspace.root, abs) : undefined,
-      afterChange: run.chat || task.design || task.math ? undefined : (abs) => problemsAfterChange(abs, workspace.root),
+      afterChange: run.chat || task.design || task.math || task.study ? undefined : (abs) => problemsAfterChange(abs, workspace.root),
       recordFile: (file) => {
         const path = workspace.relative(file.absolutePath);
         const previous = task.files.find((f) => f.path === path);
@@ -437,6 +449,11 @@ export class TaskRunner {
       approvalMode: app.approvalMode,
       autoApprove: (request) => autoApproveAction(provider, entry, preset.load, request),
     };
+
+    // Study: which pages go with this turn is decided once (it may search the book); their text is re-read every round.
+    const studyPick: PagePick | undefined = task.study
+      ? await pickPages(getBook(task.study.bookId), task.study.context, lastUser?.content ?? '', Math.round(Math.min(40_000, Math.max(2_500, contextLength * 0.35 * 3.2))))
+      : undefined;
 
     const callCounts = new Map<string, number>();
     let round = 0;
@@ -458,7 +475,9 @@ export class TaskRunner {
       // Mode changes during a run apply from the next step.
       const baseTools = run.chat
         ? chatBaseTools(app)
-        : task.math
+        : task.study
+          ? studyTools({ mode: task.study.mode, vision: !!entry.capabilities.vision })
+          : task.math
           ? MATH_TOOLS
           : task.design
             ? designToolsFor(app)
@@ -470,8 +489,8 @@ export class TaskRunner {
         skills: customize.skills.length > 0,
         incognito: store.incognito,
         readOnly: task.permissionMode === 'plan' && !run.chat,
-        browser: !task.math && !task.design,
-        reminders: !task.math && !task.design,
+        browser: !task.math && !task.design && !task.study,
+        reminders: !task.math && !task.design && !task.study,
       });
       const tools = [...baseTools, ...extras];
       const schemas = tools.map(toolSchema);
@@ -493,6 +512,23 @@ export class TaskRunner {
             extraSections: customize.sections,
             textProtocol,
           })
+        : task.study && studyPick
+        ? (() => {
+            const book = getBook(task.study.bookId);
+            return buildStudyPrompt({
+              modelName: entry.displayName,
+              userName: app.userName,
+              preferences: app.personalPreferences,
+              book,
+              mode: task.study.mode,
+              pick: studyPick,
+              pages: pagesText(book, studyPick),
+              toolNames: tools.map((t) => t.name),
+              customSystemPrompt,
+              textProtocol,
+              extraSections: customize.sections,
+            });
+          })()
         : task.math
         ? buildMathPrompt({
             modelName: entry.displayName,
@@ -919,7 +955,7 @@ export class TaskRunner {
       call.status = 'done';
       call.finishedAt = Date.now();
       // After a change, reading or listing again is legitimate (for example to check the edit).
-      if (tool.category === 'edit' || tool.category === 'command' || tool.category === 'design' || tool.category === 'math') counts.clear();
+      if (tool.category === 'edit' || tool.category === 'command' || tool.category === 'design' || tool.category === 'math' || tool.category === 'study') counts.clear();
     } catch (err) {
       if (signal.aborted) {
         call.status = 'cancelled';

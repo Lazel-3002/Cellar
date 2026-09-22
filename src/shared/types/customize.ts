@@ -238,7 +238,7 @@ export interface MemoryUpdateResult {
   reason?: 'nothing-useful' | 'incognito' | 'too-short' | 'no-model' | 'turned-off';
 }
 
-export type ToolScope = 'chat' | 'task' | 'code' | 'design' | 'math';
+export type ToolScope = 'chat' | 'task' | 'code' | 'design' | 'math' | 'study';
 
 export interface ToolInfo {
   name: string;

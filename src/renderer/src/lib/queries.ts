@@ -169,6 +169,7 @@ export function useIpcSync(): void {
         void qc.invalidateQueries({ queryKey: ['boards'] });
         void qc.invalidateQueries({ queryKey: ['board', conversationId] });
       }),
+      onEvent('study:changed', () => void qc.invalidateQueries({ queryKey: ['books'] })),
       onEvent('connectors:changed', (list) => qc.setQueryData(keys.connectors, list)),
       onEvent('scheduled:changed', () => {
         void qc.invalidateQueries({ queryKey: keys.scheduled });

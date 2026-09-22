@@ -1,6 +1,6 @@
 import { useState, type ComponentType, type SVGProps } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { BriefcaseBusiness, ChevronDown, Clock, Columns2, Ellipsis, FolderClosed, ListFilter, LoaderCircle, Palette, Pencil, Plus, Puzzle, Shapes, Sigma, Star, Trash } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, ChevronDown, Clock, Columns2, Ellipsis, FolderClosed, ListFilter, LoaderCircle, Palette, Pencil, Plus, Puzzle, Shapes, Sigma, Star, Trash } from 'lucide-react';
 import type { ConversationSummary } from '@shared/types/chat';
 import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
 import { Tip } from '@/components/ui/misc';
@@ -206,6 +206,7 @@ export function Sidebar() {
       <div className="flex flex-col gap-px border-t border-divider px-2 py-1.5">
         <NavItem icon={Palette} label="Design" to="/design" active={pathname.startsWith('/design')} />
         <NavItem icon={Sigma} label="Math" to="/math" active={pathname.startsWith('/math')} />
+        <NavItem icon={BookOpen} label="Study" to="/study" active={pathname.startsWith('/study')} />
         <NavItem icon={Columns2} label="Playground" to="/playground" active={pathname.startsWith('/playground')} />
       </div>
       <div className="flex h-[44px] items-center gap-1 border-t border-divider px-2">

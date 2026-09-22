@@ -313,3 +313,49 @@ textarea,
 .animate-fade-in {
   animation: fade-in 180ms ease-out both;
 }
+
+/* Study: the desk the pages lie on, and the layer Cellar writes on over each page. */
+:root {
+  --study-desk: #e8e5dc;
+}
+[data-theme='dark'] {
+  --study-desk: #0e0e0e;
+}
+.cellar-study-viewer {
+  background: var(--study-desk);
+}
+.cellar-study-viewer .pdfViewer .page {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16), 0 6px 20px rgba(0, 0, 0, 0.06);
+}
+.cellar-study-host {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.cellar-study-overlay {
+  position: absolute;
+  inset: 0;
+}
+.study-fresh {
+  animation: study-fresh 2.2s ease-out;
+}
+@keyframes study-fresh {
+  0%,
+  45% {
+    filter: drop-shadow(0 0 5px rgba(217, 119, 87, 0.95));
+  }
+  100% {
+    filter: none;
+  }
+}
+.study-page-link {
+  color: var(--brand);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font: inherit;
+}
+.study-page-link:hover {
+  text-decoration-style: solid;
+}
