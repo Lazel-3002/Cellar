@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1790108997.2816596,
-    "ast_hash": "cc0a9875e3b29eb4174e6a90764b4de3",
+    "mtime": 1790116416.210546,
+    "ast_hash": "d34e9dc6a4729bea7737c9053f891084",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -50,8 +50,8 @@
     "semantic_hash": ""
   },
   "scripts/verify-packaged.mjs": {
-    "mtime": 1789549690.3377368,
-    "ast_hash": "e9cf0721f251364d8b2a068cafa1f87b",
+    "mtime": 1790116415.5603957,
+    "ast_hash": "65c4b668429888a87b1a6118a2f38f46",
     "semantic_hash": ""
   },
   "src/artifact-runtime/react-runtime.tsx": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "tests/e2e/app.spec.ts": {
-    "mtime": 1790109667.7334933,
-    "ast_hash": "05ff47b1f94d44047e1b900c71f21a6b",
+    "mtime": 1790116253.6904569,
+    "ast_hash": "8ef3c31c6f58cc6f9e17168bc6551f87",
     "semantic_hash": ""
   },
   "tests/e2e/mock-server.ts": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
-    "mtime": 1790111357.8945847,
-    "ast_hash": "13718e2158eda0473da403fee1c642ec",
+    "mtime": 1790116415.5624738,
+    "ast_hash": "4c15fa95172eabb142af6c6c7bb84245",
     "semantic_hash": ""
   },
   "scripts/code-smoke.mjs": {
@@ -1575,8 +1575,8 @@
     "semantic_hash": ""
   },
   "docs/CHANGELOG.md": {
-    "mtime": 1789951478.8197598,
-    "ast_hash": "82363251122e26c801318b07cf7b032a",
+    "mtime": 1790116415.560907,
+    "ast_hash": "572c0fcf33fc7decf9245ea505311cec",
     "semantic_hash": ""
   },
   "src/renderer/src/pages/PlaygroundPage.tsx": {
@@ -1690,8 +1690,8 @@
     "semantic_hash": ""
   },
   "docs/NEXT_IMPROVEMENTS.md": {
-    "mtime": 1789862316.2258303,
-    "ast_hash": "6b0574a229b18566f99444f5aac2470f",
+    "mtime": 1790116415.5629938,
+    "ast_hash": "5677a70699ac265484d0d2da23061e50",
     "semantic_hash": ""
   },
   "qwen-3.6/PLAN-plugins.md": {
@@ -1775,13 +1775,13 @@
     "semantic_hash": ""
   },
   "src/renderer/src/components/study/Overlay.tsx": {
-    "mtime": 1790109231.8892815,
-    "ast_hash": "fd9a4b3d1a87d844258c8f3f64cbba45",
+    "mtime": 1790116309.9126952,
+    "ast_hash": "1419dd74810cdfb21536b5f37bc2abd3",
     "semantic_hash": ""
   },
   "src/renderer/src/components/study/Viewer.tsx": {
-    "mtime": 1790109293.353387,
-    "ast_hash": "3f6e0407e575ffbf795ee4567ec1c9d2",
+    "mtime": 1790116223.9786165,
+    "ast_hash": "f313c7ccbf65f52f004f974b701edd86",
     "semantic_hash": ""
   },
   "src/renderer/src/components/study/draw.ts": {
@@ -1795,18 +1795,18 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/StudyPage.tsx": {
-    "mtime": 1790109704.889321,
-    "ast_hash": "078a641d87c099995d3e779fae722e4e",
+    "mtime": 1790116223.9796169,
+    "ast_hash": "28df0b3d23c93cfd8a8e7a7d731ac9e2",
     "semantic_hash": ""
   },
   "src/renderer/src/stores/study.ts": {
-    "mtime": 1790110720.77116,
-    "ast_hash": "5b706456791fe79f6c814846f2828710",
+    "mtime": 1790116223.9776165,
+    "ast_hash": "f8cf2d76ca8c8295f308638b55563b65",
     "semantic_hash": ""
   },
   "src/shared/study/anchor.ts": {
-    "mtime": 1790110504.3085036,
-    "ast_hash": "2f4632717fbf5dc3307b3d1068d31062",
+    "mtime": 1790116309.9126952,
+    "ast_hash": "61f9027a87578d6560716e5397247034",
     "semantic_hash": ""
   },
   "src/shared/study/annotations.ts": {

@@ -287,7 +287,8 @@ export function placeAnswer(lines: PageLine[], page: BookPageInfo, match: TextMa
     const estimate = subRect(last, blank.start, blank.end);
     const measured = exactBlank(estimate, blanks);
     const rect = measured ? { ...measured, y: last.y, h: last.h } : estimate;
-    const size = Math.min(preferredSize, last.h * 0.85, ((rect.w + 4) * 1000) / Math.max(1, runningWidths(text)[text.length]));
+    // A little under the exact fit: the page may draw the answer in a slightly wider font than the estimate.
+    const size = Math.min(preferredSize, last.h * 0.85, ((rect.w + 4) * 1000 * 0.92) / Math.max(1, runningWidths(text)[text.length]));
     if (size >= 6.5) return { x: rect.x, y: rect.y + rect.h - size * 1.25, width: rect.w + 4, size: Math.round(size * 10) / 10, where: 'on the blank in the question' };
   }
 

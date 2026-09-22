@@ -77,5 +77,35 @@ for (const [format, answers] of [['pdf', true], ['pdf', false], ['md', true]]) {
   console.log(`board ${format}${answers ? '' : ' (test paper)'}:`, written ? `${statSync(written).size} bytes` : 'cancelled');
 }
 await ipc('chat:delete', [boardConversation]);
+
+// M9: a PDF on the shelf, opened in the packaged viewer (the pdf.js worker from file://, its data files
+// from the asar), a note written on it and a copy exported with the note drawn in (pdf-lib + fontkit).
+const { PDFDocument, StandardFonts } = await import('pdf-lib');
+const { writeFileSync } = await import('node:fs');
+const worksheet = await PDFDocument.create();
+const helvetica = await worksheet.embedFont(StandardFonts.Helvetica);
+worksheet.addPage([595, 842]).drawText('1. Photosynthesis happens in the ________ of the cell.', { x: 60, y: 740, size: 12, font: helvetica });
+const pdfFile = join(tmpdir(), 'cellar-packaged', 'worksheet.pdf');
+writeFileSync(pdfFile, await worksheet.save());
+const [book] = await ipc('study:import', [pdfFile]);
+for (const [kind, file] of [['standardFontDataUrl', 'LiberationSans-Regular.ttf'], ['wasmUrl', 'openjpeg.wasm'], ['cMapUrl', '78-H.bcmap']]) {
+  const bytes = await ipc('study:pdfAsset', kind, file).catch((err) => err);
+  console.log(`pdf.js ${file}:`, bytes instanceof Error ? bytes.message : `${bytes.length} bytes`);
+}
+await win.evaluate((id) => (location.hash = `#/study/${id}`), book.conversationId);
+await win.waitForSelector('.page[data-page-number="1"] .textLayer span', { timeout: 30_000 });
+console.log('study viewer text layer:', (await win.locator('.page[data-page-number="1"] .textLayer').innerText()).replace(/\s+/g, ' ').trim());
+const session = await ipc('study:get', book.conversationId);
+await ipc('study:save', book.bookId, [{ id: 'a1', type: 'text', page: 1, author: 'user', createdAt: Date.now(), x: 250, y: 90, width: 120, size: 11, text: 'chloroplasts', color: '#2459c4' }], session.book.version);
+const studyExport = join(exportDir, 'worksheet-with-notes.pdf');
+await app.evaluate(({ dialog }, file) => {
+  dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+}, studyExport);
+const studyWritten = await ipc('study:export', book.bookId);
+console.log('study export:', studyWritten ? `${statSync(studyWritten).size} bytes` : 'cancelled');
+await win.screenshot({ path: join(project, 'test-results', 'screenshots', 'packaged-study.png') });
+await ipc('study:delete', book.bookId);
+await win.evaluate(() => (location.hash = '#/'));
+await win.waitForSelector('[data-testid=composer-input]', { timeout: 30_000 });
 await win.screenshot({ path: join(project, 'test-results', 'screenshots', 'packaged-home.png') });
 await app.close();

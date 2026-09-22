@@ -1084,6 +1084,24 @@ test('study: a PDF opens beside a tutor that checks the page, writes answers and
     await expect(chat).toContainText('300000 km per second', { timeout: 30_000 });
     await win.screenshot({ path: join(project, 'test-results', 'e2e-study.png') });
 
+    // The page opens fitted to the view; the zoom menu and Ctrl + wheel resize it, and the choice is kept.
+    const widthAtFit = (await page1.boundingBox())!.width;
+    const viewer = (await win.getByTestId('study-viewer').boundingBox())!;
+    expect(widthAtFit).toBeLessThan(viewer.width * 0.8);
+    await win.getByTestId('study-zoom').click();
+    await win.getByRole('menuitem', { name: '150%' }).click();
+    await expect(win.getByTestId('study-zoom')).toContainText('150%');
+    await expect.poll(async () => (await page1.boundingBox())!.width).toBeGreaterThan(widthAtFit * 1.2);
+    await win.mouse.move(viewer.x + viewer.width / 2, viewer.y + viewer.height / 2);
+    await win.keyboard.down('Control');
+    await win.mouse.wheel(0, 240);
+    await win.keyboard.up('Control');
+    await expect(win.getByTestId('study-zoom')).not.toContainText('150%');
+    expect(await win.evaluate(() => JSON.parse(localStorage.getItem('cellar-study-layout') ?? '{}').state?.zoom)).toBeLessThan(1.5);
+    await win.getByTestId('study-zoom').click();
+    await win.getByRole('menuitem', { name: 'Fit the page' }).click();
+    await expect.poll(async () => Math.abs((await page1.boundingBox())!.width - widthAtFit)).toBeLessThan(3);
+
     // Export: a copy of the PDF with the notes drawn in.
     const exported = join(dir, 'with-notes.pdf');
     await app.evaluate(({ dialog }, target) => {

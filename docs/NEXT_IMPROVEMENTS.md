@@ -1,5 +1,11 @@
 # Next improvements
 
+> **Checked against the code on 2026-09-23 (release 8.0.0): several items below say "shipped" but are not
+> in the source.** There is no ODF/EPUB/RTF reading (`odsText`, `extractEpub`, `rtfToText`), no
+> `reflowArtboard`, no `solveGeometry` or `solveNonlinearSystem`, and `src/main/agent/tools/background.ts`
+> exists but is not wired into `run_command` (no `read_command_output` / `stop_command` tools). The
+> versions 7.9.0 and 7.10.0 mentioned below were never released. Treat those items as still open.
+
 Investigated by reading the actual gap in code (not just restating ROADMAP prose), most important
 first. "Effort" is relative to the milestones already shipped, not absolute.
 

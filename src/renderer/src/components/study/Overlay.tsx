@@ -333,7 +333,7 @@ function TextBox({ annotation: a, k, selected, editing, tool, onPointerDown, onP
     <div
       data-testid="study-text"
       data-annotation={a.id}
-      className={cn('study-item absolute whitespace-pre-wrap break-words rounded-[3px]', selected && 'outline outline-1 outline-[#2459c4]/60', fresh && 'study-fresh', tool === 'select' && 'cursor-move')}
+      className={cn('study-item absolute whitespace-pre-wrap rounded-[3px]', selected && 'outline outline-1 outline-[#2459c4]/60', fresh && 'study-fresh', tool === 'select' && 'cursor-move')}
       style={{ ...style, pointerEvents: interactive ? 'auto' : 'none' }}
       title={a.author === 'ai' ? 'Written by the tutor' : undefined}
       onPointerDown={onPointerDown}

@@ -25,6 +25,8 @@ interface StudyEditorState {
   selection: { page: number; text: string } | null;
   /** Pages the model wrote on that the user has not turned to yet. */
   unseen: number[];
+  /** The zoom on screen (1 = 100%). */
+  scale: number;
 
   load: (book: Book) => void;
   /** A newer version from the model (or another window); the current state stays undoable. */
@@ -39,6 +41,7 @@ interface StudyEditorState {
   setEditing: (id: string | null) => void;
   setPage: (page: number) => void;
   clearUnseen: () => void;
+  setScale: (scale: number) => void;
   setSelection: (selection: { page: number; text: string } | null) => void;
   takeFresh: (id: string) => boolean;
 }
@@ -59,6 +62,7 @@ export const useStudyEditor = create<StudyEditorState>((set, get) => ({
   page: 1,
   selection: null,
   unseen: [],
+  scale: 1,
 
   load: (book) =>
     set((s) => ({
@@ -135,6 +139,7 @@ export const useStudyEditor = create<StudyEditorState>((set, get) => ({
   setEditing: (editingId) => set((s) => ({ editingId, selectedId: editingId ?? s.selectedId })),
   setPage: (page) => set((s) => ({ page, unseen: s.unseen.includes(page) ? s.unseen.filter((p) => p !== page) : s.unseen })),
   clearUnseen: () => set({ unseen: [] }),
+  setScale: (scale) => set({ scale }),
   setSelection: (selection) => set({ selection }),
   takeFresh: (id) => {
     if (!get().fresh[id]) return false;
@@ -150,6 +155,9 @@ export const useStudyEditor = create<StudyEditorState>((set, get) => ({
 export type StudyTool = 'select' | 'highlight' | 'pen' | 'marker' | 'text' | 'note' | 'eraser';
 
 export type PicturesMode = 'auto' | 'always' | 'never';
+
+/** A whole page in view, the page's width, or a fixed zoom (1 = 100%). */
+export type StudyZoom = 'page-fit' | 'page-width' | number;
 
 export interface BookScope {
   scope: StudyScope;
@@ -170,6 +178,7 @@ interface StudyLayoutState {
   highlightColor: string;
   /** Pictures of the page for vision models: auto sends one when the page is scanned or has handwriting. */
   pictures: PicturesMode;
+  zoom: StudyZoom;
   scopes: Record<string, BookScope>;
   setSidebar: (open: boolean) => void;
   setChatOpen: (open: boolean) => void;
@@ -179,6 +188,7 @@ interface StudyLayoutState {
   setPenWidth: (width: number) => void;
   setHighlightColor: (color: string) => void;
   setPictures: (mode: PicturesMode) => void;
+  setZoom: (zoom: StudyZoom) => void;
   setScope: (bookId: string, scope: Partial<BookScope>) => void;
 }
 
@@ -195,6 +205,7 @@ export const useStudyLayout = create<StudyLayoutState>()(
       penWidth: 1.6,
       highlightColor: HIGHLIGHT_COLORS.yellow,
       pictures: 'auto',
+      zoom: 'page-fit',
       scopes: {},
       setSidebar: (sidebar) => set({ sidebar }),
       setChatOpen: (chatOpen) => set({ chatOpen }),
@@ -204,13 +215,14 @@ export const useStudyLayout = create<StudyLayoutState>()(
       setPenWidth: (penWidth) => set({ penWidth: Math.min(8, Math.max(0.6, penWidth)) }),
       setHighlightColor: (highlightColor) => set({ highlightColor }),
       setPictures: (pictures) => set({ pictures }),
+      setZoom: (zoom) => set({ zoom: typeof zoom === 'number' ? Math.min(5, Math.max(0.25, Math.round(zoom * 100) / 100)) : zoom }),
       setScope: (bookId, scope) => set((s) => ({ scopes: { ...s.scopes, [bookId]: { ...DEFAULT_SCOPE, ...s.scopes[bookId], ...scope } } })),
     }),
     {
       name: 'cellar-study-layout',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ sidebar: s.sidebar, chatOpen: s.chatOpen, chatWidth: s.chatWidth, tool: s.tool, penColor: s.penColor, penWidth: s.penWidth, highlightColor: s.highlightColor, pictures: s.pictures, scopes: s.scopes }),
+      partialize: (s) => ({ sidebar: s.sidebar, chatOpen: s.chatOpen, chatWidth: s.chatWidth, tool: s.tool, penColor: s.penColor, penWidth: s.penWidth, highlightColor: s.highlightColor, pictures: s.pictures, zoom: s.zoom, scopes: s.scopes }),
     },
   ),
 );

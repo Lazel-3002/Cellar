@@ -15,7 +15,6 @@ import {
   Highlighter,
   History,
   List,
-  Maximize,
   MessageSquare,
   MessageSquarePlus,
   Minus,
@@ -746,16 +745,46 @@ function StudyToolbar({ book }: { book: Book }) {
         <ChevronRight className="size-4" />
       </IconButton>
       <div className="mx-1 h-5 w-px bg-divider" />
-      <IconButton label="Zoom out" onClick={() => viewerControl.current?.zoomOut()}>
+      <IconButton label="Zoom out  Ctrl+wheel" onClick={() => viewerControl.current?.zoomOut()} data-testid="study-zoom-out">
         <Minus className="size-4" />
       </IconButton>
-      <IconButton label="Fit the width" onClick={() => viewerControl.current?.fitWidth()}>
-        <Maximize className="size-[15px]" />
-      </IconButton>
-      <IconButton label="Zoom in" onClick={() => viewerControl.current?.zoomIn()}>
+      <ZoomMenu />
+      <IconButton label="Zoom in  Ctrl+wheel" onClick={() => viewerControl.current?.zoomIn()} data-testid="study-zoom-in">
         <Plus className="size-4" />
       </IconButton>
     </div>
+  );
+}
+
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+/** The zoom on screen, and a menu to fit the page, fit the width or pick a size. */
+function ZoomMenu() {
+  const scale = useStudyEditor((s) => s.scale);
+  const zoom = useStudyLayout((s) => s.zoom);
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <button className="flex h-7 w-[62px] items-center justify-center gap-0.5 rounded-md text-[12.5px] text-fg-2 tabular-nums hover:bg-hover hover:text-foreground" data-testid="study-zoom">
+          {Math.round(scale * 100)}%
+          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+        </button>
+      </MenuTrigger>
+      <MenuContent align="end" className="w-44">
+        <MenuCheckItem checked={zoom === 'page-fit'} onSelect={() => viewerControl.current?.setZoom('page-fit')}>
+          Fit the page
+        </MenuCheckItem>
+        <MenuCheckItem checked={zoom === 'page-width'} onSelect={() => viewerControl.current?.setZoom('page-width')}>
+          Fit the width
+        </MenuCheckItem>
+        <MenuSeparator />
+        {ZOOM_STEPS.map((step) => (
+          <MenuCheckItem key={step} checked={zoom === step} onSelect={() => viewerControl.current?.setZoom(step)}>
+            {step * 100}%
+          </MenuCheckItem>
+        ))}
+      </MenuContent>
+    </Menu>
   );
 }
 

@@ -3,14 +3,25 @@
 Every entry here is a real released version. See `docs/ROADMAP.md` for the fuller
 milestone-by-milestone story of how Cellar got here.
 
-## 7.8.0 — 2026-09-18
-**A Design that sees its own canvas, and real gradients in PowerPoint**
+## 8.0.0 — 2026-09-23
+**Study: your book beside a tutor**
 
 ### Added
-- Design: after creating or editing an artboard, changing its theme, or recoloring/resizing elements, a vision-capable model is now shown a screenshot of what it just built — the same mechanism the browser tools already use for `browse_screenshot` — instead of reasoning from the text outline and layout check alone.
+- Study, a new mode in the sidebar: open a PDF — a textbook, a worksheet, your notes — with the tutor on the left and the pages on the right. Cellar keeps its own copy; your original file is never changed.
+- Write on the pages like paper: highlighter, pen, marker, typing on the page, sticky notes, eraser and undo. Select text to highlight it, ask about it or have it explained. Zoom with the menu or Ctrl + mouse wheel; the page opens fitted to the view.
+- Choose what the tutor reads with your message: this page, from the chapter start to here, pages you type, or the whole book (searched for your question when it is too long), with a token estimate.
+- Tutor mode gives hints and checks your work like a teacher — a ✓ or ✗ with a few words next to your answer — without giving away questions you have not tried. Solve mode writes the answers onto the page in its own colour, right on the printed blank.
+- Page numbers in the tutor's replies are links that turn the page, and vision models get a picture of the page when it is scanned or has your handwriting on it.
+- Export with my notes: a copy of the PDF with your writing, the tutor's marks and notes drawn in.
+- Design: named version history, a grid and rulers, transitions in Present, image crop and filters, your own fonts (from a file or Google Fonts, embedded in exports), and clickable hotspots that link to another artboard or a web page.
+- Design: a vision-capable model is shown a screenshot of the artboard it just made or changed, instead of only the text outline.
+- Math: step-by-step diagrams the board draws in one step at a time, with a unit-circle preset for sin, cos, tan and cot; dashed, dotted, zigzag and see-through lines; a whiteboard highlighter and text tool.
+- A plugin marketplace page that searches GitHub for plugins.
+- `/context` shows how full the model's context window is and what fills it.
+- Memory recalls the topics that matter to what you are asking, by meaning, instead of sending all of them.
 
 ### Fixed
-- Design → PowerPoint export: a gradient fill on a shape or an artboard background used to flatten to its first stop's color, since a native PowerPoint shape can only fill with one flat color. It's now rasterized from the exact CSS the canvas paints into a real PNG and placed as a picture, so exported decks actually show the gradient. This also fixes Cowork's `create_pptx`, which shares the same exporter.
+- Design → PowerPoint: gradient fills used to flatten to their first colour; they are now exported as a picture of the exact gradient. Cowork's `create_pptx` shares the fix.
 
 ## 7.7.0 — 2026-09-18
 **Following up with one model**

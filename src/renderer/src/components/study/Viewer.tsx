@@ -12,7 +12,7 @@ import type { Book, StudyRect } from '@shared/types/study';
 import { invoke, onEvent } from '@/lib/ipc';
 import { loadPdfjs } from '@/lib/pdf';
 import { useUi } from '@/stores/ui';
-import { useStudyEditor, useStudyLayout } from '@/stores/study';
+import { useStudyEditor, useStudyLayout, type StudyZoom } from '@/stores/study';
 import { PageOverlay } from './Overlay';
 import { renderPagePng } from './draw';
 
@@ -23,10 +23,11 @@ export interface ViewerControl {
   goTo: (page: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
-  fitWidth: () => void;
-  fitPage: () => void;
-  scale: () => number;
+  setZoom: (zoom: StudyZoom) => void;
 }
+
+/** pdf.js takes "page-fit", "page-width" or a number as a string. */
+const scaleValue = (zoom: StudyZoom) => (typeof zoom === 'number' ? String(zoom) : zoom);
 
 /** The viewer on screen, for the toolbar and the chat (page links). */
 export const viewerControl: { current: ViewerControl | null } = { current: null };
@@ -127,7 +128,7 @@ export function StudyViewer({ book, doc }: { book: Book; doc: PDFDocumentProxy }
         offs.push(() => eventBus.off(name, listener as (event: unknown) => void));
       };
       on('pagesinit', () => {
-        viewer.currentScaleValue = 'page-width';
+        viewer.currentScaleValue = scaleValue(useStudyLayout.getState().zoom);
         const page = Math.min(Math.max(1, startPage.current), doc.numPages);
         if (page > 1) viewer.currentPageNumber = page;
       });
@@ -136,6 +137,7 @@ export function StudyViewer({ book, doc }: { book: Book; doc: PDFDocumentProxy }
         clearTimeout(savePage);
         savePage = setTimeout(() => void invoke('study:setPage', bookId, event.pageNumber).catch(() => undefined), 800);
       });
+      on('scalechanging', (event: { scale: number }) => useStudyEditor.getState().setScale(event.scale));
       on('pagerendered', (event: { source: { div: HTMLDivElement; id: number } }) => {
         const div = event.source.div;
         const page = event.source.id;
@@ -164,16 +166,45 @@ export function StudyViewer({ book, doc }: { book: Book; doc: PDFDocumentProxy }
           viewer.scrollPageIntoView({ pageNumber: target });
           viewer.currentPageNumber = target;
         },
-        zoomIn: () => viewer.increaseScale(),
-        zoomOut: () => viewer.decreaseScale(),
-        fitWidth: () => {
-          viewer.currentScaleValue = 'page-width';
+        zoomIn: () => {
+          viewer.increaseScale();
+          useStudyLayout.getState().setZoom(viewer.currentScale);
         },
-        fitPage: () => {
-          viewer.currentScaleValue = 'page-fit';
+        zoomOut: () => {
+          viewer.decreaseScale();
+          useStudyLayout.getState().setZoom(viewer.currentScale);
         },
-        scale: () => viewer.currentScale,
+        setZoom: (zoom) => {
+          useStudyLayout.getState().setZoom(zoom);
+          viewer.currentScaleValue = scaleValue(useStudyLayout.getState().zoom);
+        },
       };
+
+      // A fitted page follows the space it has: dragging the chat wider or resizing the window re-fits it.
+      let frame = 0;
+      const refit = new ResizeObserver(() => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          const zoom = useStudyLayout.getState().zoom;
+          if (typeof zoom !== 'number' && viewer.pagesCount) viewer.currentScaleValue = zoom;
+        });
+      });
+      refit.observe(container.current);
+      offs.push(() => {
+        cancelAnimationFrame(frame);
+        refit.disconnect();
+      });
+
+      // Ctrl + wheel (and a touchpad pinch) zooms the pages, not the whole window.
+      const onWheel = (event: WheelEvent) => {
+        if (!event.ctrlKey) return;
+        event.preventDefault();
+        if (event.deltaY < 0) viewerControl.current?.zoomIn();
+        else if (event.deltaY > 0) viewerControl.current?.zoomOut();
+      };
+      const scroller = container.current;
+      scroller.addEventListener('wheel', onWheel, { passive: false });
+      offs.push(() => scroller.removeEventListener('wheel', onWheel));
     })();
     return () => {
       disposed = true;

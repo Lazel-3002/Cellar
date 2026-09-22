@@ -15,7 +15,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M8 Tier 3 wishlist** | Built-in Chromium browser, `call(module, task)` delegation, self-scheduling reminders, streaming dictation + spoken replies | ✅ Done 2026-09-17 |
 | **M8.1 Undo, git and memory** | Undo for Cowork file changes; push, pull requests and merge-conflict resolution in Code; `/update-memory` | ✅ Done 2026-09-17 |
 | **M8.2 Playground** | Two models answering the same prompt side by side, one after the other, with per-model follow-ups | ✅ Done 2026-09-18 |
-| **M9 Study** | A PDF (textbook, worksheet) beside a tutor: pick what the model reads, write and draw on the pages, the tutor checks, marks and fills in answers | ✅ Done 2026-09-23 |
+| **M9 Study** | A PDF (textbook, worksheet) beside a tutor: pick what the model reads, write and draw on the pages, the tutor checks, marks and fills in answers | ✅ Done 2026-09-23 (v8.0.0) |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -805,7 +805,7 @@ on, each side keeps its own model's behaviour, and nothing reaches the database)
 
 ---
 
-## M9 Study — delivered (2026-09-23)
+## M9 Study — delivered (2026-09-23, v8.0.0)
 
 Study in the sidebar opens a shelf of PDFs. A book opens with the tutor on the left and the pages on the right — the creator's sketch: "upload my science book, fill the questions and talk about it with the AI as I would on paper." The PDF file itself is never changed; Cellar keeps its own copy and an annotation layer, and exports a copy with the notes drawn in.
 
@@ -817,7 +817,7 @@ The Math rule carries over: **the model says what to write and which question it
 - **Tutor and Solve** (a switch at the top of the chat). Tutor explains, hints, points to pages and checks work: checking means marking — ✓, ✗ or ~ with a few words next to the user's answer, like a red pen — and it never gives away an answer the user has not tried. Solve writes answers onto the page in its own colour. `write_answer` is not even offered in Tutor mode, and `mark_answer` refuses when the only answer there is the model's own.
 - **Tools** (`tools.ts`): `read_pages`, `search_book`, `go_to_page` (turns the viewer), `highlight`, `add_note`, `write_answer`, `mark_answer`, `erase` (its own notes only — the user's writing is theirs), `look_at_page` (vision models) and `calculate`.
 - **Placement** (`shared/study/anchor.ts`): text is found by question number ("3", "Soru 3", "Question 3") or by words, folding case, accents and the Turkish dotted/dotless i, falling back to the first words of a paraphrased question and then to the line sharing the most words. An answer goes on a printed blank in the question (shrunk to fit), on the dotted answer line under it, in the empty space below (stepping past earlier writing), to its right, or — when the page has no room — into a margin note. A tick goes right after the user's answer. Blanks are measured exactly from the page's glyphs (`glyphs.ts`, below).
-- **Viewer** (`components/study/`): pdf.js's own `PDFViewer` (continuous pages, virtualised, text you can select, links, fit-width zoom, outline menu, search over the book), with Cellar's layer mounted into every rendered page. Tools: select, highlighter (select text and it is highlighted), pen, marker, typing on the page, sticky notes, eraser (stroke by stroke), colours, undo/redo, keyboard letters for each. Selecting text offers Highlight, Ask and Explain. Page citations in replies — "(p. 12)", "pp. 45–48", "sayfa 12" — are links that turn the page; when the tutor writes somewhere you are not looking, a pill says where.
+- **Viewer** (`components/study/`): pdf.js's own `PDFViewer` (continuous pages, virtualised, text you can select, links, outline menu, search over the book). The page opens fitted to the view; a zoom menu (fit the page, fit the width, 50–200%) and Ctrl + wheel resize it, the choice is kept, and a fitted page re-fits when the chat panel or the window changes size, with Cellar's layer mounted into every rendered page. Tools: select, highlighter (select text and it is highlighted), pen, marker, typing on the page, sticky notes, eraser (stroke by stroke), colours, undo/redo, keyboard letters for each. Selecting text offers Highlight, Ask and Explain. Page citations in replies — "(p. 12)", "pp. 45–48", "sayfa 12" — are links that turn the page; when the tutor writes somewhere you are not looking, a pill says where.
 - **Pictures for vision models**: the viewer draws the page with the annotations on it and sends it — automatically when the page is scanned or has handwriting, always, or never (a setting in the picker). `look_at_page` asks an open viewer for a page over IPC, so no second renderer ships in main.
 - **Export**: pdf-lib draws highlights, typed text (Segoe UI embedded, so Turkish letters work), handwriting and marks into a copy, and notes become real PDF comments that open in any viewer.
 
