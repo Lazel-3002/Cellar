@@ -26,6 +26,9 @@ files:
   - '!**/node_modules/node-addon-api/**'
   # Study: the renderer bundles pdf.js itself; main only serves its fonts, character maps and image decoders.
   - '!**/node_modules/pdfjs-dist/{build,legacy,web,types,image_decoders}/**'
+  # pdf.js and unpdf pull in a native canvas (37 MB) for rendering pages in Node; Study only reads
+  # text and glyph positions in main (pages are drawn by the viewer), so it is not shipped.
+  - '!**/node_modules/@napi-rs/**'
 asarUnpack:
   # Native modules, helper executables and the conout worker script must be real files.
   - '**/node_modules/node-pty/**'
