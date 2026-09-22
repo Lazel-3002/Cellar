@@ -5,7 +5,7 @@ export type MathAngleMode = 'deg' | 'rad';
 /** Background of the board and of sketch blocks — squared paper by default, like a maths notebook. */
 export type MathPaper = 'grid' | 'dots' | 'lined' | 'plain';
 
-export type MathBlockType = 'text' | 'formula' | 'derivation' | 'figure' | 'plot' | 'table' | 'quiz' | 'sketch';
+export type MathBlockType = 'text' | 'formula' | 'derivation' | 'figure' | 'plot' | 'table' | 'quiz' | 'sketch' | 'diagram';
 
 interface BlockBase {
   id: string;
@@ -138,14 +138,23 @@ export interface QuizBlock extends BlockBase {
   questions: QuizQuestion[];
 }
 
-export type SketchTool = 'pen' | 'line' | 'rect' | 'ellipse' | 'triangle' | 'arrow';
+export type SketchTool = 'pen' | 'line' | 'rect' | 'ellipse' | 'triangle' | 'arrow' | 'text';
+
+/** How a line is drawn: plain, dashed, dotted, dash-dot, or scribbled like a highlighted segment in a notebook. */
+export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dashdot' | 'zigzag' | 'wavy';
 
 export interface SketchStroke {
   tool: SketchTool;
   color: string;
   width: number;
-  /** Flat x, y pairs in the sketch's own pixel space. */
+  /** Flat x, y pairs in the sketch's own pixel space. A text stroke is anchored at the first pair. */
   points: number[];
+  /** Solid when left out. */
+  line?: LineStyle;
+  /** 0.1–1; left out means fully opaque. */
+  opacity?: number;
+  /** What a text stroke says (Greek names like alpha and powers like x^2 are typeset). */
+  text?: string;
 }
 
 export interface SketchBlock extends BlockBase {
@@ -157,7 +166,112 @@ export interface SketchBlock extends BlockBase {
   strokes: SketchStroke[];
 }
 
-export type MathBlock = TextBlock | FormulaBlock | DerivationBlock | FigureBlock | PlotBlock | TableBlock | QuizBlock | SketchBlock;
+/**
+ * A drawing built up step by step, the way a teacher draws on the board while explaining: each step
+ * says one sentence and draws a few things. Coordinates are maths coordinates (y up) and may be
+ * written as expressions (`cos 135`, `√3/2`) or as the name of a point drawn earlier.
+ */
+export type DiagramPoint = [number | string, number | string] | string;
+
+export type DiagramElementKind =
+  | 'axes'
+  | 'unit-circle'
+  | 'point'
+  | 'segment'
+  | 'line'
+  | 'ray'
+  | 'arrow'
+  | 'circle'
+  | 'arc'
+  | 'angle'
+  | 'polygon'
+  | 'function'
+  | 'text';
+
+export type DiagramWeight = 'thin' | 'normal' | 'bold' | 'thick';
+
+export type LabelPosition = 'above' | 'below' | 'left' | 'right' | 'above-left' | 'above-right' | 'below-left' | 'below-right';
+
+export interface DiagramElement {
+  kind: DiagramElementKind;
+  /** The step (from 1) this is drawn in. */
+  step?: number;
+  /** Names a point so later elements can use it ("P", "T"). */
+  name?: string;
+  label?: string;
+  /** A point, a text anchor, an angle's vertex or a circle's centre. */
+  at?: DiagramPoint;
+  from?: DiagramPoint;
+  to?: DiagramPoint;
+  /** A line or ray through `at`/`from` and this point. */
+  through?: DiagramPoint;
+  /** A vertical line x = …, or a horizontal line y = …. */
+  x?: number | string;
+  y?: number | string;
+  slope?: number | string;
+  radius?: number | string;
+  /** Arcs and angles: directions in degrees, counter-clockwise from the positive x-axis. */
+  start?: number | string;
+  end?: number | string;
+  points?: DiagramPoint[];
+  /** function: y as an expression in x. */
+  expr?: string;
+  domain?: [number, number];
+  /** angle: the square right-angle mark. */
+  right?: boolean;
+  /** point: a hollow dot, as for an excluded end of an interval. */
+  open?: boolean;
+  /** text: what to write. */
+  text?: string;
+  /** axes: which axes to draw (x alone makes a number line). */
+  axis?: 'both' | 'x' | 'y';
+  ticks?: boolean;
+  /** Where a label goes relative to its point. */
+  position?: LabelPosition;
+  size?: 'small' | 'normal' | 'large';
+  bold?: boolean;
+  /** A name (red, blue, green, orange, purple, teal, yellow, pink, gray, black) or #hex. */
+  color?: string;
+  weight?: DiagramWeight | number;
+  line?: LineStyle;
+  /** Transparency (alpha), 0.1–1. */
+  opacity?: number;
+  /** Fill colour for circles and polygons. */
+  fill?: string;
+  fillOpacity?: number;
+  arrow?: 'none' | 'end' | 'start' | 'both';
+}
+
+export interface DiagramStep {
+  /** What this step does, in one sentence. */
+  text: string;
+  /** A line of maths that goes with it, typeset. */
+  math?: string;
+}
+
+export interface DiagramSpec {
+  elements: DiagramElement[];
+  steps?: DiagramStep[];
+  xMin?: number;
+  xMax?: number;
+  yMin?: number;
+  yMax?: number;
+  /** Squared paper behind the drawing. */
+  grid?: boolean;
+  /** Width in pixels (220–760, default 440). */
+  width?: number;
+  /** Angle unit for expressions in coordinates and functions (default degrees). */
+  angle?: MathAngleMode;
+}
+
+export interface DiagramBlock extends BlockBase {
+  type: 'diagram';
+  title?: string;
+  diagram: DiagramSpec;
+  caption?: string;
+}
+
+export type MathBlock = TextBlock | FormulaBlock | DerivationBlock | FigureBlock | PlotBlock | TableBlock | QuizBlock | SketchBlock | DiagramBlock;
 
 export interface MathBoard {
   id: string;

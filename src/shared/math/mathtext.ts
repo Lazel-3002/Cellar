@@ -282,3 +282,13 @@ export function looksLikeMath(text: string): boolean {
   if (/[a-zA-Z]{4,}\s+[a-zA-Z]{4,}/.test(trimmed)) return false;
   return /[=+\-×÷·^√/]|\\frac|\\sqrt|\d/.test(trimmed);
 }
+
+const GREEK_WORDS = /\b(alpha|beta|gamma|delta|Delta|theta|lambda|mu|omega|phi|pi)\b/g;
+
+/**
+ * A short label for a drawing (SVG text cannot hold the typeset HTML): one line of Unicode, with
+ * Greek letters written out as words turned into symbols, so "alpha" and "\alpha" both give α.
+ */
+export function labelText(input: string): string {
+  return mathToPlain(input).replace(GREEK_WORDS, (word) => WORD_SYMBOLS[word] ?? word);
+}

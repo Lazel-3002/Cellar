@@ -827,8 +827,8 @@ function MemorySection() {
         <Field label="Use memory" description="Include saved memories in chats, tasks and Code sessions, and let models save new ones when you ask.">
           <Switch checked={settings.memoryEnabled} onCheckedChange={(v) => update.mutate({ memoryEnabled: v })} />
         </Field>
-        <Field label="Search past chats" description="Let tool-capable models look up earlier conversations when you refer to them.">
-          <Switch checked={settings.searchPastChats} onCheckedChange={(v) => update.mutate({ searchPastChats: v })} />
+        <Field label="Search and reference chats" description="Let tool-capable models search previous conversation history for relevant context. Independent from long-term memory.">
+          <Switch checked={settings.chatReferenceEnabled ?? settings.searchPastChats} onCheckedChange={(v) => update.mutate({ chatReferenceEnabled: v })} />
         </Field>
         <Field label="Generate memory from chats" description="Quietly build the profile below from your conversations, without you having to ask. Runs a short extra pass on your loaded model after a chat goes idle.">
           <Switch checked={settings.generateMemoryFromChats} onCheckedChange={(v) => update.mutate({ generateMemoryFromChats: v })} />
@@ -837,6 +837,39 @@ function MemorySection() {
           <Switch checked={settings.memorySensitiveTopics} onCheckedChange={(v) => update.mutate({ memorySensitiveTopics: v })} disabled={!settings.generateMemoryFromChats} />
         </Field>
       </Card>
+
+      <div className="mb-4 flex gap-2">
+        <Button variant="outline" size="sm" onClick={async () => {
+          const json = await attempt(() => invoke('memory:export'));
+          if (json) {
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cellar-memory-export-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        }}>Export memory</Button>
+        <Button variant="outline" size="sm" onClick={async () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.json';
+          input.onchange = async (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+            const text = await file.text();
+            try {
+              const result = await invoke('memory:import', text);
+              toast.success(`Imported ${result.created} topics, skipped ${result.skippedDuplicates} duplicates`);
+              await qc.invalidateQueries({ queryKey: keys.memoryTopics });
+            } catch (err) {
+              toast.error(String(err));
+            }
+          };
+          input.click();
+        }}>Import memory</Button>
+      </div>
 
       {topics.length > 0 && (
         <div className="mb-4 space-y-4">
@@ -857,7 +890,7 @@ function MemorySection() {
         <Input
           value={ask}
           onChange={(e) => setAsk(e.target.value)}
-          placeholder="Tell Claude what to change or remove"
+          placeholder="Tell Cellar what to change or remove"
           disabled={asking}
           onKeyDown={async (e) => {
             if (e.key === 'Enter' && ask.trim() && !asking) {

@@ -6,6 +6,7 @@ import type { MathStartOptions } from '@shared/types/math';
 import type {
   ChatStreamEvent,
   Conversation,
+  ContextInfo,
   ConversationWithMessages,
   GenerationStats,
   Message,
@@ -36,7 +37,7 @@ import { getProject, projectKnowledge } from '../services/projects';
 import { settings } from '../services/settings';
 import { attachmentRefs, withAttachments } from './attachments';
 import { estimateTokens, fitToContext } from './context-window';
-import { buildSystemPrompt, cleanTitle, fallbackTitle, supportsArtifactInstructions } from './prompts';
+import { buildSystemPrompt, chatToolGuidance, cleanTitle, fallbackTitle, supportsArtifactInstructions } from './prompts';
 
 const log = logger('chat');
 
@@ -477,19 +478,19 @@ class ChatOrchestrator {
     let projectName: string | undefined;
     let projectInstructions: string | undefined;
     let knowledge: string | undefined;
+    const lastUser = [...history].reverse().find((m) => m.role === 'user');
     if (conversation.projectId) {
       try {
         const project = getProject(conversation.projectId);
         projectName = project.name;
         projectInstructions = project.instructions;
-        const lastUser = [...history].reverse().find((m) => m.role === 'user');
         knowledge = await projectKnowledge(project.id, lastUser?.content ?? '', 6000);
       } catch {
         // project deleted
       }
     }
     const preset = getPreset(entry.ref, entry.contextLength);
-    const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: false });
+    const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: false, query: lastUser?.content ?? '', projectId: conversation.projectId });
     const system = buildSystemPrompt({
       modelName: entry.displayName,
       userName: app.userName,
@@ -511,7 +512,8 @@ class ChatOrchestrator {
     if (!entry.capabilities.tools) return false;
     const app = settings.get();
     if (app.chatWebSearch || app.browserEnabled) return true;
-    if (!store.incognito && (app.memoryEnabled || app.searchPastChats)) return true;
+    const hasChatRef = app.chatReferenceEnabled || app.searchPastChats;
+    if (!store.incognito && (app.memoryEnabled || hasChatRef)) return true;
     if (connectors.available().length > 0) return true;
     return (await activeSkills()).length > 0;
   }
@@ -698,6 +700,183 @@ class ChatOrchestrator {
       store.updateConversation(conversationId, { title: cleaned });
       this.notify(conversationId);
     }
+  }
+
+  /** Build a /context breakdown for a conversation. */
+  async contextInfo(conversationId?: string): Promise<ContextInfo | null> {
+    const app = settings.get();
+    const conversation = conversationId ? this.store(conversationId).getConversation(conversationId) : undefined;
+
+    // Resolve the model actually bound to this conversation; only fall back to
+    // "whatever's loaded" when the conversation has no model chosen yet.
+    let entry: ModelEntry | undefined = conversation?.model ? await providers.findModel(conversation.model) : undefined;
+    if (!entry) {
+      const allModels = await providers.listModels(true);
+      entry = allModels.find((m) => m.loadedContextLength != null);
+    }
+    if (!entry) return null;
+    const preset = getPreset(entry.ref, entry.contextLength);
+    const contextLength = entry.loadedContextLength ?? (typeof preset.load.contextLength === 'number' ? preset.load.contextLength : entry.contextLength ?? 8192);
+
+    // Get real token counts + reasoning time from the last assistant message with stats.
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
+    let reasoningMs: number | undefined;
+    let completionMessageId: string | undefined;
+    if (conversationId && conversation?.currentLeafId) {
+      const store = this.store(conversationId);
+      const history = branchPath(store.listMessages(conversationId), conversation.currentLeafId);
+      for (let i = history.length - 1; i >= 0; i--) {
+        const m = history[i];
+        if (m.role === 'assistant' && m.stats?.promptTokens != null) {
+          promptTokens = m.stats.promptTokens;
+          completionTokens = m.stats.completionTokens;
+          reasoningMs = m.stats.reasoningMs;
+          completionMessageId = m.id;
+          break;
+        }
+      }
+    }
+
+    // Use provider-reported numbers as ground truth; fall back to estimation if no stats yet.
+    const realTotal = (promptTokens ?? 0) + (completionTokens ?? 0);
+    let estimatedTokens: number;
+    let messagesCount: number | undefined;
+
+    // Build a rough breakdown of what's inside promptTokens for display purposes.
+    let systemContent = '';
+    let toolNames: string[] = [];
+    if (conversationId) {
+      const store = this.store(conversationId);
+      const conversation = store.getConversation(conversationId);
+      if (!conversation || !conversation.currentLeafId) return null;
+
+      // Gather active tools.
+      const activeConnectors = connectors.available();
+      const skills = await activeSkills();
+      toolNames = [];
+      if (app.chatWebSearch) toolNames.push('web_search');
+      for (const conn of activeConnectors) {
+        if (conn.policy !== 'off') toolNames.push(`${conn.config.id ?? conn.tool.name}__*`);
+      }
+      if (skills.length > 0) toolNames.push(...skills.map((s) => s.name));
+
+      const history = branchPath(store.listMessages(conversationId), conversation.currentLeafId).filter(
+        (m) => m.id !== completionMessageId && (m.role === 'user' || (m.role === 'assistant' && m.content.trim() && m.status !== 'error')),
+      );
+
+      let projectName: string | undefined;
+      let projectInstructions: string | undefined;
+      let knowledge: string | undefined;
+      const lastUser = [...history].reverse().find((m) => m.role === 'user');
+      if (conversation.projectId) {
+        try {
+          const proj = getProject(conversation.projectId);
+          projectName = proj.name;
+          projectInstructions = proj.instructions;
+          knowledge = await projectKnowledge(proj.id, lastUser?.content ?? '', 6000);
+        } catch { /* deleted */ }
+      }
+
+      const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: false, query: lastUser?.content ?? '', projectId: conversation.projectId });
+      systemContent = buildSystemPrompt({
+        modelName: entry.displayName,
+        userName: app.userName,
+        preferences: app.personalPreferences,
+        projectName,
+        projectInstructions,
+        projectKnowledge: knowledge,
+        customSystemPrompt: conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt,
+        artifacts: app.artifacts && supportsArtifactInstructions(entry),
+        inlineVisualizations: app.inlineVisualizations && supportsArtifactInstructions(entry),
+        inlineImages: app.inlineImages,
+        toolNames,
+        extraSections: customize.sections,
+      });
+
+      messagesCount = history.length;
+    } else {
+      systemContent = buildSystemPrompt({ modelName: entry.displayName, userName: app.userName, preferences: app.personalPreferences, artifacts: true });
+    }
+
+    // Estimate breakdown proportions (for display only — total comes from real stats).
+    let sysTokens = estimateTokens(systemContent);
+    const skillInstructions = (systemContent.match(/<skill>/g) || []).reduce((sum, _m) => sum + 200, 0);
+
+    let toolsTokens = 0;
+    if (conversationId && toolNames.length > 0) {
+      toolsTokens = estimateTokens(chatToolGuidance(toolNames));
+    }
+
+    let skillsTokens = skillInstructions;
+    let projectTokens = 0;
+    if (conversationId) {
+      try {
+        const store = this.store(conversationId);
+        const conv = store.getConversation(conversationId);
+        if (conv?.projectId) {
+          const proj = getProject(conv.projectId);
+          projectTokens += estimateTokens(`This conversation belongs to the project "${proj.name}".`);
+          if (proj.instructions?.trim()) projectTokens += estimateTokens(`<project_instructions>\n${proj.instructions.trim()}\n</project_instructions>`);
+        }
+      } catch { /* deleted */ }
+    }
+
+    let messagesTokens = 0;
+    if (conversationId) {
+      const store = this.store(conversationId);
+      const conv = store.getConversation(conversationId);
+      if (conv?.currentLeafId) {
+        const history = branchPath(store.listMessages(conversationId), conv.currentLeafId).filter(
+          (m) => m.id !== completionMessageId && (m.role === 'user' || (m.role === 'assistant' && m.content.trim() && m.status !== 'error')),
+        );
+        for (const m of history) {
+          messagesTokens += estimateTokens(m.content);
+          if (m.attachments?.length) {
+            for (const a of m.attachments) messagesTokens += a.tokens ?? 0;
+          }
+        }
+      }
+    }
+
+    const rawBreakdown = sysTokens + toolsTokens + skillsTokens + projectTokens + messagesTokens;
+
+    // If we have real provider stats, scale the breakdown proportionally.
+    if (realTotal > 0 && rawBreakdown > 0) {
+      const ratio = promptTokens! / rawBreakdown;
+      sysTokens = Math.round(sysTokens * ratio);
+      toolsTokens = Math.round(toolsTokens * ratio);
+      skillsTokens = Math.round(skillsTokens * ratio);
+      projectTokens = Math.round(projectTokens * ratio);
+      messagesTokens = Math.round(messagesTokens * ratio);
+      // The latest reply isn't part of the prompt we just scaled to — fold its real
+      // completion tokens into Messages so the breakdown adds up to the real total.
+      if (completionMessageId) {
+        messagesTokens += completionTokens ?? 0;
+        messagesCount = (messagesCount ?? 0) + 1;
+      }
+      estimatedTokens = realTotal;
+    } else {
+      // No stats yet — use our estimates.
+      estimatedTokens = rawBreakdown;
+    }
+
+    const freeTokens = Math.max(0, contextLength - estimatedTokens);
+    const usagePercent = Math.min(100, Math.round((estimatedTokens / contextLength) * 100));
+
+    return {
+      contextLength,
+      estimatedTokens,
+      freeTokens,
+      usagePercent,
+      systemPrompt: { tokens: sysTokens, percent: Math.round((sysTokens / contextLength) * 100) },
+      tools: { tokens: toolsTokens, percent: Math.round((toolsTokens / contextLength) * 100) },
+      skills: { tokens: skillsTokens, percent: Math.round((skillsTokens / contextLength) * 100) },
+      projectContext: { tokens: projectTokens, percent: Math.round((projectTokens / contextLength) * 100) },
+      messages: { tokens: messagesTokens, percent: Math.round((messagesTokens / contextLength) * 100), count: messagesCount ?? 0 },
+      reasoningMs,
+      currentLeafId: conversationId ? (this.store(conversationId).getConversation(conversationId)?.currentLeafId ?? null) : null,
+    };
   }
 }
 

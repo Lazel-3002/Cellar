@@ -9,10 +9,11 @@ import { Tip } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
 import { useMathEditor } from '@/stores/math';
 import { answerMatches, answerQuestion, deleteBlock, duplicateBlock, moveBlock, reorderBlock, resetQuiz, revealQuestion, updateBlock } from './actions';
+import { DiagramView, useRevealFrom } from './Diagram';
 import { MathText, SvgFigure } from './MathText';
 import { SketchCanvas, SketchToolbar } from './Sketch';
 
-const EDITABLE: MathBlock['type'][] = ['text', 'formula', 'derivation', 'table', 'sketch'];
+const EDITABLE: MathBlock['type'][] = ['text', 'formula', 'derivation', 'table', 'sketch', 'diagram'];
 
 function BlockShell({ block, index, count, children }: { block: MathBlock; index: number; count: number; children: React.ReactNode }) {
   const selected = useMathEditor((s) => s.selectedId === block.id);
@@ -236,12 +237,19 @@ function DerivationView({ block, editing }: { block: DerivationBlock; editing: b
       </div>
     );
   }
+  return <DerivationSteps block={block} />;
+}
+
+/** The worked lines; lines the model just wrote are written in one after another. */
+function DerivationSteps({ block }: { block: DerivationBlock }) {
+  const from = useRevealFrom(block.id, block.steps.length + (block.result ? 1 : 0));
+  const reveal = (index: number) => (from !== null && index >= from ? { className: 'm-reveal', style: { '--i': index - from } as React.CSSProperties } : {});
   return (
     <>
       <BlockTitle>{block.title}</BlockTitle>
-      <div className="m-steps">
+      <div className={cn('m-steps', from !== null && 'm-steps-reveal')}>
         {block.steps.map((step, index) => (
-          <div key={index}>
+          <div key={index} {...reveal(index)}>
             <div className="m-step">
               <MathText text={step.math} className="m-step-math text-[17px] text-foreground" />
               {step.reason && <span className="m-step-reason text-muted-foreground">{step.reason}</span>}
@@ -251,10 +259,12 @@ function DerivationView({ block, editing }: { block: DerivationBlock; editing: b
         ))}
       </div>
       {block.result && (
-        <div className="mt-1.5">
-          <span className="inline-block rounded-md bg-brand/12 px-2.5 py-1 text-[17px] text-foreground">
-            <MathText text={block.result} />
-          </span>
+        <div className={cn('mt-1.5', from !== null && 'm-steps-reveal')}>
+          <div {...reveal(block.steps.length)}>
+            <span className="inline-block rounded-md bg-brand/12 px-2.5 py-1 text-[17px] text-foreground">
+              <MathText text={block.result} />
+            </span>
+          </div>
         </div>
       )}
     </>
@@ -562,6 +572,8 @@ export function BlockView({ block, index, count, paper }: { block: MathBlock; in
         return <QuizView block={block} />;
       case 'sketch':
         return <SketchView block={block} paper={paper} editing={editing} />;
+      case 'diagram':
+        return <DiagramView block={block} editing={editing} />;
     }
   })();
   return (

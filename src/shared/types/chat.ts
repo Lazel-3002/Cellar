@@ -240,3 +240,25 @@ export interface ArtifactSummary {
   version: number;
   createdAt: number;
 }
+
+/** Breakdown of the context window for a conversation (used by /context command). */
+export interface ContextInfo {
+  /** Total tokens available in the model's context window. */
+  contextLength: number;
+  /** Tokens used so far — actual count from provider stats, not estimated. */
+  estimatedTokens: number;
+  /** Tokens remaining for conversation. */
+  freeTokens: number;
+  /** Percentage of context window used. */
+  usagePercent: number;
+  /** Token breakdown by source (scaled to match real total). */
+  systemPrompt: { tokens: number; percent: number };
+  tools: { tokens: number; percent: number };
+  skills: { tokens: number; percent: number };
+  projectContext: { tokens: number; percent: number };
+  messages: { tokens: number; percent: number; count: number };
+  /** Reasoning/thinking time in ms (from last generation), if available. */
+  reasoningMs?: number;
+  /** The conversation's current leaf message id (latest in the active branch). */
+  currentLeafId: string | null;
+}

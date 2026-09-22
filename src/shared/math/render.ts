@@ -3,8 +3,10 @@
  * CSS string and the block helpers) and by PDF, PNG and Markdown export, so what you see on screen
  * is what comes out of the printer.
  */
+import { buildDiagram } from './diagram';
 import { buildFigure } from './figure';
-import { escapeHtml, mathToPlain, renderMath } from './mathtext';
+import { arrowHead, dashArray, ellipsePoints, styledPath, type Pt } from './linestyle';
+import { escapeHtml, labelText, mathToPlain, renderMath } from './mathtext';
 import { buildPlot } from './plot';
 import type { MathBlock, MathBoard, MathPaper, SketchStroke } from '../types/math';
 
@@ -51,6 +53,19 @@ export const MATH_CSS = `
 .m-table { border-collapse: collapse; font-family: var(--m-math-font, Georgia, serif); }
 .m-table th, .m-table td { border: 1px solid var(--m-border, #ddd); padding: 5px 12px; text-align: left; }
 .m-table th { font-family: var(--m-sans, system-ui, sans-serif); font-size: 0.8em; font-weight: 600; opacity: 0.8; }
+.m-diagram .dg-label { stroke: var(--m-paper, #fff); stroke-width: 3.5px; stroke-linejoin: round; paint-order: stroke; }
+.m-diagram .dg-hollow { fill: var(--m-paper, #fff); }
+.dg-step-math, .dg-step-math .m-math { white-space: nowrap; }
+.m-diagram .dg-el.dg-hidden { visibility: hidden; }
+.m-diagram .dg-el.dg-play .dg-s { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: dg-draw var(--dg-draw, 0.75s) cubic-bezier(.45,.05,.35,1) forwards; animation-delay: calc(var(--dg-i, 0) * var(--dg-gap, 0.55s)); }
+.m-diagram .dg-el.dg-play .dg-f { opacity: 0; animation: dg-fade 0.35s ease-out forwards; animation-delay: calc(var(--dg-i, 0) * var(--dg-gap, 0.55s) + 0.35s); }
+.m-steps-reveal .m-reveal { clip-path: inset(0 100% 0 0); animation: m-write 0.7s ease-out forwards; animation-delay: calc(var(--i, 0) * 0.55s); }
+@keyframes dg-draw { to { stroke-dashoffset: 0; } }
+@keyframes dg-fade { to { opacity: 1; } }
+@keyframes m-write { to { clip-path: inset(0 -2% 0 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .m-diagram .dg-el.dg-play .dg-s, .m-diagram .dg-el.dg-play .dg-f, .m-steps-reveal .m-reveal { animation: none; stroke-dashoffset: 0; opacity: 1; clip-path: none; }
+}
 `;
 
 const EXPORT_CSS = `
@@ -81,6 +96,8 @@ html, body { margin: 0; padding: 0; background: #ffffff; color: #141413; font-fa
 .answer strong { font-family: var(--m-math-font); }
 .answer-key { page-break-before: always; break-before: page; }
 .sketch { border: 1px solid var(--m-border); border-radius: 10px; overflow: hidden; }
+.diagram-steps { flex: 1; min-width: 220px; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.5; }
+.diagram-steps li { margin: 0 0 6px; }
 @page { size: A4; margin: 0; }
 `;
 
@@ -110,14 +127,18 @@ function textBlockHtml(body: string): string {
 export function strokeGeometry(stroke: SketchStroke): { d: string; head?: string } {
   const points = stroke.points;
   const count = Math.floor(points.length / 2);
-  if (count < 2) return { d: '' };
+  if (stroke.tool === 'text' || count < 2) return { d: '' };
   const x = (i: number) => points[i * 2];
   const y = (i: number) => points[i * 2 + 1];
   const first = { x: x(0), y: y(0) };
   const last = { x: x(count - 1), y: y(count - 1) };
   const box = { x: Math.min(first.x, last.x), y: Math.min(first.y, last.y), w: Math.abs(last.x - first.x), h: Math.abs(last.y - first.y) };
+  // Zigzag and wavy lines change the shape itself, so they walk the outline as points.
+  const walked = stroke.line === 'zigzag' || stroke.line === 'wavy';
+  const walk = (outline: Pt[], closed = false) => styledPath(outline, stroke.line, stroke.width, closed);
   switch (stroke.tool) {
     case 'pen': {
+      if (walked) return { d: walk(Array.from({ length: count }, (_, i) => ({ x: x(i), y: y(i) }))) };
       // Quadratic segments through the midpoints keep freehand lines smooth.
       let d = `M${x(0)} ${y(0)}`;
       for (let i = 1; i < count - 1; i++) {
@@ -129,36 +150,63 @@ export function strokeGeometry(stroke: SketchStroke): { d: string; head?: string
       return { d };
     }
     case 'line':
-      return { d: `M${first.x} ${first.y}L${last.x} ${last.y}` };
+      return { d: walked ? walk([first, last]) : `M${first.x} ${first.y}L${last.x} ${last.y}` };
     case 'rect':
+      if (walked) {
+        const corners = [
+          { x: box.x, y: box.y },
+          { x: box.x + box.w, y: box.y },
+          { x: box.x + box.w, y: box.y + box.h },
+          { x: box.x, y: box.y + box.h },
+        ];
+        return { d: walk(corners, true) };
+      }
       return { d: `M${box.x} ${box.y}h${box.w}v${box.h}h${-box.w}Z` };
     case 'ellipse': {
       const rx = box.w / 2;
       const ry = box.h / 2;
       const cx = box.x + rx;
       const cy = box.y + ry;
+      if (walked) return { d: walk(ellipsePoints(cx, cy, rx, ry)) };
       return { d: `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${rx * 2} 0a${rx} ${ry} 0 1 0 ${-rx * 2} 0` };
     }
-    case 'triangle':
-      return { d: `M${box.x + box.w / 2} ${box.y}L${box.x + box.w} ${box.y + box.h}L${box.x} ${box.y + box.h}Z` };
-    case 'arrow': {
-      const angle = Math.atan2(last.y - first.y, last.x - first.x);
-      const size = Math.max(9, stroke.width * 3.4);
-      const left = { x: last.x - size * Math.cos(angle - Math.PI / 7), y: last.y - size * Math.sin(angle - Math.PI / 7) };
-      const right = { x: last.x - size * Math.cos(angle + Math.PI / 7), y: last.y - size * Math.sin(angle + Math.PI / 7) };
-      return { d: `M${first.x} ${first.y}L${last.x} ${last.y}`, head: `M${left.x} ${left.y}L${last.x} ${last.y}L${right.x} ${right.y}` };
+    case 'triangle': {
+      const corners = [
+        { x: box.x + box.w / 2, y: box.y },
+        { x: box.x + box.w, y: box.y + box.h },
+        { x: box.x, y: box.y + box.h },
+      ];
+      if (walked) return { d: walk(corners, true) };
+      return { d: `M${corners[0].x} ${corners[0].y}L${corners[1].x} ${corners[1].y}L${corners[2].x} ${corners[2].y}Z` };
     }
+    case 'arrow':
+      return { d: walked ? walk([first, last]) : `M${first.x} ${first.y}L${last.x} ${last.y}`, head: arrowHead(first, last, stroke.width) };
   }
 }
+
+/** Dashes and transparency of a stroke, the same in the editor and in exports. */
+export function strokePaint(stroke: SketchStroke): { dash?: string; opacity?: number } {
+  const opacity = typeof stroke.opacity === 'number' && stroke.opacity < 1 ? Math.max(0.1, stroke.opacity) : undefined;
+  return { dash: dashArray(stroke.line, stroke.width), opacity };
+}
+
+/** Font size of a text stroke: the pen width picks it, so a thicker pen writes bigger. */
+export const sketchFontSize = (stroke: Pick<SketchStroke, 'width'>) => Math.round(12 + stroke.width * 2.4);
 
 export function sketchSvg(strokes: SketchStroke[], width: number, height: number): string {
   const paths = strokes
     .map((stroke) => {
+      const color = escapeHtml(stroke.color === 'currentColor' ? '#141413' : stroke.color);
+      const { dash, opacity } = strokePaint(stroke);
+      const alpha = opacity ? ` opacity="${opacity}"` : '';
+      if (stroke.tool === 'text') {
+        if (!stroke.text || stroke.points.length < 2) return '';
+        return `<text x="${stroke.points[0]}" y="${stroke.points[1]}" fill="${color}" font-size="${sketchFontSize(stroke)}" font-family="'Cambria Math',Georgia,serif" dominant-baseline="middle"${alpha}>${escapeHtml(labelText(stroke.text))}</text>`;
+      }
       const { d, head } = strokeGeometry(stroke);
       if (!d) return '';
-      const color = stroke.color === 'currentColor' ? '#141413' : stroke.color;
-      const common = `stroke="${escapeHtml(color)}" stroke-width="${stroke.width}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
-      return `<path d="${d}" ${common}/>${head ? `<path d="${head}" ${common}/>` : ''}`;
+      const common = `stroke="${color}" stroke-width="${stroke.width}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+      return `<g${alpha}><path d="${d}" ${common}${dash ? ` stroke-dasharray="${dash}"` : ''}/>${head ? `<path d="${head}" ${common}/>` : ''}</g>`;
     })
     .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${paths}</svg>`;
@@ -227,6 +275,13 @@ function blockHtml(block: MathBlock, options: RenderOptions, answerKey: string[]
     }
     case 'sketch':
       return `<section class="block"><div class="sketch">${sketchSvg(block.strokes, 900, block.height)}</div>${note}</section>`;
+    case 'diagram': {
+      const built = buildDiagram(block.diagram);
+      const steps = built.steps.length
+        ? `<ol class="diagram-steps">${built.steps.map((step) => `<li>${escapeHtml(step.text)}${step.math ? ` <span class="m-math">${renderMath(step.math)}</span>` : ''}</li>`).join('')}</ol>`
+        : '';
+      return `<section class="block">${title(block.title)}<div class="figure-wrap">${built.svg}${steps}</div>${block.caption ? `<div class="caption">${renderMath(block.caption)}</div>` : ''}${note}</section>`;
+    }
   }
 }
 
@@ -303,6 +358,16 @@ export function estimateBoardHeight(board: MathBoard, width = 794, options: Rend
       case 'sketch':
         height += block.height + 20;
         break;
+      case 'diagram':
+        try {
+          const built = buildDiagram(block.diagram);
+          // Steps sit beside the drawing when the page is wide enough, under it otherwise.
+          const stepsHeight = built.steps.reduce((sum, step) => sum + lines(step.text + (step.math ?? '')) * 22, 0);
+          height += (width - built.width > 280 ? Math.max(built.height, stepsHeight) : built.height + stepsHeight) + 24;
+        } catch {
+          height += 360;
+        }
+        break;
     }
   }
   if (options.answers === false) height += 120 + board.blocks.filter((block) => block.type === 'quiz').reduce((sum, block) => sum + (block as { questions: unknown[] }).questions.length, 0) * 26;
@@ -361,6 +426,12 @@ export function boardMarkdown(board: MathBoard, options: RenderOptions = {}): st
       }
       case 'sketch':
         lines.push(`_Whiteboard sketch (${block.strokes.length} strokes) — open the board in Cellar to see it._`, '');
+        break;
+      case 'diagram':
+        lines.push(`## ${block.title ?? 'Step by step'}`, '');
+        (block.diagram.steps ?? []).forEach((step, index) => lines.push(`${index + 1}. ${step.text}${step.math ? ` — ${mathToPlain(step.math)}` : ''}`));
+        lines.push('', '_The drawing is on the board in Cellar._', '');
+        if (block.caption) lines.push(mathToPlain(block.caption), '');
         break;
     }
     if (block.note) lines.push(`_${mathToPlain(block.note)}_`, '');

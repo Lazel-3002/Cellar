@@ -45,6 +45,7 @@
   --m-accent-soft: color-mix(in srgb, var(--brand) 14%, transparent);
   --m-sans: 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
   --m-math-font: 'Source Serif 4 Variable', 'Cambria Math', Georgia, serif;
+  --m-paper: var(--card);
   --chat-font: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
 }
 

@@ -46,8 +46,13 @@ export const ASSISTANT_TOOLS: AgentTool[] = [
   createReminderTool,
 ] as AgentTool[];
 
+/** Check if chat reference/search is enabled (either setting). */
+function hasChatReference(settings: Pick<AppSettings, 'chatReferenceEnabled' | 'searchPastChats'>): boolean {
+  return !!(settings.chatReferenceEnabled || settings.searchPastChats);
+}
+
 export interface ExtraToolOptions {
-  settings: Pick<AppSettings, 'memoryEnabled' | 'searchPastChats' | 'browserEnabled' | 'selfScheduling'>;
+  settings: Pick<AppSettings, 'memoryEnabled' | 'chatReferenceEnabled' | 'searchPastChats' | 'browserEnabled' | 'selfScheduling'>;
   /** At least one skill is enabled. */
   skills: boolean;
   incognito: boolean;
@@ -68,7 +73,7 @@ export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]
   }
   if (options.reminders && options.settings.selfScheduling && !options.incognito) tools.push(createReminderTool as AgentTool);
   if (options.settings.memoryEnabled && !options.incognito) tools.push(rememberTool as AgentTool, forgetTool as AgentTool);
-  if (options.settings.searchPastChats && !options.incognito) tools.push(searchChatsTool as AgentTool, readChatTool as AgentTool);
+  if (hasChatReference(options.settings) && !options.incognito) tools.push(searchChatsTool as AgentTool, readChatTool as AgentTool);
   if (connectors.connectorsWithResources().length) tools.push(mcpResourcesTool as AgentTool, mcpReadResourceTool as AgentTool);
   if (connectors.connectorsWithPrompts().length) tools.push(mcpPromptsTool as AgentTool, mcpGetPromptTool as AgentTool);
   return [...tools, ...(await connectorTools(options.readOnly))];

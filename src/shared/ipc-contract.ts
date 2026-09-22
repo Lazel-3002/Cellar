@@ -29,6 +29,7 @@ import type {
   ConversationSettings,
   ConversationSummary,
   ConversationWithMessages,
+  ContextInfo,
   Project,
   ProjectDetail,
   ProjectFile,
@@ -61,6 +62,9 @@ import type {
   ConnectorStatus,
   MemoryItem,
   MemoryTopic,
+  MemoryImportResult,
+  MemoryRetrievalResult,
+  MemoryTopicHistoryEntry,
   MemoryUpdateResult,
   PluginInfo,
   PluginMarketplaceEntry,
@@ -172,6 +176,8 @@ export interface IpcInvokeMap {
   'chat:search': Handler<[query: string, limit?: number], SearchHit[]>;
   'chat:discardIncognito': Handler<[id: string], void>;
   'chat:activeStreams': Handler<[], ChatStreamEvent[]>;
+  /** /context command: returns the context window breakdown for a conversation. */
+  'chat:contextInfo': Handler<[conversationId?: string], ContextInfo | null>;
 
   'tasks:approve': Handler<[messageId: string, toolCallId: string, decision: ApprovalDecision], void>;
   'tasks:setPermissionMode': Handler<[conversationId: string, mode: PermissionMode], void>;
@@ -321,10 +327,21 @@ export interface IpcInvokeMap {
   'memory:updateTopic': Handler<[id: string, content: string], MemoryTopic>;
   'memory:deleteTopic': Handler<[id: string], void>;
   'memory:clearTopics': Handler<[], void>;
-  /** The "Tell Claude what to change or remove" box; returns a short confirmation. */
+  /** The "Tell Cellar what to change or remove" box; returns a short confirmation. */
   'memory:editWithText': Handler<[instruction: string], string>;
   /** /update-memory: read this conversation now and keep whatever is worth keeping (nothing, if nothing is). */
   'memory:updateFromChat': Handler<[conversationId: string], MemoryUpdateResult>;
+
+  /** Hybrid memory retrieval; returns a compact XML-style block for system prompt injection. */
+  'memory:retrieve': Handler<[query?: string, projectId?: string | null], string>;
+  /** Compact summary of all topics (for the extractor). */
+  'memory:getSummary': Handler<[], string>;
+  /** Audit history for memory topics (for debugging/transparency). */
+  'memory:getHistory': Handler<[topicId?: string], MemoryTopicHistoryEntry[]>;
+  /** Export all memories and topics as JSON. */
+  'memory:export': Handler<[], string>;
+  /** Import memories from exported JSON with deduplication. */
+  'memory:import': Handler<[json: string], MemoryImportResult>;
 
   /** The tools a model would get in a context (for /tools). */
   'tools:list': Handler<[scope: ToolScope, conversationId?: string, model?: ModelRef], ToolListing>;
@@ -513,6 +530,8 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'chat:search': true,
   'chat:discardIncognito': true,
   'chat:activeStreams': true,
+  /** /context command */
+  'chat:contextInfo': true,
   'tasks:approve': true,
   'tasks:setPermissionMode': true,
   'tasks:toolResult': true,
@@ -621,6 +640,11 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'memory:clearTopics': true,
   'memory:editWithText': true,
   'memory:updateFromChat': true,
+  'memory:retrieve': true,
+  'memory:getSummary': true,
+  'memory:getHistory': true,
+  'memory:export': true,
+  'memory:import': true,
   'tools:list': true,
   'scheduled:list': true,
   'scheduled:save': true,

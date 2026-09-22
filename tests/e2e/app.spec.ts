@@ -871,6 +871,21 @@ test('math: a tutor fills a board, the calculator and whiteboard work, and a tes
     await expect(steps).toContainText('a = 1');
     await expect(board.locator('[data-block-type="quiz"] [data-testid^="question-"]')).toHaveCount(3);
 
+    // The unit circle is drawn step by step: it plays through on its own, then steps back and forth.
+    const diagram = board.locator('[data-block-type="diagram"]');
+    await expect(diagram.locator('svg.m-diagram')).toBeVisible();
+    const stepCounter = diagram.getByTestId(/^diagram-step-/);
+    await expect(stepCounter).toHaveText('Step 5 of 5', { timeout: 30_000 });
+    await expect(diagram).toContainText('tan 135° = −1');
+    await diagram.getByRole('button', { name: 'Previous step' }).click();
+    await expect(stepCounter).toHaveText('Step 4 of 5');
+    await expect(diagram.locator('.dg-el.dg-hidden')).not.toHaveCount(0);
+    await diagram.getByTestId(/^diagram-next-/).click();
+    await expect(stepCounter).toHaveText('Step 5 of 5');
+    await expect(diagram.locator('.dg-el.dg-hidden')).toHaveCount(0);
+    await win.waitForTimeout(2000); // let the last step finish drawing in
+    await diagram.screenshot({ path: join(project, 'test-results', 'e2e-math-diagram.png') });
+
     // Answering a question is checked against the generated answer.
     const question = board.locator('[data-block-type="quiz"] [data-testid^="question-"]').first();
     await question.getByTestId(/^answer-/).fill('1');
@@ -897,6 +912,22 @@ test('math: a tutor fills a board, the calculator and whiteboard work, and a tes
     await win.mouse.move(box.x + 260, box.y + 70, { steps: 8 });
     await win.mouse.up();
     await expect(canvas.locator('path')).toHaveCount(1);
+    // A dashed line, and text where Greek names become letters.
+    await win.getByTestId('sketch-line').last().click();
+    await win.getByTestId('sketch-line-dashed').last().click();
+    await win.mouse.move(box.x + 60, box.y + 200);
+    await win.mouse.down();
+    await win.mouse.move(box.x + 300, box.y + 200, { steps: 6 });
+    await win.mouse.up();
+    await expect(canvas.locator('path[stroke-dasharray]')).toHaveCount(1);
+    await win.getByTestId('sketch-text').last().click();
+    await win.mouse.click(box.x + 320, box.y + 60);
+    await win.getByTestId('sketch-text-input').fill('alpha = 30°');
+    await win.getByTestId('sketch-text-input').press('Enter');
+    await expect(canvas.locator('text')).toHaveText('α = 30°');
+    await board.locator('[data-block-type="sketch"]').last().screenshot({ path: join(project, 'test-results', 'e2e-math-whiteboard.png') });
+    await win.getByTestId('sketch-line-solid').last().click();
+    await win.getByTestId('sketch-pen').last().click();
 
     // A follow-up with a block selected: the model is told which one.
     await board.locator('[data-block-type="formula"]').click();

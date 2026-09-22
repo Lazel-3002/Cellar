@@ -39,6 +39,31 @@ export function dot(a: Float32Array, b: Float32Array): number {
   return sum;
 }
 
+/** Compute cosine similarity between two vectors (assumes same length, no null checks). */
+export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/** L2-normalize a vector in-place and return it. Returns a new array if one is not available. */
+export function normalizeVector(vector: number[]): Float32Array {
+  let norm = 0;
+  for (const v of vector) norm += v * v;
+  norm = Math.sqrt(norm) || 1;
+  const out = new Float32Array(vector.length);
+  for (let i = 0; i < vector.length; i++) out[i] = vector[i] / norm;
+  return out;
+}
+
 /** Task prefixes some embedding models are trained with. */
 export function embeddingPrefixes(modelId: string): { document: string; query: string } {
   const id = modelId.toLowerCase();
@@ -173,3 +198,37 @@ class EmbeddingIndex {
 }
 
 export const embeddingIndex = new EmbeddingIndex();
+
+/**
+ * Generate an embedding for a memory topic (called asynchronously, never blocks).
+ * Stores the vector in memory_vectors table. Used when topics are created/updated.
+ */
+export async function embedTopicAsync(topicId: string, title: string, content: string): Promise<void> {
+  const ref = settings.get().embeddingModel;
+  if (!ref) return;
+
+  try {
+    const entry = await providers.findModel(ref);
+    if (!entry || !entry.capabilities.embedding || !entry.loaded) return;
+
+    const provider = providers.get(entry.ref.providerId);
+    if (!provider.embed) return;
+
+    const prefix = embeddingPrefixes(entry.ref.modelId).document;
+    const textToEmbed = `${prefix}${title}: ${content}`.slice(0, 2048);
+
+    const vectors = await provider.embed(entry, [textToEmbed]);
+    if (!vectors.length || !vectors[0].length) return;
+
+    const vector = vectors[0];
+    const key = modelKey(ref);
+    const now = Date.now();
+
+    run(
+      'INSERT OR REPLACE INTO memory_vectors (topic_id, model, dims, vector, updated_at) VALUES (?, ?, ?, ?, ?)',
+      topicId, key, vector.length, toBlob(vector), now,
+    );
+  } catch (err) {
+    log.warn('embedding generation failed for topic', topicId, String(err));
+  }
+}

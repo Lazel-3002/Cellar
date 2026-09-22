@@ -276,6 +276,8 @@ export function registerIpcHandlers(): void {
   handle('chat:search', (query, limit) => searchMessages(query, limit));
   handle('chat:discardIncognito', (id) => chat.discardIncognito(id));
   handle('chat:activeStreams', () => chat.activeStreams());
+  /** /context command: returns the context window breakdown for a conversation. */
+  handle('chat:contextInfo', (conversationId) => chat.contextInfo(conversationId ? z.string().min(1).parse(conversationId) : undefined));
 
   handle('tasks:approve', (messageId, toolCallId, decision) => chat.approve(messageId, toolCallId, approvalSchema.parse(decision)));
   handle('tasks:setPermissionMode', (conversationId, mode) => chat.setTaskPermissionMode(conversationId, permissionMode.parse(mode)));

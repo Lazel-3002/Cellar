@@ -3,6 +3,9 @@
  * field has aliases, types are guessed from the words used, and a block that cannot be read comes
  * back as an error the model can act on instead of a crash.
  */
+import { normalizeDiagram, normalizeElement } from './diagram-normalize';
+import { diagramStepCount } from './diagram';
+import { lineStyleOf, opacityOf } from './linestyle';
 import { mathToPlain } from './mathtext';
 import type {
   DerivationStep,
@@ -66,7 +69,8 @@ const stringList = (values: unknown[] | undefined, max: number, itemMax = 400): 
 const TYPE_WORDS: Array<[RegExp, MathBlockType]> = [
   [/^(derivation|steps?|solution|working|solve|derive)$/i, 'derivation'],
   [/^(formula|equation|identity|theorem|rule|definition)$/i, 'formula'],
-  [/^(figure|shape|diagram|drawing|geometry|triangle|right.?triangle|square|rectangle|circle|polygon|angle|segment)$/i, 'figure'],
+  [/^(diagram|construction|board.?drawing|scene|step.?by.?step|unit.?circle|trig(onometric)?.?circle|coordinate.?drawing)$/i, 'diagram'],
+  [/^(figure|shape|drawing|geometry|triangle|right.?triangle|square|rectangle|circle|polygon|angle|segment)$/i, 'figure'],
   [/^(plot|graph|chart|function|curve)$/i, 'plot'],
   [/^(table|values|grid)$/i, 'table'],
   [/^(quiz|test|exam|questions?|exercises?|practice|problems?)$/i, 'quiz'],
@@ -79,9 +83,16 @@ function blockType(input: Loose): MathBlockType | null {
   const raw = pickString(input, ['type', 'kind', 'block', 'blockType'], 40);
   if (raw) {
     const word = raw.trim();
-    for (const [pattern, type] of TYPE_WORDS) if (pattern.test(word)) return type;
+    for (const [pattern, type] of TYPE_WORDS) {
+      if (!pattern.test(word)) continue;
+      // "diagram" with a figure spec inside is the labelled geometry figure.
+      if (type === 'diagram' && isObject(input.figure) && !isObject(input.diagram) && !Array.isArray(input.elements)) return 'figure';
+      return type;
+    }
     // An unknown word ("block", "section"): fall through and guess from the fields instead of refusing.
   }
+  if (isObject(input.diagram) || Array.isArray(input.elements) || pickString(input, ['preset'], 40)) return 'diagram';
+  if (Array.isArray(input.steps) && input.steps.some((step) => isObject(step) && (Array.isArray(step.draw) || Array.isArray(step.elements)))) return 'diagram';
   if (isObject(input.figure) || pickString(input, ['figureKind'], 40)) return 'figure';
   if (isObject(input.plot) || Array.isArray(input.functions)) return 'plot';
   if (Array.isArray(input.steps)) return 'derivation';
@@ -293,7 +304,7 @@ function normalizeQuestions(values: unknown[] | undefined): QuizQuestion[] {
 function normalizeStrokes(values: unknown[] | undefined): SketchStroke[] {
   return (values ?? [])
     .slice(0, LIMITS.strokes)
-    .map((value) => {
+    .map((value): SketchStroke | null => {
       if (!isObject(value)) return null;
       const rawPoints = Array.isArray(value.points) ? value.points : [];
       const points: number[] = [];
@@ -306,15 +317,21 @@ function normalizeStrokes(values: unknown[] | undefined): SketchStroke[] {
         }
         if (points.length >= LIMITS.strokePoints) break;
       }
-      if (points.length < 4) return null;
       const tool = String(value.tool ?? 'pen');
+      const text = tool === 'text' && typeof value.text === 'string' ? value.text.trim().slice(0, 200) : '';
+      if (tool === 'text' ? !text || points.length < 2 : points.length < 4) return null;
       const color = typeof value.color === 'string' && /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/.test(value.color) ? value.color : 'currentColor';
       const width = Number(value.width);
+      const line = lineStyleOf(value.line);
+      const opacity = opacityOf(value.opacity);
       return {
-        tool: (['pen', 'line', 'rect', 'ellipse', 'triangle', 'arrow'] as const).includes(tool as SketchStroke['tool']) ? (tool as SketchStroke['tool']) : 'pen',
+        tool: (['pen', 'line', 'rect', 'ellipse', 'triangle', 'arrow', 'text'] as const).includes(tool as SketchStroke['tool']) ? (tool as SketchStroke['tool']) : 'pen',
         color,
         width: Number.isFinite(width) ? Math.min(24, Math.max(1, width)) : 2,
-        points,
+        points: tool === 'text' ? points.slice(0, 2) : points,
+        ...(line && line !== 'solid' ? { line } : {}),
+        ...(opacity !== undefined && opacity < 1 ? { opacity } : {}),
+        ...(text ? { text } : {}),
       } satisfies SketchStroke;
     })
     .filter((stroke): stroke is SketchStroke => !!stroke);
@@ -338,6 +355,8 @@ export const blockIds = (board: Pick<MathBoard, 'blocks'>): Set<string> => new S
 export interface NormalizeResult {
   block?: MathBlock;
   error?: string;
+  /** Things worth telling the model (values a preset worked out, parts that could not be read). */
+  notes?: string[];
 }
 
 /** One block from loose model input. */
@@ -352,13 +371,13 @@ export function normalizeBlock(input: unknown, ids: Set<string>): NormalizeResul
   if (!type) {
     return {
       error:
-        'I could not tell what kind of block this is. Use type: text (with body), formula (with formula), derivation (with steps), figure, plot, table, quiz (with questions) or sketch.',
+        'I could not tell what kind of block this is. Use type: text (with body), formula (with formula), derivation (with steps), figure, plot, table, quiz (with questions), sketch or diagram (with steps that each say and draw something).',
     };
   }
   const wanted = pickString(input, ['id'], 20);
   const id = wanted && !ids.has(wanted) ? (ids.add(wanted), wanted) : nextBlockId(ids);
   const note = pickString(input, ['note', 'footnote', 'caption'], 400);
-  const base = { id, ...(note && type !== 'figure' && type !== 'plot' ? { note } : {}) };
+  const base = { id, ...(note && type !== 'figure' && type !== 'plot' && type !== 'diagram' ? { note } : {}) };
 
   switch (type) {
     case 'text': {
@@ -436,6 +455,16 @@ export function normalizeBlock(input: unknown, ids: Set<string>): NormalizeResul
           ...(PAPERS.includes(paper) ? { paper } : {}),
           ...(pickString(input, ['title', 'name'], 200) ? { title: pickString(input, ['title', 'name'], 200) } : {}),
         },
+      };
+    }
+    case 'diagram': {
+      const { diagram, notes, error } = normalizeDiagram(input);
+      if (!diagram) return { error: error ?? 'I could not read that diagram.' };
+      const title = pickString(input, ['title', 'heading'], 200);
+      const caption = pickString(input, ['caption'], 400);
+      return {
+        block: { ...base, type: 'diagram', diagram, ...(title ? { title } : {}), ...(caption ? { caption } : {}), ...(note && note !== caption ? { note } : {}) },
+        notes,
       };
     }
   }
@@ -574,6 +603,48 @@ export function patchBlock(block: MathBlock, patch: unknown): { block: MathBlock
       }
       break;
     }
+    case 'diagram': {
+      // A whole new drawing.
+      if (isObject(patch.diagram) || Array.isArray(patch.elements) || pickString(patch, ['preset'], 40) || (Array.isArray(patch.steps) && patch.steps.some((step) => isObject(step) && Array.isArray(step.draw)))) {
+        const { diagram } = normalizeDiagram({ ...(isObject(patch.diagram) ? patch.diagram : patch) });
+        if (diagram) {
+          next.diagram = diagram;
+          changed.push('diagram');
+        }
+      }
+      // More steps drawn on top of what is there, while the explanation goes on.
+      const append = pickArray(patch, ['addSteps', 'moreSteps', 'nextSteps']);
+      if (append?.length) {
+        const { diagram } = normalizeDiagram({ steps: append });
+        if (diagram) {
+          const offset = diagramStepCount(next.diagram);
+          const steps = [...(next.diagram.steps ?? Array.from({ length: offset }, () => ({ text: '' })))];
+          while (steps.length < offset) steps.push({ text: '' });
+          steps.push(...(diagram.steps ?? Array.from({ length: diagramStepCount(diagram) }, () => ({ text: '' }))));
+          next.diagram = {
+            ...next.diagram,
+            elements: [...next.diagram.elements, ...diagram.elements.map((element) => ({ ...element, step: (element.step ?? 1) + offset }))].slice(0, 300),
+            steps: steps.slice(0, 80),
+          };
+          changed.push('steps');
+        }
+      }
+      const extra = pickArray(patch, ['addElements', 'draw']);
+      if (extra?.length) {
+        const last = Math.max(1, diagramStepCount(next.diagram));
+        const elements = extra.map((item) => normalizeElement(item, last)).filter((element): element is NonNullable<typeof element> => !!element);
+        if (elements.length) {
+          next.diagram = { ...next.diagram, elements: [...next.diagram.elements, ...elements].slice(0, 300) };
+          changed.push('elements');
+        }
+      }
+      const caption = pickString(patch, ['caption'], 400);
+      if (caption !== undefined) {
+        next.caption = caption;
+        changed.push('caption');
+      }
+      break;
+    }
   }
   return { block: next, changed };
 }
@@ -632,6 +703,11 @@ export function describeBlock(block: MathBlock, index: number): string {
       return `${head}${block.title ? ` "${block.title}"` : ''}: ${block.questions.length} questions${block.questions.filter((q) => q.userAnswer).length ? `, ${block.questions.filter((q) => q.userAnswer).length} answered` : ''}`;
     case 'sketch':
       return `${head}: whiteboard, ${block.strokes.length} strokes`;
+    case 'diagram': {
+      const count = diagramStepCount(block.diagram);
+      const steps = (block.diagram.steps ?? []).map((step) => step.text || step.math || '').filter(Boolean);
+      return `${head}${block.title ? ` "${block.title}"` : ''}: step-by-step drawing, ${count} step${count === 1 ? '' : 's'}, ${block.diagram.elements.length} elements${steps.length ? ` — ${steps.map((step, i) => `${i + 1}) ${mathToPlain(step).slice(0, 60)}`).join(' ').slice(0, 260)}` : ''}`;
+    }
   }
 }
 

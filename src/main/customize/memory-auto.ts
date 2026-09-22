@@ -4,9 +4,13 @@
  * orchestrator: a short, non-streaming call to whatever model is already loaded, run once a
  * conversation goes idle, folded into the existing `memory_topics` grouped summaries (see
  * memory-topics.ts) rather than the flat /remember list.
+ *
+ * Upgraded with a stronger extraction prompt, structured JSON schema (upserts/removals), and
+ * confidence-aware handling. The extractor distinguishes durable memories from temporary info and
+ * aggressively avoids storing one-off task details.
  */
 import { branchPath } from '@shared/message-tree';
-import type { MemoryCategory, MemoryUpdateResult } from '@shared/types/customize';
+import type { MemoryCategory, MemoryRemoval, MemoryUpdateResult, MemoryUpsert } from '@shared/types/customize';
 import { DEFAULT_INFERENCE_PARAMS, type ModelEntry } from '@shared/types/models';
 import { chat, type TurnFinished } from '../chat/orchestrator';
 import { get, run } from '../db/client';
@@ -14,9 +18,8 @@ import { errorMessage } from '../lib/util';
 import { logger } from '../lib/log';
 import { getPreset } from '../models/presets';
 import { providers } from '../providers/registry';
-import { getProject } from '../services/projects';
 import { settings } from '../services/settings';
-import { deleteMemoryTopic, listMemoryTopics, upsertMemoryTopic } from './memory-topics';
+import { deleteMemoryTopic, isHighlySensitiveTopic, listMemoryTopics, stripSensitiveContent, upsertMemoryTopic } from './memory-topics';
 
 const log = logger('memory-auto');
 
@@ -25,6 +28,7 @@ const IDLE_DELAY_MS = 90_000;
 /** Never let a busy conversation postpone summarization forever. */
 const MAX_WAIT_MS = 10 * 60_000;
 const TRANSCRIPT_BUDGET_CHARS = 6000;
+/** Max topics before we start refusing new ones (soft cap — old topics can still be updated). */
 const MAX_TOPICS = 200;
 
 const pending = new Map<string, { timer: NodeJS.Timeout; firstScheduledAt: number }>();
@@ -59,44 +63,59 @@ export async function pickBackgroundModel(): Promise<ModelEntry | undefined> {
   return models.find((m) => m.loaded) ?? models[0];
 }
 
-interface ExtractedTopic {
-  category: MemoryCategory;
-  title: string;
-  content: string;
-}
-
-function parseExtraction(raw: string): { upsert: ExtractedTopic[]; remove: string[] } {
+function parseExtraction(raw: string): { upserts: MemoryUpsert[]; removals: MemoryRemoval[] } {
   const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) return { upsert: [], remove: [] };
+  if (!match) return { upserts: [], removals: [] };
   let parsed: unknown;
   try {
     parsed = JSON.parse(match[0]);
   } catch {
-    return { upsert: [], remove: [] };
+    return { upserts: [], removals: [] };
   }
-  const obj = parsed as { upsert?: unknown; remove?: unknown };
-  const upsert: ExtractedTopic[] = Array.isArray(obj.upsert)
-    ? obj.upsert
-        .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-        .map((item) => ({
-          category: (['you', 'topic', 'area'] as const).includes(item.category as MemoryCategory) ? (item.category as MemoryCategory) : 'topic',
-          title: typeof item.title === 'string' ? item.title : '',
-          content: typeof item.content === 'string' ? item.content : '',
-        }))
-        .filter((item) => item.title.trim() && item.content.trim())
-        .slice(0, 6)
-    : [];
-  const remove: string[] = Array.isArray(obj.remove) ? obj.remove.filter((t): t is string => typeof t === 'string' && t.trim().length > 0).slice(0, 6) : [];
-  return { upsert, remove };
+  const obj = parsed as Record<string, unknown>;
+
+  // Parse upserts — handle both old format (upsert) and new format (upserts)
+  const rawUpserts = Array.isArray(obj.upserts) ? obj.upserts : Array.isArray(obj.upsert) ? obj.upsert : [];
+  const upserts: MemoryUpsert[] = rawUpserts
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item) => {
+      const category = (['you', 'topic', 'area'] as const).includes(item.category as MemoryCategory) ? (item.category as MemoryCategory) : 'topic';
+      const title = typeof item.title === 'string' ? item.title.trim() : '';
+      const content = typeof item.content === 'string' ? item.content.trim() : '';
+      // Confidence is model metadata — clamp to [0,1] but don't use it as permission gate
+      let confidence = 0.8;
+      if (typeof item.confidence === 'number') {
+        confidence = Math.max(0, Math.min(1, item.confidence));
+      }
+      return { category, title, content, projectId: item.category === 'area' ? (typeof item.projectId === 'string' ? item.projectId : null) : null, confidence };
+    })
+    .filter((item) => item.title && item.content);
+
+  // Parse removals — handle both old format (remove: ["Title"]) and new format (removals: [{category, title, reason}])
+  const rawRemovals = Array.isArray(obj.removals) ? obj.removals : Array.isArray(obj.remove) ? obj.remove : [];
+  const removals: MemoryRemoval[] = rawRemovals
+    .flatMap((r) => {
+      // Old format: array of string titles like ["Profile"]
+      if (typeof r === 'string') return [{ category: 'topic' as MemoryCategory, title: r.trim(), reason: 'obsolete' as const }];
+      // New format: object with category/title/reason
+      if (typeof r !== 'object' || !r) return [];
+      const category = (['you', 'topic', 'area'] as const).includes(r.category as MemoryCategory) ? (r.category as MemoryCategory) : 'topic';
+      const title = typeof r.title === 'string' ? r.title.trim() : '';
+      const reason: 'obsolete' | 'duplicate' | 'incorrect' =
+        typeof r.reason === 'string' && ['obsolete', 'duplicate', 'incorrect'].includes(r.reason)
+          ? (r.reason as 'obsolete' | 'duplicate' | 'incorrect')
+          : 'obsolete';
+      return title ? [{ category, title, reason }] : [];
+    });
+
+  // Cap at reasonable limits to avoid overwhelming the DB
+  return { upserts: upserts.slice(0, 8), removals: removals.slice(0, 4) };
 }
 
 const nothing = (reason: MemoryUpdateResult['reason']): MemoryUpdateResult => ({ saved: [], removed: [], reason });
 
 /**
- * Look at a conversation and fold anything durable into the memory topics, saving nothing when
- * there is nothing worth keeping. `force` is the /update-memory path: the user asked for it, so it
- * runs whether or not automatic memory is on and even if the conversation has not changed since the
- * last pass. Incognito is never remembered either way.
+ * Look at a conversation and fold anything durable into the memory topics. `force` is the /update-memory path.
  */
 async function runAutoMemory(conversationId: string, options: { force?: boolean } = {}): Promise<MemoryUpdateResult> {
   if (!options.force && !settings.get().generateMemoryFromChats) return nothing('turned-off');
@@ -120,6 +139,7 @@ async function runAutoMemory(conversationId: string, options: { force?: boolean 
   let projectName: string | undefined;
   if (conversation.projectId) {
     try {
+      const { getProject } = require('../services/projects');
       projectName = getProject(conversation.projectId).name;
     } catch {
       // deleted project; fall through without a name
@@ -128,9 +148,11 @@ async function runAutoMemory(conversationId: string, options: { force?: boolean 
 
   const existingTopics = listMemoryTopics();
   const atCapacity = existingTopics.length >= MAX_TOPICS;
+
+  // Show only the most relevant existing topics (not the entire DB) — top 20 by recency + confidence
   const existingSummary = existingTopics
-    .slice(0, 25)
-    .map((t) => `- [${t.category}] ${t.category === 'area' && t.projectName ? t.projectName : t.title}: ${t.content}`)
+    .slice(0, 20)
+    .map((t) => `- [${t.category}] ${t.title}: ${t.content}`)
     .join('\n');
 
   let transcript = '';
@@ -143,22 +165,35 @@ async function runAutoMemory(conversationId: string, options: { force?: boolean 
 
   const sensitiveLine = settings.get().memorySensitiveTopics
     ? ''
-    : '\nDo not record health, medical, religious, political, or other sensitive personal details, even if the user mentioned them.';
-  const areaHint = projectName ? ` This conversation belongs to the project "${projectName}" — if you record anything under "area", use exactly that title.` : '';
-  const capacityLine = atCapacity ? '\nMemory is full; only include "upsert" items that update a title already listed above, not new ones.' : '';
+    : '\nDo not record health, medical, religious, political, or other sensitive personal details. Never store passwords, API keys, tokens, or credentials.';
+  const areaHint = projectName ? ` This conversation belongs to the project "${projectName}" — if you create an "area" entry, use exactly that title for the project.` : '';
+  const capacityLine = atCapacity ? '\nMemory is near capacity. Only upsert entries that update existing topics, or add genuinely new durable information.' : '';
 
-  const system = `You maintain a private memory profile about the user, built quietly from their conversations in this app. Decide what is worth remembering beyond this one exchange: stated preferences, background, ongoing interests, projects. Skip one-off task details that will not matter later.
+  const system = `You are a memory manager maintaining the user's long-term profile in this app. You are NOT summarising the conversation — you are deciding what to keep in their permanent memory.
+
+RULES:
+1. Only store durable information that will remain useful in future conversations.
+2. Prefer: stated preferences, stable background info, recurring interests, active projects, meaningful changes.
+3. Do NOT store one-off tasks, temporary details, or things already covered by existing memory.
+4. When existing memory covers the same concept, UPDATE and MERGE it — do not create a duplicate topic.
+5. If new information conflicts with old, replace only the conflicting part; keep compatible info.
+6. Never store passwords, API keys, tokens, credentials, or private keys.
+
+Categories:
+- "you": who the user is, their preferences, communication style, response preferences (titles like "Profile", "Preferences").
+- "topic": recurring interests, hobbies, knowledge areas, technical skills (titles like "AI Interests", "Programming Background").
+- "area": specific projects or ongoing work. Use the project name as title when applicable.${areaHint}
 
 What you already remember:
 ${existingSummary || '(nothing yet)'}
 
-Reply with ONLY a JSON object shaped like {"upsert": [{"category": "you"|"topic"|"area", "title": "short label", "content": "one or two sentences"}], "remove": ["title", ...]}.
-- "you": who the user is, or how they want you to respond (title like "Profile" or "Preferences").
-- "topic": a recurring interest or subject (title like "Programming background" or "Interests").
-- "area": a specific project or piece of ongoing work.${areaHint}
-- Each "upsert" item's content should be the full updated text for that title, merged with what you already remember about it — not just the new detail on its own.
-- "remove" lists titles that are now outdated or wrong.${sensitiveLine}${capacityLine}
-Reply with {"upsert": [], "remove": []} if nothing durable came up in this exchange.`;
+Conversation:
+${transcript}
+
+Reply with ONLY a JSON object (no markdown, no explanation):
+{"upserts": [{"category": "you"|"topic"|"area", "title": "short label", "content": "one or two sentences — full updated text for that topic", "confidence": 0.5-1.0}], "removals": [{"category": "you"|"topic"|"area", "title": "exact title to remove", "reason": "obsolete"|"duplicate"|"incorrect"}]}
+
+Return {"upserts": [], "removals": []} if nothing durable came up.${sensitiveLine}${capacityLine}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('memory timeout')), 60_000);
@@ -170,9 +205,9 @@ Reply with {"upsert": [], "remove": []} if nothing durable came up in this excha
       entry,
       messages: [
         { role: 'system', content: system },
-        { role: 'user', content: `Conversation:\n${transcript}` },
+        { role: 'user', content: `Extract memory from this conversation. Reply with JSON only.` },
       ],
-      params: { ...DEFAULT_INFERENCE_PARAMS, temperature: 0.2, maxTokens: 500 },
+      params: { ...DEFAULT_INFERENCE_PARAMS, temperature: 0.2, maxTokens: 600 },
       thinking: 'off',
       load: preset.load,
       signal: controller.signal,
@@ -188,21 +223,43 @@ Reply with {"upsert": [], "remove": []} if nothing durable came up in this excha
     clearTimeout(timer);
   }
 
-  const { upsert, remove } = parseExtraction(raw);
+  const { upserts, removals } = parseExtraction(raw);
   const removed: string[] = [];
   const saved: string[] = [];
-  for (const title of remove) {
-    const found = existingTopics.find((t) => t.title.toLowerCase() === title.trim().toLowerCase());
+
+  // Process removals first
+  for (const rem of removals) {
+    const found = existingTopics.find((t) => t.title.toLowerCase() === rem.title.trim().toLowerCase());
     if (found) {
       deleteMemoryTopic(found.id);
       removed.push(found.title);
     }
   }
-  for (const item of upsert) {
+
+  // Process upserts — the enhanced upsertMemoryTopic handles dedup/merge internally.
+  // When sensitive topics are disallowed, also filter out extraction results that contain
+  // highly specific sensitive content (as a deterministic safety net beyond the LLM prompt).
+  const sensitiveAllowed = settings.get().memorySensitiveTopics;
+
+  for (const item of upserts) {
+    let contentToSave = item.content;
+    if (!sensitiveAllowed && isHighlySensitiveTopic(item.content)) {
+      log.info('auto-extraction: filtered out highly sensitive content');
+      contentToSave = stripSensitiveContent(item.content);
+      if (!contentToSave.trim()) continue; // skip entirely if stripped to empty
+    }
+
     const isNew = !existingTopics.some((t) => t.category === item.category && t.title.toLowerCase() === item.title.trim().toLowerCase());
-    if (atCapacity && isNew) continue;
+    if (atCapacity && isNew) continue; // skip new topics when at capacity
     try {
-      const topic = upsertMemoryTopic({ category: item.category, title: item.title, content: item.content, projectId: item.category === 'area' ? conversation.projectId : undefined });
+      const topic = upsertMemoryTopic({
+        category: item.category,
+        title: item.title,
+        content: contentToSave,
+        projectId: item.category === 'area' ? conversation.projectId : undefined,
+        confidence: item.confidence,
+        sensitiveAllowed, // pass through so upsertMemoryTopic can apply its own filters
+      });
       saved.push(topic.title);
     } catch (err) {
       log.warn('could not save memory topic', errorMessage(err));

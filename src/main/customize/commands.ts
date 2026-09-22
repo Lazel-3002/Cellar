@@ -17,6 +17,7 @@ export function builtInCommands(scope: ToolScope): CommandInfo[] {
     { name: 'tools', description: 'Show the tools the model can use here', source: 'built-in' },
     { name: 'remember', description: 'Save something to memory', argumentHint: '<what to remember>', source: 'built-in' },
     { name: 'update-memory', description: 'Look through this chat and remember anything worth keeping', source: 'built-in' },
+    { name: 'context', description: 'Show the context window breakdown for this conversation', source: 'built-in' },
   ];
   if (scope !== 'code') return common;
   return [

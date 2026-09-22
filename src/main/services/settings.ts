@@ -60,6 +60,7 @@ function defaults(): StoredSettings {
     // Off by default: this runs an extra summarization pass on the user's own GPU after each chat.
     generateMemoryFromChats: false,
     memorySensitiveTopics: false,
+    chatReferenceEnabled: true,
     runInBackground: true,
     // Ctrl+Alt+Space belongs to Claude Desktop's quick entry, which people often run alongside.
     quickEntryShortcut: 'Alt+Shift+Space',
@@ -171,7 +172,10 @@ class SettingsService {
     if (patch.disabledSkills !== undefined) set('disabledSkills', uniqueStrings(patch.disabledSkills));
     if (patch.disabledPlugins !== undefined) set('disabledPlugins', uniqueStrings(patch.disabledPlugins));
     if (patch.memoryEnabled !== undefined) set('memoryEnabled', !!patch.memoryEnabled);
+    // chatReferenceEnabled is the authoritative setting. searchPastChats remains for backward compatibility
+    // and is treated as an alias: if either is true, chat reference tools are available.
     if (patch.searchPastChats !== undefined) set('searchPastChats', !!patch.searchPastChats);
+    if (patch.chatReferenceEnabled !== undefined) set('chatReferenceEnabled', !!patch.chatReferenceEnabled);
     if (patch.generateMemoryFromChats !== undefined) set('generateMemoryFromChats', !!patch.generateMemoryFromChats);
     if (patch.memorySensitiveTopics !== undefined) set('memorySensitiveTopics', !!patch.memorySensitiveTopics);
     if (patch.runInBackground !== undefined) set('runInBackground', !!patch.runInBackground);

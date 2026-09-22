@@ -312,4 +312,27 @@ export const migrations: string[] = [
   );
   CREATE UNIQUE INDEX fonts_family ON fonts(family);
   `,
+  /* 11: Memory retrieval enhancements — history, vectors, confidence columns */ `
+  ALTER TABLE memory_topics ADD COLUMN confidence REAL NOT NULL DEFAULT 0.8;
+  ALTER TABLE memory_topics ADD COLUMN last_confirmed_at INTEGER;
+
+  CREATE TABLE memory_topic_history (
+    id TEXT PRIMARY KEY,
+    topic_id TEXT NOT NULL REFERENCES memory_topics(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK(operation IN ('create', 'update', 'delete')),
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX memory_topic_history_topic ON memory_topic_history(topic_id);
+
+  CREATE TABLE memory_vectors (
+    topic_id TEXT PRIMARY KEY REFERENCES memory_topics(id) ON DELETE CASCADE,
+    model TEXT NOT NULL,
+    dims INTEGER NOT NULL,
+    vector BLOB NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];

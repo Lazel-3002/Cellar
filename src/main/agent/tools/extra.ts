@@ -5,7 +5,9 @@ import type { ConnectorConfig, ToolPolicy } from '@shared/types/customize';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { formatProblems, projectCheck, quickCheck } from '../../code/diagnostics';
 import { connectors } from '../../connectors/manager';
-import { addMemory, deleteMemory, findMemory, memoryHandle } from '../../customize/memory';
+import { addMemory, deleteMemory, findMemory, listMemories, memoryHandle } from '../../customize/memory';
+import { deleteMemoryTopic, listMemoryTopics } from '../../customize/memory-topics';
+import { looksLikeSecret, stripSecrets } from '../../customize/memory-topics';
 import { findActiveSkill } from '../../customize/skills';
 import { all } from '../../db/client';
 import { searchMessages } from '../../db/chat-store';
@@ -54,22 +56,75 @@ export const rememberTool = defineTool({
   input: z.object({ content: z.string().min(1).max(1000).describe('The fact, written as a complete sentence about the user, e.g. "The user prefers metric units."') }),
   async run(args, ctx) {
     if (ctx.incognito) throw new ToolError('Nothing is remembered in incognito chats.');
-    const item = addMemory(args.content, 'model', ctx.conversationId);
+
+    // Deterministic secret/credential filter — never store secrets in memory
+    let content = args.content;
+    if (looksLikeSecret(content)) {
+      content = stripSecrets(content);
+    } else if (/password|secret_key|private[_-]?key|api[_-]?secret/i.test(content.toLowerCase())) {
+      content = stripSecrets(content);
+    }
+
+    // Check for exact duplicate in both flat memories and topics
+    const existingMemories = listMemories();
+    const hasDuplicate = existingMemories.some((m) => m.content.toLowerCase() === content.trim().toLowerCase());
+    if (hasDuplicate) {
+      return `This fact is already saved in memory. No change needed.`;
+    }
+
+    // Check for semantically similar topic titles (avoid "AI Interests" vs "AI/ML Interests")
+    const topics = listMemoryTopics();
+    const titleWords = content.split(/\s+/).filter(Boolean);
+    const hasSimilarTopic = topics.some((t) => {
+      const topicWords = t.title.toLowerCase().split(/\s+/);
+      const overlap = titleWords.filter((w) => topicWords.includes(w)).length;
+      return overlap >= 2 && (overlap / Math.max(titleWords.length, topicWords.length)) > 0.6;
+    });
+
+    if (hasSimilarTopic) {
+      // Instead of creating a duplicate flat memory, suggest using the edit interface
+      const similar = topics.find((t) => {
+        const topicWords = t.title.toLowerCase().split(/\s+/);
+        const overlap = titleWords.filter((w) => topicWords.includes(w)).length;
+        return overlap >= 2 && (overlap / Math.max(titleWords.length, topicWords.length)) > 0.6;
+      });
+      if (similar) {
+        return `A similar fact is already in memory under "${similar.title}". Use the edit box to update it instead of creating a duplicate.`;
+      }
+    }
+
+    const item = addMemory(content, 'model', ctx.conversationId);
     return `Saved to memory [${memoryHandle(item.id)}]: ${item.content}`;
   },
 });
 
 export const forgetTool = defineTool({
   name: 'forget',
-  description: 'Remove a memory, by its [id] from the memory list or by its text.',
+  description: 'Remove a memory, by its [id] from the memory list or by its text. Can also remove topic entries by title.',
   category: 'memory',
-  input: z.object({ memory: z.string().min(1).describe('The memory id shown in brackets, or its text.') }),
+  input: z.object({ memory: z.string().min(1).describe('The memory id shown in brackets, or the full/partial text to match.') }),
   async run(args, ctx) {
     if (ctx.incognito) throw new ToolError('Memory cannot be changed from incognito chats.');
-    const item = findMemory(args.memory.replace(/^\[|\]$/g, ''));
-    if (!item) throw new ToolError(`No memory matches "${args.memory}".`);
-    deleteMemory(item.id);
-    return `Forgot: ${item.content}`;
+
+    const needle = args.memory.replace(/^\[|\]$/g, '').trim().toLowerCase();
+    if (!needle) throw new ToolError('Provide a memory id or text to forget.');
+
+    // First try flat memories (exact handle or partial text match)
+    const item = findMemory(needle);
+    if (item) {
+      deleteMemory(item.id);
+      return `Forgot: ${item.content}`;
+    }
+
+    // Try matching against topic titles (case-insensitive, supports partial matches for safety)
+    const topics = listMemoryTopics();
+    const topicMatch = topics.find((t) => t.title.toLowerCase() === needle || t.title.toLowerCase().includes(needle));
+    if (topicMatch) {
+      deleteMemoryTopic(topicMatch.id);
+      return `Forgot topic: ${topicMatch.title}`;
+    }
+
+    throw new ToolError(`No memory or topic matches "${args.memory}".`);
   },
 });
 

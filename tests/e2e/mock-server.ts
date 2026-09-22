@@ -217,8 +217,9 @@ export async function startMockServer(): Promise<MockServer> {
           } else if (!selected && results.length === 2) {
             toolCall(0, 'f1', 'draw_figure', JSON.stringify({ kind: 'right-triangle', labels: ['A', 'B', 'C'], sides: ['a', '√3', 2], rightAngleAt: 'B', caption: 'Find a' }));
             toolCall(1, 'v1', 'solve_steps', JSON.stringify({ sides: { b: '√3', c: 2 }, title: 'Find a' }));
+            toolCall(2, 'd1', 'draw_diagram', JSON.stringify({ preset: 'trig-circle', angle: 135, show: ['tan'] }));
             send({}, 'tool_calls');
-          } else if (!selected && results.length === 4) {
+          } else if (!selected && results.length === 5) {
             toolCall(0, 'q1', 'make_quiz', JSON.stringify({ topic: 'pythagoras', count: 3, seed: 'e2e' }));
             send({}, 'tool_calls');
           } else {

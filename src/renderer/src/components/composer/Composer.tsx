@@ -3,12 +3,13 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowUp, Check, ChevronDown, FileText, Mic, Paperclip, Plus, SlidersHorizontal, Square, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ConversationKind, PermissionMode } from '@shared/types/agent';
-import type { AttachmentRef, SendMessageResult } from '@shared/types/chat';
+import type { AttachmentRef, ContextInfo, SendMessageResult } from '@shared/types/chat';
 import type { CodeStartOptions } from '@shared/types/code';
 import type { DesignSelection, DesignStartOptions } from '@shared/types/design';
 import type { MathSelection, MathStartOptions } from '@shared/types/math';
 import type { MemoryUpdateResult, ToolScope } from '@shared/types/customize';
 import { AttachmentImage } from '@/components/chat/Attachments';
+import { ContextInfoPanel } from '@/components/chat/ContextInfoPanel';
 import { CodeModeMenu, nextCodeMode, type CodeModeValue } from '@/components/code/CodeModeMenu';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { Segmented } from '@/components/ui/form';
@@ -191,6 +192,7 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
   const scope: ToolScope = isCode ? 'code' : isDesign ? 'design' : isMath ? 'math' : coworkMode || variant === 'task' ? 'task' : 'chat';
   const { data: commands = [] } = useCommands(scope);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [contextPanel, setContextPanel] = useState<ContextInfo | null>(null);
   const navigate = useNavigate();
   const slashQuery = /^\/[\w:-]*$/.test(text) ? text.slice(1).toLowerCase() : null;
   const slashMatches = slashQuery !== null ? commands.filter((c) => c.name.startsWith(slashQuery)).slice(0, 12) : [];
@@ -297,6 +299,17 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
         await updateMemoryFromChat(conversationId);
         return;
       }
+      // /context: show context window breakdown instead of sending.
+      if (content === text && known?.name === 'context') {
+        const info = await invoke('chat:contextInfo', conversationId);
+        if (!info) {
+          toast.error('No model loaded yet');
+          return;
+        }
+        setContextPanel(info);
+        clear();
+        return;
+      }
       if (content === text && known && known.source !== 'built-in') content = await invoke('commands:expand', known.name, commandArgs);
       await beforeSend?.();
       const result = await invoke('chat:send', {
@@ -389,6 +402,11 @@ export function Composer({ variant, conversationId, projectId, incognito, stream
               <Spinner className="size-3.5" /> Reading file…
             </div>
           )}
+        </div>
+      )}
+      {contextPanel && (
+        <div className="mb-2 px-3 pt-2">
+          <ContextInfoPanel info={contextPanel} onClose={() => setContextPanel(null)} />
         </div>
       )}
       {slashMatches.length > 0 && (

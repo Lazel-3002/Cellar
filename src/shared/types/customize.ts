@@ -154,8 +154,78 @@ export interface MemoryTopic {
   content: string;
   projectId?: string;
   projectName?: string;
+  /** Model-assigned confidence that this topic is worth keeping (0–1). */
+  confidence: number;
+  /** When the user last confirmed/acknowledged this topic. */
+  lastConfirmedAt?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+/** An upsert candidate from the memory extractor. */
+export interface MemoryUpsert {
+  category: MemoryCategory;
+  title: string;
+  content: string;
+  /** Project-scoped areas only. */
+  projectId?: string | null;
+  /** Model-assigned confidence that this is worth storing (0–1). */
+  confidence: number;
+}
+
+/** A removal candidate from the memory extractor. */
+export interface MemoryRemoval {
+  category: MemoryCategory;
+  title: string;
+  reason: 'obsolete' | 'duplicate' | 'incorrect';
+}
+
+/** Result of a hybrid memory-retrieval query. */
+export interface MemoryRetrievalResult {
+  /** Explicit/manual memories (high priority). */
+  explicitMemories: MemoryItem[];
+  /** "you" category topics — profile and preferences. */
+  profileTopics: MemoryTopic[];
+  /** Preference topics from "you" that are not profile. */
+  preferenceTopics: MemoryTopic[];
+  /** Relevant "topic" category entries. */
+  relevantTopics: MemoryTopic[];
+  /** Relevant "area" (project) entries. */
+  relevantAreas: MemoryTopic[];
+}
+
+/** History entry for memory topic audit/debug purposes. */
+export interface MemoryTopicHistoryEntry {
+  id: string;
+  topicId: string;
+  category: MemoryCategory;
+  title: string;
+  content: string;
+  operation: 'create' | 'update' | 'delete';
+  createdAt: number;
+}
+
+/** Import/export format for memory data. */
+export interface MemoryExportData {
+  version: number;
+  /** Flat memories (notes). */
+  memories: Array<{ content: string; source?: 'user' | 'model'; createdAt?: number }>;
+  /** "you" topics. */
+  profile: Array<{ title: string; content: string }>;
+  /** Preference topics from "you". */
+  preferences: Array<{ title: string; content: string }>;
+  /** "topic" categories — interests, skills, etc. */
+  topics: Array<{ title: string; content: string }>;
+  /** "area" categories — projects, ongoing work. */
+  areas: Array<{ title: string; content: string; projectId?: string }>;
+}
+
+/** Parsed import data with validation results. */
+export interface MemoryImportResult {
+  created: number;
+  updated: number;
+  skippedDuplicates: number;
+  rejected: string[];
 }
 
 /** What /update-memory (or an automatic pass) did with a conversation. */

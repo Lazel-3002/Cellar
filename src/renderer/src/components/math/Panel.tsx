@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Calculator as CalculatorIcon, ChartSpline, Delete, Grid3x3, ListChecks, Pencil, PenLine, Plus, Shapes, Sigma, SquareFunction, Table as TableIcon, Trash } from 'lucide-react';
+import { Calculator as CalculatorIcon, ChartSpline, CircleDot, Delete, Grid3x3, ListChecks, Pencil, PenLine, Plus, Shapes, Sigma, SquareFunction, Table as TableIcon, Trash } from 'lucide-react';
 import { calculate } from '@shared/math/calc';
 import { generateQuiz, QUIZ_TOPICS } from '@shared/math/quiz';
 import type { FigureKind, MathAngleMode, MathPaper, QuizDifficulty, QuizTopic } from '@shared/types/math';
@@ -153,6 +153,12 @@ function InsertTab() {
     { label: 'Figure', description: 'A labelled triangle, square or circle', icon: Shapes, onClick: () => addBlock({ type: 'figure', figure: { kind: 'right-triangle', labels: ['A', 'B', 'C'], sides: [3, 4], rightAngleAt: 1 } }, { after }) },
     { label: 'Graph', description: 'A function on axes', icon: ChartSpline, onClick: () => addBlock({ type: 'plot', title: 'Graph', plot: { functions: [{ expr: 'x^2 - 2' }], xMin: -5, xMax: 5 } }, { after }) },
     { label: 'Table of values', description: 'The special angles', icon: TableIcon, onClick: () => addBlock(TRIG_TABLE, { after }) },
+    {
+      label: 'Step-by-step drawing',
+      description: 'tan α on the unit circle, drawn one step at a time',
+      icon: CircleDot,
+      onClick: () => addBlock({ type: 'diagram', title: 'tan 135° on the unit circle', preset: 'trig-circle', angle: 135, show: ['tan'] }, { after }),
+    },
     { label: 'Whiteboard', description: 'Space to work by hand', icon: Pencil, onClick: () => addBlock({ type: 'sketch', height: 360, strokes: [] }, { after }) },
   ];
 

@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { calculate } from '@shared/math/calc';
+import { buildDiagram, diagramStepCount } from '@shared/math/diagram';
 import { buildFigure } from '@shared/math/figure';
 import { mathToPlain } from '@shared/math/mathtext';
 import { blockIds, boardOutline, describeBlock, findBlock, LIMITS, normalizeBlock, nextBlockId, patchBlock } from '@shared/math/normalize';
 import { buildPlot } from '@shared/math/plot';
 import { generateQuiz, QUIZ_TOPICS } from '@shared/math/quiz';
 import { solve, solutionText } from '@shared/math/solve';
-import type { DerivationBlock, FigureBlock, MathBlock, MathBoard, PlotBlock, QuizBlock } from '@shared/types/math';
+import type { DerivationBlock, DiagramBlock, FigureBlock, MathBlock, MathBoard, PlotBlock, QuizBlock } from '@shared/types/math';
 import { defineTool, ToolError, type AgentTool, type ToolContext } from '../agent/tools/types';
 import { getBoard, updateBoard } from './store';
 
@@ -30,15 +31,38 @@ const figureSchema = z.looseObject({
   size: z.number().optional().describe('Longest side in pixels (140–560, default 260)'),
 });
 
+// The diagram element is one described object rather than a field-by-field schema: it is used in
+// several tools, and every field spelled out costs context a small local model does not have.
+const elementSchema = z
+  .looseObject({
+    kind: z.string().describe('axes (axis "x": number line) | unit-circle | point | segment | line | ray | arrow | circle | arc | angle | polygon | function | text'),
+  })
+  .describe(
+    [
+      'Places: at / from / to / through as [x, y] (maths coordinates, y up; expressions like "cos 135" work) or a point name.',
+      'point: at, name (reusable as a place), open (hollow). line: from + through, or x: 1 (x = 1), or y: 1. circle: at, radius. angle / arc: at, start and end in degrees counter-clockwise (label "α"), right (square mark). polygon: points. function: expr. text: at, text.',
+      'Style: color (red, orange, yellow, green, teal, blue, purple, pink, gray, black, #hex), weight (thin|normal|bold|thick), line (solid|dashed|dotted|dashdot|zigzag = scribbled highlight|wavy), opacity 0.1–1, fill, arrow (end|start|both), label, position (above|below|left|right|above-left|…), size (small|large).',
+    ].join(' '),
+  );
+
+const diagramStepSchema = z.union([
+  z.string(),
+  z.looseObject({
+    text: z.string().optional().describe('One sentence, in the user\'s language'),
+    math: z.string().optional(),
+    draw: z.array(elementSchema).max(30).optional(),
+  }),
+]);
+
 const blockSchema = z
   .looseObject({
-    type: z.string().describe('text, formula, derivation, figure, plot, table, quiz or sketch'),
+    type: z.string().describe('text, formula, derivation, figure, plot, table, quiz, sketch or diagram'),
     title: z.string().optional(),
     body: z.string().optional().describe('text: the explanation. Blank lines start paragraphs, "- " lines make a list'),
     tone: z.string().optional().describe('text: note, tip or warning for a coloured block'),
     formula: z.string().optional().describe('formula: one formula per line, e.g. "a^2 + b^2 = c^2"'),
     where: z.array(z.string()).optional().describe('formula: what the letters mean, e.g. "c: the hypotenuse"'),
-    steps: z.array(z.union([z.string(), z.looseObject({ math: z.string(), reason: z.string().optional() })])).optional().describe('derivation: one line per step'),
+    steps: z.array(z.union([z.string(), z.looseObject({})])).optional().describe('derivation: one line per step ({ math, reason }). diagram: { text, math, draw } per step — prefer draw_diagram'),
     result: z.string().optional().describe('derivation: the answer, highlighted at the end'),
     figure: figureSchema.optional(),
     plot: z.looseObject({ functions: z.array(z.union([z.string(), z.looseObject({ expr: z.string(), label: z.string().optional() })])).optional(), xMin: z.number().optional(), xMax: z.number().optional() }).optional(),
@@ -160,16 +184,17 @@ export const addBlocksTool = defineTool({
           errors.push(`The board is full (${LIMITS.blocks} blocks).`);
           break;
         }
-        const { block, error } = normalizeBlock(input, ids);
+        const { block, error, notes } = normalizeBlock(input, ids);
         if (block) created.push(block);
         else errors.push(`Block ${index + 1}: ${error}`);
+        if (block?.type === 'diagram') errors.push(...[...(notes ?? []), ...buildDiagram(block.diagram).notes].map((note) => `Note on ${block.id}: ${note}`));
       }
       const at = insertAt(draft, args.after);
       draft.blocks.splice(at, 0, ...created);
       return created;
     });
     if (!result.length) throw new ToolError(errors.join(' ') || 'No block could be read.');
-    return [`Added ${result.length} block${result.length === 1 ? '' : 's'}:`, added(result, board), ...errors.map((error) => `Error: ${error}`), summary(board)].join('\n');
+    return [`Added ${result.length} block${result.length === 1 ? '' : 's'}:`, added(result, board), ...errors.map((error) => (error.startsWith('Note on') ? error : `Error: ${error}`)), summary(board)].join('\n');
   },
 });
 
@@ -183,8 +208,11 @@ export const updateBlockTool = defineTool({
       title: z.string().optional(),
       body: z.string().optional(),
       formula: z.string().optional(),
-      steps: z.array(z.union([z.string(), z.looseObject({ math: z.string(), reason: z.string().optional() })])).optional(),
-      addSteps: z.array(z.union([z.string(), z.looseObject({ math: z.string(), reason: z.string().optional() })])).optional().describe('Append these steps to a derivation'),
+      steps: z.array(z.union([z.string(), z.looseObject({ math: z.string().optional(), reason: z.string().optional() })])).optional(),
+      addSteps: z
+        .array(z.union([z.string(), z.looseObject({})]))
+        .optional()
+        .describe('Append steps: to a derivation ({ math, reason }), or to a diagram ({ text, math, draw: [elements as in draw_diagram] }) to keep drawing while you explain'),
       result: z.string().optional(),
       figure: figureSchema.optional(),
       note: z.string().optional(),
@@ -201,8 +229,10 @@ export const updateBlockTool = defineTool({
       changed = fields;
       describe = describeBlock(next, index);
     });
-    if (!changed.length) return `Nothing changed on ${args.block}. Fields I can change: title, body, formula, steps, addSteps, result, figure, note.\n${describe}`;
-    return `Updated ${changed.join(', ')} on ${args.block}.\n${describe}\n${summary(board)}`;
+    if (!changed.length) return `Nothing changed on ${args.block}. Fields I can change: title, body, formula, steps, addSteps, addElements, result, figure, caption, note.\n${describe}`;
+    const updated = board.blocks.find((block) => block.id === args.block);
+    const drawing = updated?.type === 'diagram' ? buildDiagram(updated.diagram).notes : [];
+    return [`Updated ${changed.join(', ')} on ${args.block}.`, describe, ...drawing.map((note) => `Note: ${note}`), summary(board)].join('\n');
   },
 });
 
@@ -342,6 +372,81 @@ export const drawFigureTool = defineTool({
   },
 });
 
+export const drawDiagramTool = defineTool({
+  name: 'draw_diagram',
+  description: [
+    'Draw on the board step by step, the way a teacher draws while explaining: each step says one sentence and draws a few things, and the board draws them in one step at a time.',
+    'Use it for anything visual in a maths lesson: the unit circle, where sin/cos/tan/cot live, a construction, a number line, lines and points on axes, shading a region, marking an angle α.',
+    'Lines can be coloured, bold or thin, dashed, dotted, zigzag (a scribbled highlight) or see-through (opacity). Places are maths coordinates and may be expressions ("cos 135", "tan(40)") — Cellar works them out.',
+    'For sin, cos, tan or cot of an angle on the unit circle, pass preset "trig-circle" with the angle and show: Cellar draws the whole construction (tangent axis x = 1, cotangent axis y = 1, OP extended through O when needed) with the exact values. Several angles (e.g. one per quadrant) make one diagram each.',
+  ].join(' '),
+  category: 'math',
+  input: z.object({
+    title: z.string().max(200).optional(),
+    steps: z
+      .array(diagramStepSchema)
+      .max(40)
+      .optional()
+      .describe('In order: { text: "Draw the tangent axis x = 1", math: "T = (1, tan α)", draw: [elements] }. With a preset, plain strings replace the default wording (write them in the user\'s language).'),
+    elements: z.array(elementSchema).max(300).optional().describe('Alternatively a flat list, each with step: n'),
+    preset: z.enum(['trig-circle']).optional().describe('trig-circle: the unit-circle construction of sin, cos, tan and cot for an angle'),
+    angle: z
+      .union([z.number(), z.string(), z.array(z.union([z.number(), z.string()])).max(4)])
+      .optional()
+      .describe('trig-circle: the angle in degrees (135), or with pi for radians ("3pi/4"); a list draws one diagram per angle'),
+    show: z.array(z.enum(['sin', 'cos', 'tan', 'cot'])).optional().describe('trig-circle: which ratios to construct, in order (default sin and cos)'),
+    xMin: z.number().optional(),
+    xMax: z.number().optional(),
+    yMin: z.number().optional(),
+    yMax: z.number().optional(),
+    grid: z.boolean().optional().describe('Squared paper behind the drawing'),
+    width: z.number().optional().describe('Width in pixels (220–760, default 440)'),
+    caption: z.string().max(400).optional(),
+    after: z.string().optional().describe('Insert after this block id'),
+  }),
+  async run(args, ctx) {
+    const board = getBoard(boardId(ctx));
+    const angles = Array.isArray(args.angle) ? args.angle : [args.angle];
+    const inputs = (args.preset ? angles : [args.angle]).map((angle) => ({
+      ...args,
+      type: 'diagram',
+      angle,
+      ...(args.preset && !args.title && angle !== undefined ? { title: `${(args.show ?? ['sin', 'cos']).join(', ')} of ${String(angle)}${/pi|π/i.test(String(angle)) ? '' : '°'} on the unit circle` } : {}),
+    }));
+    const blocks: DiagramBlock[] = [];
+    const lines: string[] = [];
+    for (const input of inputs) {
+      const { block, error, notes } = normalizeBlock(input, blockIds(board));
+      if (!block || block.type !== 'diagram') throw new ToolError(error ?? 'I could not read that diagram.');
+      if (board.angleMode === 'rad' && !args.preset) block.diagram.angle = 'rad';
+      const built = buildDiagram(block.diagram);
+      blocks.push(block);
+      lines.push(
+        `${block.title ?? 'Diagram'}: ${built.stepCount} step${built.stepCount === 1 ? '' : 's'}.`,
+        ...built.steps.map((step, index) => `  ${index + 1}. ${step.text}${step.math ? ` — ${mathToPlain(step.math)}` : ''}`),
+        ...(notes ?? []).map((note) => `  ${note}`),
+        ...(Object.keys(built.points).length ? [`  Points: ${Object.entries(built.points).map(([name, p]) => `${name} = (${p.x}, ${p.y})`).join(', ')}`] : []),
+        ...built.notes.map((note) => `  Could not draw: ${note}`),
+      );
+    }
+    const { board: next } = updateBoard(board.id, (draft) => {
+      let at = insertAt(draft, args.after);
+      for (const block of blocks) {
+        block.id = nextBlockId(blockIds(draft));
+        draft.blocks.splice(at, 0, block);
+        at += 1;
+      }
+    });
+    const steps = blocks.reduce((sum, block) => sum + diagramStepCount(block.diagram), 0);
+    return [
+      `Drew ${blocks.map((block) => block.id).join(', ')} (${steps} step${steps === 1 ? '' : 's'}); the board draws them in one step at a time.`,
+      ...lines,
+      'To keep drawing on it while you explain, call update_block with the block id and addSteps.',
+      summary(next),
+    ].join('\n');
+  },
+});
+
 export const plotGraphTool = defineTool({
   name: 'plot_graph',
   description: 'Draw a graph of one or more functions of x on labelled axes, e.g. ["x^2 - 2", "sin(x)"].',
@@ -423,6 +528,7 @@ export const MATH_TOOLS: AgentTool[] = [
   deleteBlocksTool,
   solveStepsTool,
   drawFigureTool,
+  drawDiagramTool,
   plotGraphTool,
   makeQuizTool,
 ] as AgentTool[];

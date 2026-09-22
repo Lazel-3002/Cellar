@@ -105,7 +105,7 @@ export function listBoards(): MathBoardSummary[] {
       preview: previewOf(board),
       counts: {
         derivations: board.blocks.filter((block) => block.type === 'derivation').length,
-        figures: board.blocks.filter((block) => block.type === 'figure' || block.type === 'plot').length,
+        figures: board.blocks.filter((block) => block.type === 'figure' || block.type === 'plot' || block.type === 'diagram').length,
         quizzes: board.blocks.filter((block) => block.type === 'quiz').length,
         sketches: board.blocks.filter((block) => block.type === 'sketch').length,
       },

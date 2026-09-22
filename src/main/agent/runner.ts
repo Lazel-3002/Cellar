@@ -389,12 +389,12 @@ export class TaskRunner {
     let projectName: string | undefined;
     let projectInstructions: string | undefined;
     let knowledge: string | undefined;
+    const lastUser = [...branch].reverse().find((m) => m.role === 'user');
     if (conversation.projectId) {
       try {
         const project = getProject(conversation.projectId);
         projectName = project.name;
         projectInstructions = project.instructions;
-        const lastUser = [...branch].reverse().find((m) => m.role === 'user');
         knowledge = await projectKnowledge(project.id, lastUser?.content ?? '', Math.min(6000, Math.floor(contextLength * 0.2)));
       } catch {
         // project deleted
@@ -406,7 +406,7 @@ export class TaskRunner {
     const code = task.code;
     const powershell = agentPowerShell(app.terminalShell);
     const [memory, userMemory] = code ? await Promise.all([loadProjectMemory(workspace.root), loadUserMemory()]) : [undefined, undefined];
-    const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: true });
+    const customize = await assistantContext({ settings: app, incognito: store.incognito, tools: true, query: lastUser?.content ?? '', projectId: conversation.projectId });
     const ctx: ToolContext = {
       workspace,
       task,

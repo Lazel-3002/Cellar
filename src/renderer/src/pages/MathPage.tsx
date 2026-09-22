@@ -59,6 +59,11 @@ const IDEAS: Array<{ label: string; prompt: string; topic: string }> = [
     prompt: 'Explain sin, cos, tan and cot in a right triangle. Draw a 3-4-5 triangle, work out all four ratios for one of its acute angles step by step, add the table of values at 30°, 45° and 60°, and finish with 5 practice questions.',
     topic: 'Trigonometry',
   },
+  {
+    label: 'tan and cot on the unit circle',
+    prompt: 'Show me step by step on the unit circle how tan α is read on the line x = 1 and cot α on the line y = 1, for one angle in each quadrant (30°, 135°, 210°, 300°), and which sign they have in each quadrant. Then give me 4 practice questions.',
+    topic: 'Trigonometric circle',
+  },
   { label: 'Practice test on fractions', prompt: 'Make me a 10-question practice test on fractions, medium level, and a short reminder of how to add fractions with different denominators first.', topic: 'Fractions' },
   { label: 'Solve quadratic equations step by step', prompt: 'Show me how to solve quadratic equations with the discriminant. Work through x² - 5x + 6 = 0 and x² - 2 = 0 step by step, then graph y = x² - 5x + 6 and give me 5 to try.', topic: 'Quadratic equations' },
   { label: 'Areas and perimeters', prompt: 'Give me a study sheet on the area and perimeter of squares, rectangles, triangles and circles: the formulas with a figure for each, one worked example each, and a 6-question test.', topic: 'Area and perimeter' },

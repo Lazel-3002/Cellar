@@ -153,6 +153,13 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>
       return { icon: SquareFunction, done: 'Worked through', active: 'Working through', failed: "Couldn't solve", target: short(text(args.input), 56) || (args.sides ? 'the triangle' : args.triangle ? 'the ratios' : undefined) };
     case 'draw_figure':
       return { icon: Shapes, done: 'Drew', active: 'Drawing', failed: "Couldn't draw", target: `${text(args.kind) || 'a figure'}${Array.isArray(args.sides) && args.sides.length ? ` (${args.sides.join(', ')})` : ''}` };
+    case 'draw_diagram': {
+      const steps = Array.isArray(args.steps) ? args.steps.length : 0;
+      const preset = text(args.preset);
+      const angle = typeof args.angle === 'number' || typeof args.angle === 'string' ? String(args.angle) : '';
+      const target = preset ? `${preset}${angle ? ` at ${angle}°` : ''}` : steps ? `${steps} step${steps === 1 ? '' : 's'}` : short(text(args.title), 48) || 'a diagram';
+      return { icon: Shapes, done: 'Drew step by step:', active: 'Drawing step by step:', failed: "Couldn't draw", target };
+    }
     case 'plot_graph': {
       const functions = Array.isArray(args.functions) ? args.functions.map((fn) => (typeof fn === 'string' ? fn : text((fn as Record<string, unknown>)?.expr))) : [];
       return { icon: ChartSpline, done: 'Graphed', active: 'Graphing', failed: "Couldn't graph", target: functions.filter(Boolean).join(', ') || undefined };

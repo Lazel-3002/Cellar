@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { MathBlock, MathBoard, SketchTool } from '@shared/types/math';
+import { diagramStepCount } from '@shared/math/diagram';
+import type { LineStyle, MathBlock, MathBoard, SketchTool } from '@shared/types/math';
 
 const HISTORY_LIMIT = 100;
 
@@ -17,6 +18,11 @@ interface EditorState {
   selectedId: string | null;
   /** The block being edited in place. */
   editingId: string | null;
+  /**
+   * Blocks the model just wrote, with how many of their steps were already on the board (0 for a new
+   * block). Their new steps are drawn or written in one at a time instead of appearing all at once.
+   */
+  fresh: Record<string, number>;
 
   load: (conversationId: string, board: MathBoard) => void;
   /** A newer version from the model (or another window); the current state stays undoable. */
@@ -30,6 +36,8 @@ interface EditorState {
   redo: () => void;
   select: (blockId: string | null) => void;
   setEditing: (blockId: string | null) => void;
+  /** Takes a block's fresh mark (once), so the animation plays one time. */
+  takeFresh: (blockId: string) => number | undefined;
 }
 
 export const useMathEditor = create<EditorState>((set, get) => ({
@@ -42,6 +50,7 @@ export const useMathEditor = create<EditorState>((set, get) => ({
   future: [],
   selectedId: null,
   editingId: null,
+  fresh: {},
 
   load: (conversationId, board) =>
     set((s) => ({
@@ -54,6 +63,7 @@ export const useMathEditor = create<EditorState>((set, get) => ({
       future: s.conversationId === conversationId ? s.future : [],
       selectedId: s.conversationId === conversationId ? keepSelection(s.selectedId, board) : null,
       editingId: null,
+      fresh: {},
     })),
 
   applyRemote: (board) =>
@@ -65,6 +75,7 @@ export const useMathEditor = create<EditorState>((set, get) => ({
       future: [],
       selectedId: keepSelection(s.selectedId, board),
       editingId: keepSelection(s.editingId, board),
+      fresh: { ...s.fresh, ...freshSteps(s.board, board) },
     })),
 
   markSaved: (version, revision) =>
@@ -103,7 +114,38 @@ export const useMathEditor = create<EditorState>((set, get) => ({
 
   select: (selectedId) => set((s) => ({ selectedId, editingId: selectedId === s.editingId ? s.editingId : null })),
   setEditing: (editingId) => set((s) => ({ editingId, selectedId: editingId ?? s.selectedId })),
+  takeFresh: (blockId) => {
+    const value = get().fresh[blockId];
+    if (value !== undefined) {
+      set((s) => {
+        const fresh = { ...s.fresh };
+        delete fresh[blockId];
+        return { fresh };
+      });
+    }
+    return value;
+  },
 }));
+
+/** Step count of the blocks that play step by step. */
+function stepsOf(block: MathBlock): number | null {
+  if (block.type === 'diagram') return diagramStepCount(block.diagram);
+  if (block.type === 'derivation') return block.steps.length + (block.result ? 1 : 0);
+  return null;
+}
+
+/** Diagrams and derivations that are new or grew in a newer board, with the steps they had before. */
+function freshSteps(before: MathBoard | null, after: MathBoard): Record<string, number> {
+  const fresh: Record<string, number> = {};
+  for (const block of after.blocks) {
+    const now = stepsOf(block);
+    if (now === null) continue;
+    const old = before?.blocks.find((candidate) => candidate.id === block.id);
+    const had = old && old.type === block.type ? (stepsOf(old) ?? 0) : 0;
+    if (!old || now > had) fresh[block.id] = old ? had : 0;
+  }
+  return fresh;
+}
 
 function keepSelection(id: string | null, board: MathBoard): string | null {
   return id && board.blocks.some((block) => block.id === id) ? id : null;
@@ -123,23 +165,29 @@ interface MathLayoutState {
   panelTab: PanelTab;
   sidebar: boolean;
   /** Whiteboard tools. */
-  tool: SketchTool | 'eraser';
+  tool: SketchTool | 'eraser' | 'highlighter';
   color: string;
   penWidth: number;
+  lineStyle: LineStyle;
+  /** Pen transparency (alpha), 0.1–1. */
+  penOpacity: number;
   calcHistory: Array<{ input: string; answer: string }>;
   setChatOpen: (open: boolean) => void;
   setPanelOpen: (open: boolean) => void;
   setChatWidth: (width: number) => void;
   setPanelTab: (tab: PanelTab) => void;
   setSidebar: (open: boolean) => void;
-  setTool: (tool: SketchTool | 'eraser') => void;
+  setTool: (tool: SketchTool | 'eraser' | 'highlighter') => void;
   setColor: (color: string) => void;
   setPenWidth: (width: number) => void;
+  setLineStyle: (style: LineStyle) => void;
+  setPenOpacity: (opacity: number) => void;
   pushCalc: (entry: { input: string; answer: string }) => void;
   clearCalc: () => void;
 }
 
-export const PEN_COLORS = ['#141413', '#d97757', '#3f7fd0', '#3f9e63', '#b45ad0'];
+/** The first is the theme's ink: dark on light paper, light on the dark theme (exports print it dark). */
+export const PEN_COLORS = ['currentColor', '#d64545', '#d97757', '#d9a13c', '#3f9e63', '#2a9d99', '#3f7fd0', '#9b59d0', '#8a8984'];
 
 export const useMathLayout = create<MathLayoutState>()(
   persist(
@@ -152,6 +200,8 @@ export const useMathLayout = create<MathLayoutState>()(
       tool: 'pen',
       color: PEN_COLORS[0],
       penWidth: 2.5,
+      lineStyle: 'solid',
+      penOpacity: 1,
       calcHistory: [],
       setChatOpen: (chatOpen) => set({ chatOpen }),
       setPanelOpen: (panelOpen) => set({ panelOpen }),
@@ -161,13 +211,21 @@ export const useMathLayout = create<MathLayoutState>()(
       setTool: (tool) => set({ tool }),
       setColor: (color) => set({ color }),
       setPenWidth: (penWidth) => set({ penWidth: Math.min(16, Math.max(1, penWidth)) }),
+      setLineStyle: (lineStyle) => set({ lineStyle }),
+      setPenOpacity: (penOpacity) => set({ penOpacity: Math.min(1, Math.max(0.1, Math.round(penOpacity * 100) / 100)) }),
       pushCalc: (entry) => set((s) => ({ calcHistory: [entry, ...s.calcHistory.filter((item) => item.input !== entry.input)].slice(0, 40) })),
       clearCalc: () => set({ calcHistory: [] }),
     }),
     {
       name: 'cellar-math-layout',
+      version: 1,
+      // Version 0 stored a fixed near-black ink, which disappears on the dark theme.
+      migrate: (state, version) => {
+        const saved = (state ?? {}) as Partial<MathLayoutState>;
+        return (version < 1 && saved.color === '#141413' ? { ...saved, color: 'currentColor' } : saved) as MathLayoutState;
+      },
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ chatOpen: s.chatOpen, panelOpen: s.panelOpen, chatWidth: s.chatWidth, panelTab: s.panelTab, tool: s.tool, color: s.color, penWidth: s.penWidth, calcHistory: s.calcHistory }),
+      partialize: (s) => ({ chatOpen: s.chatOpen, panelOpen: s.panelOpen, chatWidth: s.chatWidth, panelTab: s.panelTab, tool: s.tool, color: s.color, penWidth: s.penWidth, lineStyle: s.lineStyle, penOpacity: s.penOpacity, calcHistory: s.calcHistory }),
     },
   ),
 );

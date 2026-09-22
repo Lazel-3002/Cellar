@@ -606,6 +606,44 @@ describe('math sessions', () => {
     expect(chat.getConversation(copy.conversationId).conversation.title).toContain('(copy)');
   });
 
+  it('draws step by step on the board and keeps drawing while it explains', async () => {
+    let told: string[] = [];
+    fake.script = (req) => {
+      const results = toolResults(req);
+      if (results.length === 2) told = results;
+      if (results.length === 0) {
+        return [
+          call('draw_diagram', { preset: 'trig-circle', angle: [135, 300], show: ['tan'] }),
+          call('draw_diagram', {
+            title: 'Slope',
+            steps: [
+              { text: 'Axes', draw: [{ kind: 'axes' }] },
+              { text: 'Two points', draw: [{ kind: 'point', name: 'A', at: [1, 2] }, { kind: 'point', name: 'B', at: [4, 'sqrt(16)'] }] },
+            ],
+          }),
+        ];
+      }
+      if (results.length === 2) return [call('update_block', { block: 'b3', addSteps: [{ text: 'Join them', draw: [{ kind: 'line', from: 'A', through: 'B', line: 'dashed', color: 'red' }] }] })];
+      return [{ type: 'text', delta: 'Done.' }];
+    };
+    const sent = await chat.send({ content: 'Show me tan on the unit circle', attachmentIds: [], model: entry.ref, thinking: 'off', math: { paper: 'grid' } });
+    const done = await finished(sent.conversationId, sent.assistantMessageId);
+    expect(done.status).toBe('complete');
+    const board = boardForConversation(sent.conversationId)!;
+    expect(board.blocks.map((block) => block.type)).toEqual(['diagram', 'diagram', 'diagram']);
+    const [q2, q4, slope] = board.blocks;
+    if (q2.type !== 'diagram' || q4.type !== 'diagram' || slope.type !== 'diagram') throw new Error('expected diagrams');
+    expect(q2.title).toBe('tan of 135° on the unit circle');
+    expect(q4.title).toBe('tan of 300° on the unit circle');
+    expect(slope.diagram.steps?.map((step) => step.text)).toEqual(['Axes', 'Two points', 'Join them']);
+    expect(slope.diagram.elements.at(-1)).toMatchObject({ kind: 'line', step: 3, line: 'dashed' });
+
+    // The model was told the exact values and where the points are, worked out by Cellar.
+    expect(told[0]).toContain('tan 135° = −1 (negative)');
+    expect(told[0]).toContain('T = (1, -1)');
+    expect(told[1]).toContain('B = (4, 4)');
+  });
+
   it('offers the calculator in ordinary chats too', () => {
     expect(chatBaseTools({ chatWebSearch: false, moduleCalls: false, chatCommands: false }).map((tool) => tool.name)).toEqual(['calculate']);
     expect(chatBaseTools({ chatWebSearch: true, moduleCalls: false, chatCommands: false }).map((tool) => tool.name)).toContain('calculate');

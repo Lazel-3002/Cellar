@@ -1,6 +1,9 @@
 /**
- * The free-text box under Customize -> Memory ("Tell Claude what to change or remove"). Sends the
+ * The free-text box under Customize -> Memory ("Tell Cellar what to change or remove"). Sends the
  * instruction plus the current memory to whatever model is loaded and applies the edits it proposes.
+ *
+ * Upgraded with a stronger prompt that understands topic relationships, merge behavior, and
+ * avoids unrelated modifications.
  */
 import type { MemoryCategory } from '@shared/types/customize';
 import { DEFAULT_INFERENCE_PARAMS } from '@shared/types/models';
@@ -11,6 +14,7 @@ import { providers } from '../providers/registry';
 import { deleteMemory, listMemories } from './memory';
 import { pickBackgroundModel } from './memory-auto';
 import { deleteMemoryTopic, listMemoryTopics, upsertMemoryTopic } from './memory-topics';
+import { getMemorySummary } from './memory-retrieval';
 
 const log = logger('memory-edit');
 
@@ -30,10 +34,10 @@ function parse(raw: string): { upsertTopics: { category: MemoryCategory; title: 
         .filter((i): i is Record<string, unknown> => !!i && typeof i === 'object')
         .map((i) => ({
           category: (['you', 'topic', 'area'] as const).includes(i.category as MemoryCategory) ? (i.category as MemoryCategory) : 'topic',
-          title: typeof i.title === 'string' ? i.title : '',
-          content: typeof i.content === 'string' ? i.content : '',
+          title: typeof i.title === 'string' ? i.title.trim() : '',
+          content: typeof i.content === 'string' ? i.content.trim() : '',
         }))
-        .filter((i) => i.title.trim() && i.content.trim())
+        .filter((i) => i.title && i.content)
         .slice(0, 10)
     : [];
   const strings = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string' && t.trim().length > 0).slice(0, 10) : []);
@@ -49,20 +53,24 @@ export async function editMemoryWithText(instruction: string): Promise<string> {
 
   const topics = listMemoryTopics();
   const memories = listMemories();
-  const topicLines = topics.map((t) => `- [topic] ${t.category}/${t.title}: ${t.content}`).join('\n') || '(none)';
+  // Use the compact summary from memory-retrieval rather than raw dump
+  const topicSummary = getMemorySummary();
   const memoryLines = memories.map((m) => `- [note ${m.id.slice(0, 8)}] ${m.content}`).join('\n') || '(none)';
 
   const system = `You manage the user's saved memory in this app. Current memory:
 
-Topics:
-${topicLines}
+Topics (grouped by category):
+${topicSummary}
 
 Manual notes:
 ${memoryLines}
 
-The user just typed an instruction about what to change or remove below. Reply with ONLY a JSON object:
-{"upsertTopics": [{"category": "you"|"topic"|"area", "title": "...", "content": "..."}], "removeTopics": ["title", ...], "removeMemories": ["note text or id prefix", ...], "reply": "one short sentence confirming what you did"}
-Only touch what the instruction asks for. Leave "upsertTopics"/"removeTopics"/"removeMemories" empty if nothing needs to change there. If the instruction doesn't make sense as a memory edit, leave everything empty and explain briefly in "reply".`;
+RULES:
+- Only touch what the instruction asks for. Leave everything else untouched.
+- When updating a topic, provide the FULL updated content (merge old + new info), not just the change.
+- Use "you" category for profile/preferences, "topic" for interests/skills, "area" for projects.
+- Do NOT create duplicate topics — update existing ones when appropriate.
+- Never include passwords, API keys, tokens, or credentials in any output.`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('memory edit timeout')), 45_000);
@@ -99,6 +107,7 @@ Only touch what the instruction asks for. Leave "upsertTopics"/"removeTopics"/"r
   }
   for (const item of upsertTopics) {
     try {
+      // The enhanced upsertMemoryTopic handles dedup/merge internally
       upsertMemoryTopic(item);
     } catch (err) {
       log.warn('could not save memory topic', errorMessage(err));

@@ -8,7 +8,8 @@ import { deleteCommand, expandCommand, getCommand, listCommands, saveCommand } f
 import { addMemory, clearMemories, deleteMemory, listMemories, updateMemory } from '../customize/memory';
 import { updateMemoryFromConversation } from '../customize/memory-auto';
 import { editMemoryWithText } from '../customize/memory-edit';
-import { clearMemoryTopics, deleteMemoryTopic, listMemoryTopics, updateMemoryTopic } from '../customize/memory-topics';
+import { formatMemoryBlock, getMemorySummary, retrieveMemory } from '../customize/memory-retrieval';
+import { clearMemoryTopics, deleteMemoryTopic, exportAllMemories, getMemoryTopicHistory, importMemories, listMemoryTopics, updateMemoryTopic } from '../customize/memory-topics';
 import { installPlugin, listPlugins, removePlugin, setPluginEnabled } from '../customize/plugins';
 import { installFromMarketplace, searchMarketplace } from '../plugins/marketplace';
 import { claudeSkillsAvailable, deleteSkill, getSkill, importClaudeSkills, importSkills, listSkills, saveSkill, setSkillEnabled } from '../customize/skills';
@@ -16,6 +17,7 @@ import { listTools } from '../customize/tool-listing';
 import { embeddingIndex } from '../rag/embeddings';
 import { previewCron } from '../scheduled/cron';
 import { scheduler } from '../scheduled/scheduler';
+import { errorMessage } from '../lib/util';
 import { paths } from '../system/paths';
 import { tts } from '../voice/tts';
 import { voice } from '../voice/whisper';
@@ -132,6 +134,19 @@ export function registerM4Handlers(): void {
   handle('memory:clearTopics', () => clearMemoryTopics());
   handle('memory:editWithText', (instruction) => editMemoryWithText(z.string().max(2000).parse(instruction)));
   handle('memory:updateFromChat', (conversationId) => updateMemoryFromConversation(z.string().min(1).max(200).parse(conversationId)));
+
+  // Memory retrieval and management
+  handle('memory:retrieve', async (query?, projectId?) => formatMemoryBlock(await retrieveMemory({ query, projectId })));
+  handle('memory:getSummary', () => getMemorySummary());
+  handle('memory:getHistory', (topicId?: string) => getMemoryTopicHistory(topicId));
+  handle('memory:export', () => exportAllMemories());
+  handle('memory:import', (json) => {
+    try {
+      return importMemories(z.string().max(1_000_000).parse(json));
+    } catch (err) {
+      return { created: 0, updated: 0, skippedDuplicates: 0, rejected: [errorMessage(err)] };
+    }
+  });
 
   handle('tools:list', (s, conversationId, model) => listTools(scope.parse(s), conversationId, model ? modelRef.parse(model) : undefined));
 
