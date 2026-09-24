@@ -56,6 +56,8 @@ export interface TaskState {
   allowCommands: boolean;
   /** Hosts the user allowed web_fetch to open without asking. */
   allowedDomains: string[];
+  /** Set by "Allow for this task" on the first computer-use step; risky steps still ask. */
+  computerAllowed?: boolean;
   /** Model calls used in the latest turn. */
   steps: number;
   maxSteps: number;
@@ -72,19 +74,20 @@ export interface TaskState {
 /**
  * connector: tools from MCP servers (they ask unless their policy allows them). memory: remember/forget.
  * design, math and study: canvas, board or book changes (undoable, never ask). browser: the built-in Chromium panel.
- * module: `call`, which delegates work to another Cellar module.
+ * module: `call`, which delegates work to another Cellar module. computer: seeing and using the Windows desktop.
  */
-export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math' | 'study' | 'browser' | 'module';
+export type ToolCategory = 'read' | 'edit' | 'command' | 'web' | 'plan' | 'connector' | 'memory' | 'design' | 'math' | 'study' | 'browser' | 'module' | 'computer';
 
 export type ToolPartStatus = 'streaming' | 'awaiting-approval' | 'running' | 'done' | 'error' | 'denied' | 'cancelled';
 
 /**
  * `browser` asks about a page in the built-in browser (its host can be allowed for the rest of the
  * task); `action` is anything else that only makes sense described in its own words — delegating to
- * a module, setting a reminder — and offers no "always allow".
+ * a module, setting a reminder — and offers no "always allow". `computer` is the first step of computer
+ * use in a task, whose "always allow" lets the rest of the task use the computer.
  */
 export interface ApprovalRequest {
-  kind: 'write' | 'edit' | 'document' | 'command' | 'web' | 'connector' | 'browser' | 'action';
+  kind: 'write' | 'edit' | 'document' | 'command' | 'web' | 'connector' | 'browser' | 'action' | 'computer';
   title: string;
   /** Connector tools: the connector's name and the tool's own name. */
   connector?: string;

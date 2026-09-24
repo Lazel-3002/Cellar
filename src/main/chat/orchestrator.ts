@@ -39,7 +39,7 @@ import { getProject, projectKnowledge } from '../services/projects';
 import { settings } from '../services/settings';
 import { attachmentRefs, withAttachments } from './attachments';
 import { estimateTokens, fitToContext } from './context-window';
-import { buildSystemPrompt, chatToolGuidance, cleanTitle, fallbackTitle, supportsArtifactInstructions } from './prompts';
+import { buildSystemPrompt, chatToolGuidance, cleanTitle, fallbackTitle, parseFollowUps, supportsArtifactInstructions } from './prompts';
 
 const log = logger('chat');
 
@@ -65,6 +65,7 @@ class ChatOrchestrator {
       if (result.status === 'complete' && input.assistant.parentId && settings.get().autoTitle && this.needsTitle.delete(input.conversationId)) {
         void this.autoTitle(input.store, input.conversationId, input.entry, input.assistant.parentId, result.text);
       }
+      if (result.status === 'complete' && input.assistant.parentId) void this.followUps(input.store, input.conversationId, input.entry, input.assistant.parentId, input.assistant.id, result.text);
       this.turnFinished({ conversationId: input.conversationId, messageId: input.assistant.id, status: result.status, error: input.store.getMessage(input.assistant.id)?.error });
     },
   });
@@ -532,7 +533,7 @@ class ChatOrchestrator {
   private async chatUsesTools(store: ChatStore, entry: ModelEntry): Promise<boolean> {
     if (!entry.capabilities.tools) return false;
     const app = settings.get();
-    if (app.chatWebSearch || app.browserEnabled) return true;
+    if (app.chatWebSearch || app.browserEnabled || app.computerUse) return true;
     const hasChatRef = app.chatReferenceEnabled || app.searchPastChats;
     if (!store.incognito && (app.memoryEnabled || hasChatRef)) return true;
     if (connectors.available().length > 0) return true;
@@ -637,6 +638,7 @@ class ChatOrchestrator {
       if (!state.content.trim() && !state.reasoning.trim()) throw new Error('The model returned an empty response.');
       this.finish(store, assistant, state, stats, 'complete', { requestStart, firstToken, firstText, firstReasoning });
       if (autoTitle && settings.get().autoTitle) void this.autoTitle(store, conversationId, entry, assistant.parentId, state.content);
+      void this.followUps(store, conversationId, entry, assistant.parentId, assistant.id, state.content);
     } catch (err) {
       if (controller.signal.aborted) {
         this.finish(store, assistant, state, stats, 'stopped', { requestStart, firstToken, firstText, firstReasoning });
@@ -721,6 +723,44 @@ class ChatOrchestrator {
       store.updateConversation(conversationId, { title: cleaned });
       this.notify(conversationId);
     }
+  }
+
+  /** Ask for up to three follow-up questions after a plain chat reply; shown as chips, never stored. */
+  private async followUps(store: ChatStore, conversationId: string, entry: ModelEntry, userMessageId: string, assistantId: string, answer: string): Promise<void> {
+    if (!settings.get().followUps || entry.reasoningStyle === 'always' || !answer.trim()) return;
+    if (store.getConversation(conversationId)?.kind !== 'chat') return;
+    const user = store.getMessage(userMessageId);
+    if (!user) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error('follow-up timeout')), 45_000);
+    let raw = '';
+    try {
+      const preset = getPreset(entry.ref, entry.contextLength);
+      for await (const event of providers.get(entry.ref.providerId).chat({
+        entry,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You suggest follow-up questions a user might ask next in a chat. Reply with only a JSON array of 1 to 3 short questions (under 12 words each), written as the user would type them, in the language of the conversation. No other text.',
+          },
+          { role: 'user', content: `User message:\n${user.content.slice(0, 1500)}\n\nAssistant reply:\n${answer.slice(-2500)}\n\nJSON array:` },
+        ],
+        params: { ...DEFAULT_INFERENCE_PARAMS, temperature: 0.5, maxTokens: 160 },
+        thinking: 'off',
+        load: preset.load,
+        signal: controller.signal,
+        onStatus: () => undefined,
+      })) {
+        if (event.type === 'text') raw += event.delta;
+      }
+    } catch (err) {
+      log.warn('follow-ups failed', errorMessage(err));
+    } finally {
+      clearTimeout(timer);
+    }
+    const questions = parseFollowUps(raw);
+    if (questions.length) bus.emit('chat:followUps', { conversationId, messageId: assistantId, questions });
   }
 
   /** Build a /context breakdown for a conversation. */

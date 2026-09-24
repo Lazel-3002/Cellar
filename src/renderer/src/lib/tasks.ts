@@ -20,7 +20,17 @@ import {
   Hand,
   Highlighter,
   History,
+  Keyboard,
   LayoutTemplate,
+  AppWindowMac,
+  Monitor,
+  MousePointer2,
+  MousePointerClick,
+  Move,
+  Rocket,
+  ScanText,
+  HandHelping,
+  MoveVertical,
   ListChecks,
   ListTodo,
   Map as MapIcon,
@@ -80,6 +90,13 @@ export function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** "element 12" or "(640, 360)" for a computer-use step. */
+function pointTarget(args: Record<string, unknown>): string | undefined {
+  if (args.element !== undefined && args.element !== null) return `element ${String(args.element)}`;
+  if (args.x !== undefined && args.x !== null) return `(${String(args.x)}, ${String(args.y)})`;
+  return undefined;
 }
 
 export interface ToolDescription {
@@ -227,6 +244,42 @@ export function describeTool(part: Pick<ToolPart, 'name' | 'args' | 'connector'>
       return { icon: AppWindow, done: 'Scrolled the page', active: 'Scrolling the page', failed: "Couldn't scroll the page" };
     case 'browse_tabs':
       return { icon: AppWindow, done: 'Checked the browser tabs', active: 'Checking the browser tabs', failed: "Couldn't check the browser tabs" };
+    case 'computer_screenshot':
+      return { icon: Monitor, done: args.zoom ? 'Looked closer at the screen' : 'Looked at the screen', active: args.zoom ? 'Looking closer at the screen' : 'Looking at the screen', failed: "Couldn't see the screen" };
+    case 'computer_click': {
+      const verb = args.button === 'right' ? 'Right-click' : Number(args.clicks) === 2 ? 'Double-click' : 'Click';
+      return { icon: MousePointerClick, done: `${verb}ed`, active: `${verb}ing`, failed: `Couldn't ${verb.toLowerCase()}`, target: pointTarget(args) };
+    }
+    case 'computer_type':
+      return { icon: Keyboard, done: 'Typed', active: 'Typing', failed: "Couldn't type", target: short(text(args.text), 48) };
+    case 'computer_key':
+      return { icon: Keyboard, done: 'Pressed', active: 'Pressing', failed: "Couldn't press", target: text(args.keys) };
+    case 'computer_scroll':
+      return { icon: MoveVertical, done: `Scrolled ${text(args.direction) || 'the screen'}`, active: `Scrolling ${text(args.direction)}`, failed: "Couldn't scroll" };
+    case 'computer_drag':
+      return { icon: Move, done: 'Dragged', active: 'Dragging', failed: "Couldn't drag", target: `${pointTarget({ element: args.from_element, x: args.from_x, y: args.from_y })} → ${pointTarget({ element: args.to_element, x: args.to_x, y: args.to_y })}` };
+    case 'computer_move':
+      return { icon: MousePointer2, done: 'Pointed at', active: 'Pointing at', failed: "Couldn't point at", target: pointTarget(args) };
+    case 'computer_open_app':
+      return { icon: Rocket, done: 'Opened', active: 'Opening', failed: "Couldn't open", target: short(text(args.name), 56) };
+    case 'computer_windows': {
+      const action = text(args.action) || (args.window !== undefined ? 'focus' : 'list');
+      const target = args.window !== undefined ? String(args.window) : undefined;
+      if (action === 'list') return { icon: AppWindowMac, done: 'Listed the open windows', active: 'Listing the open windows', failed: "Couldn't list the windows" };
+      const verbs: Record<string, [string, string]> = {
+        focus: ['Switched to', 'Switching to'],
+        minimize: ['Minimized', 'Minimizing'],
+        maximize: ['Maximized', 'Maximizing'],
+        restore: ['Restored', 'Restoring'],
+        close: ['Closed', 'Closing'],
+      };
+      const [done, active] = verbs[action] ?? ['Changed', 'Changing'];
+      return { icon: AppWindowMac, done, active, failed: `Couldn't ${action}`, target };
+    }
+    case 'computer_read':
+      return { icon: ScanText, done: 'Read the screen', active: 'Reading the screen', failed: "Couldn't read the screen" };
+    case 'computer_hand_over':
+      return { icon: HandHelping, done: 'Handed over to you:', active: 'Waiting for you:', failed: "Couldn't hand over:", target: short(text(args.reason), 60) };
     case 'call': {
       const task = (args.task ?? {}) as Record<string, unknown>;
       const action = text(task.action) || text(args.action);

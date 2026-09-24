@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, CircleAlert, Copy, Pencil, RefreshCw } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleAlert, Copy, CornerDownRight, Pencil, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ChatStreamEvent, Conversation, Message } from '@shared/types/chat';
 import { AgentParts } from '@/components/task/AgentParts';
@@ -9,9 +9,10 @@ import { effectiveThinking, useSelectedModel } from '@/lib/hooks';
 import { invoke } from '@/lib/ipc';
 import { useSettings } from '@/lib/queries';
 import { cn, copyText } from '@/lib/utils';
+import { useFollowUps } from '@/stores/followUps';
 import { useUi } from '@/stores/ui';
 import { MessageAttachments } from './Attachments';
-import { Markdown } from './Markdown';
+import { Markdown, useSmoothStreaming } from './Markdown';
 import { ThinkingBlock } from './ThinkingBlock';
 
 function ActionButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
@@ -140,6 +141,7 @@ export function AssistantMessage({
   const { data: settings } = useSettings();
   const { model } = useSelectedModel();
   const thinking = useUi((s) => s.thinking);
+  const smooth = useSmoothStreaming();
   // Once the saved message reaches a final state it wins over any stale live overlay.
   if (live && message.status !== 'streaming' && (live.status === 'streaming' || live.status === 'loading-model')) live = undefined;
   const status = live?.status ?? message.status;
@@ -184,7 +186,7 @@ export function AssistantMessage({
       ) : (
         <>
           {reasoning && <ThinkingBlock reasoning={reasoning} active={thinkingActive} durationMs={stats?.reasoningMs} />}
-          {content && <Markdown content={content} streaming={streaming} conversationId={conversation.id} />}
+          {content && <Markdown content={content} streaming={streaming} smooth={smooth} conversationId={conversation.id} />}
         </>
       )}
       {(waitingOnModel || (hasParts && live?.statusMessage && status === 'streaming')) && (
@@ -216,6 +218,41 @@ export function AssistantMessage({
           </span>
         </div>
       )}
+      {isLast && !streaming && status === 'complete' && <FollowUpChips conversationId={conversation.id} messageId={message.id} />}
+    </div>
+  );
+}
+
+/** Up to three suggested next questions under the latest reply. Click sends; Shift+click puts it in the composer. */
+function FollowUpChips({ conversationId, messageId }: { conversationId: string; messageId: string }) {
+  const questions = useFollowUps((s) => s.byMessage[messageId]);
+  const clear = useFollowUps((s) => s.clear);
+  const { model } = useSelectedModel();
+  const thinking = useUi((s) => s.thinking);
+  const setPendingPrompt = useUi((s) => s.setPendingPrompt);
+  if (!questions?.length) return null;
+  const pick = async (question: string, edit: boolean) => {
+    clear(messageId);
+    if (edit || !model) return setPendingPrompt(question);
+    try {
+      await invoke('chat:send', { conversationId, content: question, attachmentIds: [], model: model.ref, thinking: effectiveThinking(model.reasoningStyle, thinking) });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <div className="mt-2 flex flex-col items-start gap-1.5 font-sans" data-testid="follow-ups">
+      {questions.map((q) => (
+        <button
+          key={q}
+          title="Click to ask · Shift+click to edit first"
+          onClick={(e) => void pick(q, e.shiftKey)}
+          className="flex max-w-full items-center gap-2 rounded-lg border border-divider px-3 py-1.5 text-left text-[13.5px] text-fg-2 transition hover:bg-hover hover:text-foreground"
+        >
+          <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{q}</span>
+        </button>
+      ))}
     </div>
   );
 }

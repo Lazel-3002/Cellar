@@ -23,7 +23,7 @@ import { PERMISSION_MODES } from '@/lib/tasks';
 import { cn, formatBytes } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import { ModelPicker } from './ModelPicker';
-import { ToolsDialog, ToolsMenu } from './ToolsMenu';
+import { ToolsDialog, ActiveToolChips, ToolsMenu } from './ToolsMenu';
 
 export interface ComposerProps {
   variant: 'home' | 'chat' | 'task' | 'code-home' | 'code' | 'design-home' | 'design' | 'math-home' | 'math' | 'study';
@@ -532,6 +532,7 @@ export function Composer({
         {variant === 'code-home' && <CodeModeMenu value={newSessionMode} onChange={setCodeModeValue} />}
         {variant === 'code' && codeMode && <CodeModeMenu value={codeMode} onChange={setCodeModeValue} />}
         <div className="flex-1" />
+        <ActiveToolChips scope={scope} />
         {dictation.state === 'recording' && (
           <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground tabular-nums" data-testid="dictation-recording">
             <span className="size-2 shrink-0 rounded-full bg-danger" style={{ opacity: 0.35 + dictation.level * 0.65, transform: `scale(${1 + dictation.level * 0.6})` }} />

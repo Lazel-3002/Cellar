@@ -1,3 +1,4 @@
+import { SCREEN_MARKER } from '@shared/computer';
 import type { AgentPart, CompactionPart, ToolPart } from '@shared/types/agent';
 import type { Message } from '@shared/types/chat';
 import { attachmentImage, withAttachments } from '../chat/attachments';
@@ -15,6 +16,8 @@ export interface HistoryOptions {
   trimOldResults: boolean;
   /** Tool results longer than this are clipped everywhere (last resort when context is tight). */
   hardResultLimit?: number;
+  /** Computer use: most looks at the screen kept whole (fewer for a small context window). */
+  freshScreens?: number;
 }
 
 interface Round {
@@ -49,20 +52,41 @@ export function resultForModel(call: ToolPart): string {
 }
 
 const RECENT_ROUNDS_IN_FULL = 2;
+/** Computer use: at most this many of the latest looks at the screen keep their screenshot and element list. */
+const FRESH_SCREENS = 3;
+
+/**
+ * The computer-use steps whose look at the screen is still current. Older ones are cut to what the
+ * step did: a screen from ten steps ago only misleads, and each screenshot costs ~900 tokens.
+ * Cutting happens in batches (the window grows 1, 2, 3 and starts again at 1) rather than one look
+ * per step: a local server reuses its cache for everything before the first changed message, so
+ * two steps out of three only process the new screenshot instead of re-reading the previous ones.
+ */
+export function freshScreens(branch: Message[], max = FRESH_SCREENS): Set<string> {
+  const ids: string[] = [];
+  for (const m of branch) for (const p of m.parts ?? []) if (p.type === 'tool' && p.category === 'computer' && (p.resultImages?.length || p.result?.includes(SCREEN_MARKER))) ids.push(p.id);
+  if (!ids.length) return new Set();
+  const window = Math.max(1, Math.round(max));
+  return new Set(ids.slice(-(((ids.length - 1) % window) + 1)));
+}
+
+const staleScreen = (call: ToolPart, fresh: Set<string>) => call.category === 'computer' && !fresh.has(call.id);
 
 /** Images a tool call's result carried, as base64 (only when the model can see images). */
-async function callImages(call: ToolPart, vision: boolean): Promise<NonNullable<ProviderMessage['images']>> {
-  if (!vision || !call.resultImages?.length) return [];
+async function callImages(call: ToolPart, vision: boolean, fresh: Set<string>): Promise<NonNullable<ProviderMessage['images']>> {
+  if (!vision || !call.resultImages?.length || staleScreen(call, fresh)) return [];
   const loaded = await Promise.all(call.resultImages.map((id) => attachmentImage(id)));
   return loaded.filter((img): img is NonNullable<typeof img> => !!img).map((img) => ({ mime: img.mime, base64: img.bytes.toString('base64') }));
 }
 
-async function roundsToMessages(rounds: Round[], options: HistoryOptions, keepReasoning: boolean, recentFull: boolean): Promise<ProviderMessage[]> {
+async function roundsToMessages(rounds: Round[], options: HistoryOptions, keepReasoning: boolean, recentFull: boolean, fresh: Set<string>): Promise<ProviderMessage[]> {
   const out: ProviderMessage[] = [];
   for (const [i, round] of rounds.entries()) {
     const recent = recentFull && i >= rounds.length - RECENT_ROUNDS_IN_FULL;
     const result = (call: ToolPart) => {
       let text = resultForModel(call);
+      if (staleScreen(call, fresh) && text.includes(SCREEN_MARKER)) text = `${text.slice(0, text.indexOf(SCREEN_MARKER))}
+(An older look at the screen, no longer shown.)`;
       if (options.trimOldResults && !recent) text = clip(text, 700, 'older output shortened');
       if (options.hardResultLimit) text = clip(text, options.hardResultLimit);
       return text;
@@ -77,7 +101,7 @@ async function roundsToMessages(rounds: Round[], options: HistoryOptions, keepRe
         });
         for (const call of round.calls) {
           out.push({ role: 'tool', toolCallId: call.id, toolName: call.name, content: result(call) });
-          const images = await callImages(call, options.vision);
+          const images = await callImages(call, options.vision, fresh);
           if (images.length) out.push({ role: 'user', content: `Image${images.length > 1 ? 's' : ''} returned by ${call.name}:`, images });
         }
       } else if (round.text.trim()) {
@@ -88,7 +112,7 @@ async function roundsToMessages(rounds: Round[], options: HistoryOptions, keepRe
       if (content) out.push({ role: 'assistant', content });
       if (round.calls.length) out.push({ role: 'user', content: round.calls.map((c) => renderToolResponse(c.name, result(c))).join('\n\n') });
       for (const call of round.calls) {
-        const images = await callImages(call, options.vision);
+        const images = await callImages(call, options.vision, fresh);
         if (images.length) out.push({ role: 'user', content: `Image${images.length > 1 ? 's' : ''} returned by ${call.name}:`, images });
       }
     }
@@ -116,6 +140,7 @@ export async function buildTaskHistory(branch: Message[], options: HistoryOption
   const compaction = latestCompaction(branch);
   const out: ProviderMessage[] = [];
   const lastAssistant = branch.map((m) => m.role).lastIndexOf('assistant');
+  const fresh = freshScreens(branch, options.freshScreens);
   for (let i = 0; i < branch.length; i++) {
     const m = branch[i];
     const summaryHost = compaction && m.role === 'user' && i === compaction.messageIndex - 1;
@@ -127,7 +152,7 @@ export async function buildTaskHistory(branch: Message[], options: HistoryOption
     } else if (m.role === 'assistant') {
       if (m.parts?.length) {
         const fromRound = compaction && i === compaction.messageIndex ? compaction.part.round : 0;
-        out.push(...(await roundsToMessages(groupRounds(m.parts, fromRound), options, i === lastAssistant, i === lastAssistant)));
+        out.push(...(await roundsToMessages(groupRounds(m.parts, fromRound), options, i === lastAssistant, i === lastAssistant, fresh)));
       } else if (m.content.trim() && m.status !== 'error') {
         out.push({ role: 'assistant', content: m.content });
       }

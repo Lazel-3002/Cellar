@@ -2,6 +2,7 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/source-serif-4';
 @import 'katex/dist/katex.min.css';
+@import 'streamdown/styles.css';
 
 @source '../../../../node_modules/streamdown/dist/*.js';
 
@@ -290,6 +291,14 @@ textarea,
   animation: shimmer 2s linear infinite;
 }
 
+/* The computer-use bar's window is transparent around the pill. */
+html.computer-pill,
+html.computer-pill body,
+html.computer-pill #root {
+  background: transparent !important;
+  overflow: hidden;
+}
+
 @keyframes shimmer {
   from {
     background-position: 200% 0;
@@ -358,4 +367,22 @@ textarea,
 }
 .study-page-link:hover {
   text-decoration-style: solid;
+}
+
+/* Smooth streaming: each new word rises out of a heavy blur (see SMOOTH_ANIMATION in Markdown.tsx). */
+@keyframes sd-cellarSmooth {
+  from {
+    opacity: 0;
+    filter: blur(var(--cellar-smooth-blur, 10px));
+    transform: translateY(var(--cellar-smooth-rise, 6px));
+  }
+  60% {
+    opacity: 0.85;
+    filter: blur(calc(var(--cellar-smooth-blur, 10px) / 5));
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
 }

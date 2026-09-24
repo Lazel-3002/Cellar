@@ -7,6 +7,7 @@ import type { ModelRef } from '@shared/types/models';
 import type { AppSettings, AppSettingsPatch } from '@shared/types/settings';
 import type { UsageRange } from '@shared/types/stats';
 import { useStreams } from '../stores/streams';
+import { useFollowUps } from '@/stores/followUps';
 import { invoke, onEvent } from './ipc';
 import { speak, speakReply } from './tts';
 
@@ -133,6 +134,7 @@ export function useIpcSync(): void {
           if (current?.voiceReplies) speakReply(event.messageId, event.content, current.voiceReplyVoice);
         }
       }),
+      onEvent('chat:followUps', ({ messageId, questions }) => useFollowUps.getState().set(messageId, questions)),
       onEvent('chat:changed', ({ conversationId }) => {
         void qc.invalidateQueries({ queryKey: ['conversations'] });
         if (conversationId) {

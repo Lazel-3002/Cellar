@@ -6,7 +6,7 @@ import type { Message } from '../../src/shared/types/chat';
 import { parseChartSpec, parseVizBlocks, vizFileName, vizKindOf } from '../../src/shared/viz';
 import { sanitizeSvg, sizedSvg } from '../../src/shared/design/svg';
 import { fitToContext, truncateMiddle } from '../../src/main/chat/context-window';
-import { buildSystemPrompt, cleanTitle, fallbackTitle, parseParamsBillions, supportsArtifactInstructions } from '../../src/main/chat/prompts';
+import { buildSystemPrompt, cleanTitle, fallbackTitle, parseFollowUps, parseParamsBillions, supportsArtifactInstructions } from '../../src/main/chat/prompts';
 import type { ProviderMessage } from '../../src/main/providers/types';
 
 const msg = (id: string, parentId: string | null, role: Message['role'], createdAt: number): Message => ({
@@ -279,5 +279,14 @@ describe('prompts', () => {
     expect(cleanTitle('Title: Chess engine in Python')).toBe('Chess engine in Python');
     expect(fallbackTitle('how do i run llama.cpp with cuda on windows 11 please')).toBe('How do i run llama.cpp with cuda');
     expect(fallbackTitle('   ')).toBe('New chat');
+  });
+});
+
+describe('parseFollowUps', () => {
+  it('reads a JSON array, falls back to lines, and keeps at most three', () => {
+    expect(parseFollowUps('Sure! ["How fast is it?", "Does it need CUDA?"]')).toEqual(['How fast is it?', 'Does it need CUDA?']);
+    expect(parseFollowUps('<think>x</think>1. What about AMD?\n2. What about AMD?\n- Can I quantize it?')).toEqual(['What about AMD?', 'Can I quantize it?']);
+    expect(parseFollowUps('["a b c d", "q2 here", "q3 here", "q4 here"]')).toHaveLength(3);
+    expect(parseFollowUps('')).toEqual([]);
   });
 });

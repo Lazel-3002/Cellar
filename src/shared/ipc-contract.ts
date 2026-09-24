@@ -41,6 +41,7 @@ import type {
   ThinkingLevel,
 } from './types/chat';
 import type { BrowserBounds, BrowserLoginStatus, BrowserState, BrowserTab } from './types/browser';
+import type { ComputerState, ComputerTestResult, ScreenDisplay } from './types/computer';
 import type { Design, DesignChangedEvent, DesignExportRequest, DesignStartOptions, DesignSummary, DesignVersionSummary, FontSummary } from './types/design';
 import type { MathBoard, MathBoardSummary, MathChangedEvent, MathExportRequest, MathStartOptions } from './types/math';
 import type {
@@ -397,6 +398,17 @@ export interface IpcInvokeMap {
   /** For the tab strip's per-domain signed-in indicator; a live check, not the saved snapshot. */
   'browser:loginStatus': Handler<[domain: string], BrowserLoginStatus>;
 
+  /** Computer use (`main/computer/`): the on-screen pill and Settings. */
+  'computer:state': Handler<[], ComputerState>;
+  'computer:stop': Handler<[], void>;
+  /** Paused or handed over: give the mouse back to the model. */
+  'computer:resume': Handler<[], void>;
+  /** The pill window fits its content. */
+  'computer:pillSize': Handler<[height: number], void>;
+  'computer:displays': Handler<[], ScreenDisplay[]>;
+  /** Settings → Computer use → Try it: one look at the screen, as the model would get it. */
+  'computer:test': Handler<[], ComputerTestResult>;
+
   'projects:indexStatus': Handler<[projectId: string], ProjectIndexStatus>;
   'projects:reindex': Handler<[projectId: string], void>;
 
@@ -473,6 +485,8 @@ export interface IpcInvokeMap {
 export interface IpcEventMap {
   'chat:stream': ChatStreamEvent;
   'chat:changed': { conversationId?: string };
+  /** Suggested follow-up questions for a finished chat reply. */
+  'chat:followUps': { conversationId: string; messageId: string; questions: string[] };
   'models:changed': { reason: string };
   'models:loadProgress': LoadProgressEvent;
   'providers:status': ProviderStatus[];
@@ -498,6 +512,8 @@ export interface IpcEventMap {
   'browser:changed': BrowserState;
   /** A browser tool ran: open the panel so the user sees what the model is doing. */
   'browser:reveal': Record<string, never>;
+  /** Computer use: what the on-screen pill shows. */
+  'computer:state': ComputerState;
   'projects:index': ProjectIndexStatus;
   /** Sent to the quick entry window each time it opens. */
   'quick:shown': Record<string, never>;
@@ -719,6 +735,12 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
   'browser:setBounds': true,
   'browser:setVisible': true,
   'browser:loginStatus': true,
+  'computer:state': true,
+  'computer:stop': true,
+  'computer:resume': true,
+  'computer:pillSize': true,
+  'computer:displays': true,
+  'computer:test': true,
   'projects:indexStatus': true,
   'projects:reindex': true,
   'design:list': true,
@@ -766,6 +788,7 @@ const invokeChannelFlags: Record<InvokeChannel, true> = {
 const eventChannelFlags: Record<EventChannel, true> = {
   'chat:stream': true,
   'chat:changed': true,
+  'chat:followUps': true,
   'models:changed': true,
   'models:loadProgress': true,
   'providers:status': true,
@@ -788,6 +811,7 @@ const eventChannelFlags: Record<EventChannel, true> = {
   'voice:speak': true,
   'browser:changed': true,
   'browser:reveal': true,
+  'computer:state': true,
   'projects:index': true,
   'quick:shown': true,
   'design:changed': true,

@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AppWindow, Brain, Globe, Info, ListChecks, Plug, Settings2, ShieldCheck, Sparkles, SquareTerminal } from 'lucide-react';
+import { AppWindow, Brain, Ellipsis, Globe, Info, ListChecks, MessagesSquare, MousePointerClick, Plug, Settings2, ShieldCheck, Sparkles, SquareTerminal } from 'lucide-react';
 import type { ToolScope } from '@shared/types/customize';
 import type { ModelRef } from '@shared/types/models';
 import type { AppSettings } from '@shared/types/settings';
 import { Dialog } from '@/components/ui/dialog';
 import { Menu, MenuCheckItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuSub, MenuTrigger } from '@/components/ui/menu';
-import { Badge, Spinner, StatusDot } from '@/components/ui/misc';
+import { Badge, Spinner, StatusDot, Tip } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { useConnectors, useSettings, useSkills } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -63,7 +63,71 @@ function ApprovalSubmenu({ settings, keepOpen }: { settings: AppSettings; keepOp
   );
 }
 
-/** Web search, connectors, skills and memory switches next to the composer's + button. */
+type SwitchKey = 'web' | 'memoryEnabled' | 'chatCommands' | 'browserEnabled' | 'computerUse' | 'followUps';
+type SwitchGroup = 'does' | 'context' | 'extras';
+interface Switch {
+  key: SwitchKey;
+  label: string;
+  short: string;
+  icon: React.ReactNode;
+  group: SwitchGroup;
+  on: boolean;
+  patch: Partial<AppSettings>;
+}
+
+/** The per-chat switches, in one place so the menu and the composer's chips agree. */
+function switchesFor(scope: ToolScope, settings: AppSettings | undefined): Switch[] {
+  if (!settings) return [];
+  const webOn = scope === 'chat' ? settings.chatWebSearch : settings.coworkWebAccess;
+  const all: Switch[] = [
+    { key: 'web', label: 'Web search', short: 'Web', icon: <Globe />, group: 'does', on: webOn, patch: scope === 'chat' ? { chatWebSearch: !webOn } : { coworkWebAccess: !webOn } },
+    { key: 'chatCommands', label: 'Run commands', short: 'Commands', icon: <SquareTerminal />, group: 'does', on: settings.chatCommands, patch: { chatCommands: !settings.chatCommands } },
+    { key: 'browserEnabled', label: 'Built-in browser', short: 'Browser', icon: <AppWindow />, group: 'does', on: settings.browserEnabled, patch: { browserEnabled: !settings.browserEnabled } },
+    { key: 'computerUse', label: 'Use the computer', short: 'Computer', icon: <MousePointerClick />, group: 'does', on: settings.computerUse, patch: { computerUse: !settings.computerUse } },
+    { key: 'memoryEnabled', label: 'Memory', short: 'Memory', icon: <Brain />, group: 'context', on: settings.memoryEnabled, patch: { memoryEnabled: !settings.memoryEnabled } },
+    { key: 'followUps', label: 'Follow-up suggestions', short: 'Follow-ups', icon: <MessagesSquare />, group: 'extras', on: settings.followUps, patch: { followUps: !settings.followUps } },
+  ];
+  return all.filter(
+    (s) =>
+      (scope === 'chat' || (s.key !== 'chatCommands' && s.key !== 'followUps')) &&
+      // Computer use drives the desktop; Math, Design and Study work on their own canvas.
+      (s.key !== 'computerUse' || scope === 'chat' || scope === 'task' || scope === 'code'),
+  );
+}
+
+/** Small chips beside the tools button for whatever is switched on; clicking one turns it off. */
+export function ActiveToolChips({ scope }: { scope: ToolScope }) {
+  const { data: settings } = useSettings();
+  const { data: connectors = [] } = useConnectors();
+  const on = switchesFor(scope, settings).filter((s) => s.on);
+  const liveConnectors = connectors.filter((c) => c.config.enabled).length;
+  if (!on.length && !liveConnectors) return null;
+  return (
+    <div className="flex h-7 shrink-0 items-center gap-0.5 rounded-full bg-brand/10 px-1 text-brand" data-testid="active-tools">
+      {on.map((s) => (
+        <Tip key={s.key} label={`${s.label} is on · click to turn off`}>
+          <button
+            aria-label={`Turn off ${s.label}`}
+            onClick={() => void invoke('settings:update', s.patch)}
+            className="no-drag flex size-5 items-center justify-center rounded-full transition hover:bg-brand/20 [&_svg]:size-3.5"
+          >
+            {s.icon}
+          </button>
+        </Tip>
+      ))}
+      {liveConnectors > 0 && (
+        <Tip label={`${liveConnectors} connector${liveConnectors === 1 ? '' : 's'} on`}>
+          <span className="flex h-5 items-center gap-0.5 px-1 text-[11.5px] tabular-nums [&_svg]:size-3.5">
+            <Plug />
+            {liveConnectors}
+          </span>
+        </Tip>
+      )}
+    </div>
+  );
+}
+
+/** Per-chat switches, connectors and skills next to the composer's + button, grouped by what they change. */
 export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTools: () => void }) {
   const navigate = useNavigate();
   const { data: settings } = useSettings();
@@ -71,106 +135,88 @@ export function ToolsMenu({ scope, onShowTools }: { scope: ToolScope; onShowTool
   const { data: skills = [] } = useSkills();
   const { browserOpen, setBrowserOpen } = useUi();
   if (!settings) return null;
-  const webOn = scope === 'chat' ? settings.chatWebSearch : settings.coworkWebAccess;
+  const switches = switchesFor(scope, settings);
   const activeConnectors = connectors.filter((c) => c.config.enabled);
   const enabledSkills = skills.filter((s) => s.enabled && !s.error).length;
   const keepOpen = (e: Event) => e.preventDefault();
+  const renderSwitches = (group: SwitchGroup) =>
+    switches
+      .filter((s) => s.group === group)
+      .map((s) => (
+        <MenuItem
+          key={s.key}
+          icon={s.icon}
+          onSelect={(e) => {
+            keepOpen(e);
+            void invoke('settings:update', s.patch);
+          }}
+        >
+          <span className="flex w-full items-center gap-2">
+            {s.label}
+            <Toggle on={s.on} />
+          </span>
+        </MenuItem>
+      ));
   return (
     <Menu>
       <MenuTrigger asChild>
         <button aria-label="Tools" data-testid="tools-menu" className="no-drag relative flex size-8 items-center justify-center rounded-lg text-fg-2 hover:bg-hover hover:text-foreground">
           <Settings2 className="size-[17px]" strokeWidth={1.75} />
-          {activeConnectors.length > 0 && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-brand" />}
         </button>
       </MenuTrigger>
       <MenuContent side="top" align="start" className="w-72">
-        <MenuItem
-          icon={<Globe />}
-          onSelect={(e) => {
-            keepOpen(e);
-            void invoke('settings:update', scope === 'chat' ? { chatWebSearch: !webOn } : { coworkWebAccess: !webOn });
-          }}
-        >
-          <span className="flex w-full items-center gap-2">
-            Web search
-            <Toggle on={webOn} />
-          </span>
-        </MenuItem>
-        <MenuItem
-          icon={<Brain />}
-          onSelect={(e) => {
-            keepOpen(e);
-            void invoke('settings:update', { memoryEnabled: !settings.memoryEnabled });
-          }}
-        >
-          <span className="flex w-full items-center gap-2">
-            Memory
-            <Toggle on={settings.memoryEnabled} />
-          </span>
-        </MenuItem>
-        {scope === 'chat' && (
-          <MenuItem
-            icon={<SquareTerminal />}
-            onSelect={(e) => {
-              keepOpen(e);
-              void invoke('settings:update', { chatCommands: !settings.chatCommands });
-            }}
-          >
-            <span className="flex w-full items-center gap-2">
-              Run commands
-              <Toggle on={settings.chatCommands} />
-            </span>
-          </MenuItem>
-        )}
-        <ApprovalSubmenu settings={settings} keepOpen={keepOpen} />
-        <MenuItem
-          icon={<AppWindow />}
-          onSelect={(e) => {
-            keepOpen(e);
-            void invoke('settings:update', { browserEnabled: !settings.browserEnabled });
-          }}
-        >
-          <span className="flex w-full items-center gap-2">
-            Built-in browser
-            <Toggle on={settings.browserEnabled} />
-          </span>
-        </MenuItem>
-        <MenuItem icon={<AppWindow />} onSelect={() => setBrowserOpen(!browserOpen)}>
-          {browserOpen ? 'Hide the browser panel' : 'Open the browser panel'}
-        </MenuItem>
+        <MenuLabel>Model can</MenuLabel>
+        {renderSwitches('does')}
         <MenuSeparator />
-        <MenuLabel>Connectors</MenuLabel>
-        {connectors.length === 0 && <div className="px-2 pb-1 text-[12.5px] text-muted-foreground">No connectors yet.</div>}
-        {connectors.map((c) => (
-          <MenuItem
-            key={c.config.id}
-            icon={<Plug />}
-            onSelect={(e) => {
-              keepOpen(e);
-              void invoke('connectors:setEnabled', c.config.id, !c.config.enabled);
-            }}
-          >
-            <span className="flex w-full min-w-0 items-center gap-2">
-              <StatusDot state={c.state === 'connected' ? 'online' : c.state === 'connecting' ? 'loading' : c.state === 'error' ? 'warning' : 'offline'} />
-              <span className="truncate">{c.config.name}</span>
-              {c.state === 'connected' && <span className="text-[11px] text-muted-foreground">{c.tools.length}</span>}
-              <Toggle on={c.config.enabled} />
-            </span>
-          </MenuItem>
-        ))}
-        <MenuItem icon={<Settings2 />} onSelect={() => void navigate({ to: '/customize/$section', params: { section: 'connectors' } })}>
-          Manage connectors
-        </MenuItem>
-        <MenuSeparator />
+        <MenuLabel>Context</MenuLabel>
+        {renderSwitches('context')}
         <MenuItem icon={<Sparkles />} onSelect={() => void navigate({ to: '/customize/$section', params: { section: 'skills' } })}>
           <span className="flex w-full items-center gap-2">
             Skills
             <span className="ml-auto text-[12px] text-muted-foreground">{enabledSkills} on</span>
           </span>
         </MenuItem>
-        <MenuItem icon={<ListChecks />} onSelect={onShowTools}>
-          See all tools
-        </MenuItem>
+        {scope === 'chat' && (
+          <>
+            <MenuSeparator />
+            <MenuLabel>Chat extras</MenuLabel>
+            {renderSwitches('extras')}
+          </>
+        )}
+        <MenuSeparator />
+        <MenuSub label={activeConnectors.length ? `Connectors · ${activeConnectors.length} on` : 'Connectors'} icon={<Plug />}>
+          {connectors.length === 0 && <div className="px-2 pb-1 text-[12.5px] text-muted-foreground">No connectors yet.</div>}
+          {connectors.map((c) => (
+            <MenuItem
+              key={c.config.id}
+              icon={<Plug />}
+              onSelect={(e) => {
+                keepOpen(e);
+                void invoke('connectors:setEnabled', c.config.id, !c.config.enabled);
+              }}
+            >
+              <span className="flex w-full min-w-0 items-center gap-2">
+                <StatusDot state={c.state === 'connected' ? 'online' : c.state === 'connecting' ? 'loading' : c.state === 'error' ? 'warning' : 'offline'} />
+                <span className="truncate">{c.config.name}</span>
+                {c.state === 'connected' && <span className="text-[11px] text-muted-foreground">{c.tools.length}</span>}
+                <Toggle on={c.config.enabled} />
+              </span>
+            </MenuItem>
+          ))}
+          <MenuSeparator />
+          <MenuItem icon={<Settings2 />} onSelect={() => void navigate({ to: '/customize/$section', params: { section: 'connectors' } })}>
+            Manage connectors
+          </MenuItem>
+        </MenuSub>
+        <ApprovalSubmenu settings={settings} keepOpen={keepOpen} />
+        <MenuSub label="More" icon={<Ellipsis />}>
+          <MenuItem icon={<AppWindow />} onSelect={() => setBrowserOpen(!browserOpen)}>
+            {browserOpen ? 'Hide the browser panel' : 'Open the browser panel'}
+          </MenuItem>
+          <MenuItem icon={<ListChecks />} onSelect={onShowTools}>
+            See all tools
+          </MenuItem>
+        </MenuSub>
       </MenuContent>
     </Menu>
   );

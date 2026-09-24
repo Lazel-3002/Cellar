@@ -23,7 +23,7 @@ import { useUi } from '@/stores/ui';
 const LABELS: Record<Side, string> = { a: 'Model 1', b: 'Model 2' };
 
 /** A turn the agent loop paused rather than finished: it can be picked up with another "continue". */
-const RESUMABLE_STOPS = ['step-limit', 'repeated-calls', 'browser-step-limit'];
+const RESUMABLE_STOPS = ['step-limit', 'repeated-calls', 'browser-step-limit', 'computer-step-limit'];
 
 function Answer({
   message,

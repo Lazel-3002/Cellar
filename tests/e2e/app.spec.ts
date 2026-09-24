@@ -269,6 +269,62 @@ test('the built-in browser opens a real page, and the model reads and clicks it'
   }
 });
 
+test('computer use: Settings shows what the model sees, and a model asks once, then looks with the bar on screen', async () => {
+  // Only screenshots here: nothing in this test moves the mouse or types.
+  await ipc('settings:update', { computerUse: true, computerHideWindow: false, computerPauseOnMouse: false });
+  try {
+    await win.evaluate(() => {
+      window.location.hash = '#/settings/general';
+    });
+    await win.getByTestId('computer-test').click();
+    await expect(win.getByAltText('What the model sees')).toBeVisible({ timeout: 60_000 });
+    await expect(win.getByText(/controls · \d+ windows ·/)).toBeVisible();
+    await win.getByText('Show the description the model reads').click();
+    await expect(win.getByText(/Screenshot: \d+×\d+ of a \d+×\d+ screen/)).toBeVisible();
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-computer-settings.png') });
+
+    await goHome();
+    await selectModel('mock-computer-vision');
+    await send('What is on my screen?');
+    const approval = win.getByTestId('approval-card');
+    await expect(approval).toBeVisible({ timeout: 20_000 });
+    await expect(approval).toContainText('Let Cellar use your computer');
+    await expect(approval).toContainText('First step: look at the screen');
+    await approval.getByRole('button', { name: 'Allow until done' }).click();
+
+    // The bar at the top of the screen is its own window, hidden from screen capture.
+    const pill = await app.waitForEvent('window', { predicate: (p) => p.url().includes('#/computer'), timeout: 20_000 });
+    await expect(pill.getByTestId('computer-pill')).toBeVisible({ timeout: 20_000 });
+
+    await expect(lastAssistant()).toContainText('I looked at the screen. Screenshot:', { timeout: 30_000 });
+    const step = win.getByTestId('tool-step').filter({ hasText: 'Looked at the screen' });
+    await step.getByRole('button').first().click();
+    await expect(step.getByAltText('The screen after this step')).toBeVisible();
+    await win.screenshot({ path: join(project, 'test-results', 'e2e-computer-step.png') });
+
+    // The vision model got the screenshot, and the bar goes away when the reply ends.
+    const request = mock.requests.filter((r) => r.model === 'mock-computer-vision' && r.tools?.length).at(-1);
+    expect(JSON.stringify(request?.messages)).toContain('image_url');
+    await expect.poll(() => app.windows().some((p) => p.url().includes('#/computer') && !p.isClosed()), { timeout: 10_000 }).toBe(false);
+    expect(await ipc<{ phase: string }>('computer:state')).toMatchObject({ phase: 'idle' });
+
+    // A step that deletes asks again, on the bar too (Cellar's window may be out of the way); Deny there.
+    await send('Now delete the selected file');
+    await expect(win.getByTestId('approval-card').last()).toContainText('Let Cellar use your computer', { timeout: 20_000 });
+    await win.getByTestId('approval-card').last().getByRole('button', { name: 'Allow until done' }).click();
+    const bar = await app.waitForEvent('window', { predicate: (p) => p.url().includes('#/computer'), timeout: 20_000 });
+    await expect(bar.getByTestId('computer-pill')).toContainText('Cellar wants to press shift+delete', { timeout: 20_000 });
+    await expect(bar.getByTestId('computer-pill')).toContainText('This deletes permanently');
+    await expect(bar.getByRole('button', { name: 'Allow until done' })).toHaveCount(0);
+    await bar.screenshot({ path: join(project, 'test-results', 'e2e-computer-bar.png') });
+    await bar.getByRole('button', { name: 'Deny' }).click();
+    await expect(lastAssistant()).toContainText('Understood. The user denied this action', { timeout: 20_000 });
+    await expect(win.getByTestId('tool-step').filter({ hasText: 'shift+delete' }).last()).toHaveAttribute('data-status', 'denied');
+  } finally {
+    await ipc('settings:update', { computerUse: false, computerHideWindow: true, computerPauseOnMouse: true });
+  }
+});
+
 test('cowork works through a task in a chosen folder, asking before it writes', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'cellar-cowork-'));
   try {

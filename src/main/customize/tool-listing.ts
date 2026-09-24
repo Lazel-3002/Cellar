@@ -46,6 +46,17 @@ const GROUPS: Record<string, string> = {
   browse_fill: 'Built-in browser',
   browse_scroll: 'Built-in browser',
   browse_tabs: 'Built-in browser',
+  computer_screenshot: 'Computer use',
+  computer_click: 'Computer use',
+  computer_type: 'Computer use',
+  computer_key: 'Computer use',
+  computer_scroll: 'Computer use',
+  computer_drag: 'Computer use',
+  computer_move: 'Computer use',
+  computer_open_app: 'Computer use',
+  computer_windows: 'Computer use',
+  computer_read: 'Computer use',
+  computer_hand_over: 'Computer use',
   call: 'Modules',
   create_reminder: 'Planning',
   skill: 'Skills',
@@ -73,6 +84,7 @@ function describe(tool: AgentTool): ToolInfo {
   const group = GROUPS[tool.name] ?? 'Other';
   const kind = group === 'Skills' ? 'skill' : group === 'Memory' || group === 'Past chats' ? 'memory' : 'built-in';
   if (tool.category === 'browser') return { name: tool.name, description: tool.description, group, kind, policy: tool.approval ? 'ask' : 'allow' };
+  if (tool.category === 'computer') return { name: tool.name, description: tool.description, group, kind, policy: tool.approval ? 'ask' : undefined };
   return { name: tool.name, description: tool.description, group, kind };
 }
 
@@ -128,6 +140,7 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
     readOnly: scope !== 'chat' && scope !== 'design' && scope !== 'math' && scope !== 'study' && permissionMode === 'plan',
     browser: scope !== 'math' && scope !== 'design' && scope !== 'study',
     reminders: scope !== 'math' && scope !== 'design' && scope !== 'study',
+    computer: scope !== 'math' && scope !== 'design' && scope !== 'study',
   });
   const tools = [...base, ...extras].map(describe);
   const connectorPolicies = new Map<string, string>();
@@ -135,6 +148,13 @@ export async function listTools(scope: ToolScope, conversationId?: string, model
   for (const tool of tools) if (tool.kind === 'connector') tool.policy = connectorPolicies.get(tool.name) === 'allow' ? 'allow' : 'ask';
   if (scope === 'chat' && !app.chatWebSearch) notes.push('Web search is off for chats. Turn it on from the tools menu in the composer.');
   if (incognito) notes.push('Incognito chats do not use memory or past chats.');
+  if (app.computerUse && scope !== 'math' && scope !== 'design' && scope !== 'study') {
+    notes.push(
+      vision || !modelRef
+        ? 'Computer use is on: the first step asks once for the task, and anything that sends, buys, deletes or publishes asks every time.'
+        : 'Computer use is on, but this model cannot see images: it works from the list of controls on screen and the keyboard. A vision model does much better.',
+    );
+  }
   if (scope !== 'chat' && permissionMode === 'plan') notes.push('Read-only mode: tools that change files, run commands, or are not marked read-only by their connector are hidden.');
   return { tools, notes };
 }

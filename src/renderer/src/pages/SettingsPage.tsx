@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, FolderOpen, Plus, RefreshCw, Search, Trash } from 'lucide-react';
 import { toast } from 'sonner';
+import type { ComputerTestResult } from '@shared/types/computer';
 import type { ProviderConfig, ProviderStatus } from '@shared/types/providers';
 import type { AppSettings } from '@shared/types/settings';
 import type { UsageRange, UsageStats } from '@shared/types/stats';
@@ -12,7 +13,8 @@ import { Usage } from '@/components/shell/UsagePanel';
 import { CellarMark } from '@/components/brand/Logo';
 import { ProviderStatusDot } from '@/components/models/bits';
 import { Button } from '@/components/ui/button';
-import { Field, Input, NumberInput, Segmented, Select, Switch, Textarea } from '@/components/ui/form';
+import { Field, Input, NumberInput, Segmented, Select, Slider, Switch, Textarea } from '@/components/ui/form';
+import { Markdown, type SmoothStreaming } from '@/components/chat/Markdown';
 import { Badge, Kbd, Progress, Spinner, Tip } from '@/components/ui/misc';
 import { invoke, onEvent } from '@/lib/ipc';
 import {
@@ -69,6 +71,77 @@ function Card({ title, description, children, actions }: { title?: string; descr
   );
 }
 
+const SMOOTH_PREVIEW = 'Words drift in out of a soft blur as the reply streams, so nothing **pops** onto the page. Drag the sliders and watch this line replay with the new feel.';
+
+/** Sliders for how streamed text fades in, with a live preview that replays on every change. */
+function SmoothStreamingControls({ s }: { s: AppSettings }) {
+  const update = useUpdateSettings();
+  const [v, setV] = useState<SmoothStreaming>({ fadeMs: s.smoothFadeMs, staggerMs: s.smoothStaggerMs, blurPx: s.smoothBlurPx, risePx: s.smoothRisePx, unit: s.smoothUnit, pace: s.smoothPace });
+  const [shown, setShown] = useState(0);
+  const [run, setRun] = useState(0);
+
+  // Save a moment after the last drag instead of on every pixel.
+  useEffect(() => {
+    const t = setTimeout(() => update.mutate({ smoothFadeMs: v.fadeMs, smoothStaggerMs: v.staggerMs, smoothBlurPx: v.blurPx, smoothRisePx: v.risePx, smoothUnit: v.unit, smoothPace: v.pace }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v]);
+
+  // Replay the preview like a model streaming a few characters at a time.
+  useEffect(() => {
+    setShown(0);
+    const start = setTimeout(() => {
+      const t = setInterval(() => setShown((n) => (n >= SMOOTH_PREVIEW.length ? (clearInterval(t), n) : n + 3)), 30);
+      timer = t;
+    }, 250);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    return () => {
+      clearTimeout(start);
+      if (timer) clearInterval(timer);
+    };
+  }, [v, run]);
+
+  const row = (label: string, value: number, min: number, max: number, step: number, unit: string, key: keyof SmoothStreaming) => (
+    <div className="flex items-center gap-3">
+      <span className="w-28 shrink-0 text-[13px] text-muted-foreground">{label}</span>
+      <Slider value={value} min={min} max={max} step={step} onChange={(n) => setV((o) => ({ ...o, [key]: n }))} />
+      <span className="w-14 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">
+        {value}
+        {unit}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4" data-testid="smooth-streaming-controls">
+      <div className="flex items-center gap-3">
+        <span className="w-28 shrink-0 text-[13px] text-muted-foreground">Pace</span>
+        <Slider value={v.pace} min={0} max={60} step={1} onChange={(n) => setV((o) => ({ ...o, pace: n }))} />
+        <span className="w-14 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">{v.pace ? `${v.pace} w/s` : 'Model'}</span>
+      </div>
+      {row('Fade in', v.fadeMs, 100, 2500, 50, 'ms', 'fadeMs')}
+      {row('Spacing', v.staggerMs, 0, 200, 5, 'ms', 'staggerMs')}
+      {row('Blur', v.blurPx, 0, 24, 1, 'px', 'blurPx')}
+      {row('Rise', v.risePx, 0, 20, 1, 'px', 'risePx')}
+      <div className="flex items-center gap-3">
+        <span className="w-28 shrink-0 text-[13px] text-muted-foreground">Reveal by</span>
+        <Segmented size="sm" value={v.unit} onChange={(unit) => setV((o) => ({ ...o, unit }))} options={[{ value: 'word', label: 'Word' }, { value: 'char', label: 'Letter' }]} />
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setV({ fadeMs: 900, staggerMs: 45, blurPx: 10, risePx: 6, unit: 'word', pace: 12 })}>
+            Reset
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setRun((n) => n + 1)}>
+            <RefreshCw className="size-3.5" /> Replay
+          </Button>
+        </div>
+      </div>
+      <div className="min-h-[4.5rem] rounded-md bg-background px-4 py-3" key={run + JSON.stringify(v)}>
+        <Markdown content={SMOOTH_PREVIEW.slice(0, shown)} streaming={shown < SMOOTH_PREVIEW.length} smooth={v} />
+      </div>
+    </div>
+  );
+}
+
 function General() {
   const { data: s } = useSettings();
   const update = useUpdateSettings();
@@ -101,9 +174,16 @@ function General() {
         <Field label="Name chats automatically" description="Ask the model for a short title after the first reply.">
           <Switch checked={s.autoTitle} onCheckedChange={(v) => update.mutate({ autoTitle: v })} />
         </Field>
+        <Field label="Follow-up suggestions" description="After a reply, ask the model for up to three questions you might ask next, shown under it. Costs one short extra generation.">
+          <Switch checked={s.followUps} onCheckedChange={(v) => update.mutate({ followUps: v })} />
+        </Field>
         <Field label="Show generation stats" description="Tokens per second, token counts and time to first token under each reply.">
           <Switch checked={s.showGenerationStats} onCheckedChange={(v) => update.mutate({ showGenerationStats: v })} />
         </Field>
+        <Field label="Smooth streaming" description="New words fade in softly as the reply streams, instead of popping onto the page.">
+          <Switch checked={s.smoothStreaming} onCheckedChange={(v) => update.mutate({ smoothStreaming: v })} />
+        </Field>
+        {s.smoothStreaming && <SmoothStreamingControls s={s} />}
       </Card>
       <Card title="Capabilities" description="What models are told they may do in chat, and how it's shown.">
         <Field label="Artifacts" description="Ask models to put web pages, SVGs, React components, diagrams and long documents in a side panel. Skipped automatically for models under 3B parameters.">
@@ -176,8 +256,124 @@ function General() {
           <Switch checked={s.selfScheduling} onCheckedChange={(v) => update.mutate({ selfScheduling: v })} />
         </Field>
       </Card>
+      <ComputerUseCard />
       <DesktopCard />
     </>
+  );
+}
+
+/** Computer use: the switch, how it looks and asks, and a look at the screen the way the model gets it. */
+function ComputerUseCard() {
+  const { data: s } = useSettings();
+  const update = useUpdateSettings();
+  const [blocked, setBlocked] = useState('');
+  const [test, setTest] = useState<ComputerTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [showText, setShowText] = useState(false);
+  const { data: displays = [] } = useQuery({ queryKey: ['computer', 'displays'], queryFn: () => invoke('computer:displays'), enabled: !!s?.computerUse, staleTime: 60_000 });
+  useEffect(() => setBlocked((s?.computerBlockedApps ?? []).join(', ')), [s?.computerBlockedApps]);
+  if (!s) return null;
+  const tryIt = async () => {
+    setTesting(true);
+    try {
+      setTest(await invoke('computer:test'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTesting(false);
+    }
+  };
+  return (
+    <Card
+      title="Computer use"
+      description="Let models see your screen and use the mouse and keyboard to do things in your apps. Works best with a vision model that calls tools, such as Qwen 3.5 or Gemma 4."
+      actions={<Switch checked={s.computerUse} onCheckedChange={(v) => update.mutate({ computerUse: v })} />}
+    >
+      {s.computerUse ? (
+        <>
+          <div className="py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+            The first step of each task asks you once. After that, anything that sends, buys, deletes, publishes or confirms still asks every time, and Cellar never types into password fields: it hands you the mouse for sign-ins. While it works, a bar at the top of the screen shows what it is doing. Move the mouse to pause it; press Stop there or <Kbd>Ctrl+Alt+Esc</Kbd> to end it.
+          </div>
+          <Field label="Number the controls on screenshots" description="Cellar finds buttons, fields and links with Windows UI Automation and draws a numbered box on each, so the model can say “click 12” instead of guessing coordinates. Small models depend on this.">
+            <Switch checked={s.computerMarks} onCheckedChange={(v) => update.mutate({ computerMarks: v })} />
+          </Field>
+          <Field label="Screenshot size" description="The longest side of the screenshot the model sees. Larger reads small text better and uses more of the context window (about 900 tokens at 1280).">
+            <Segmented
+              value={String(s.computerScreenshotWidth)}
+              onChange={(v) => update.mutate({ computerScreenshotWidth: Number(v) })}
+              options={[
+                { value: '1024', label: '1024' },
+                { value: '1280', label: '1280' },
+                { value: '1600', label: '1600' },
+              ]}
+            />
+          </Field>
+          <Field label="How the model points" description="When there is no numbered control to use. Qwen3-VL and the Qwen 3.5/3.6 models built on it point on a 0–1000 grid; most others point in the screenshot's pixels. Auto picks by model.">
+            <Segmented
+              value={s.computerCoordinates}
+              onChange={(computerCoordinates) => update.mutate({ computerCoordinates })}
+              options={[
+                { value: 'auto', label: 'Auto' },
+                { value: 'pixels', label: 'Pixels' },
+                { value: 'normalized', label: '0–1000' },
+              ]}
+            />
+          </Field>
+          {displays.length > 1 && (
+            <Field label="Screen" description="The display the model sees and works on.">
+              <Select
+                value={String(Math.min(s.computerDisplay, displays.length - 1))}
+                onChange={(v) => update.mutate({ computerDisplay: Number(v) })}
+                options={displays.map((d) => ({ value: String(d.index), label: `Display ${d.index + 1}${d.primary ? ' (main)' : ''} · ${d.bounds.w}×${d.bounds.h}` }))}
+              />
+            </Field>
+          )}
+          <Field label="Move Cellar out of the way" description="Minimize Cellar's window while the model works, and bring it back when the reply is done.">
+            <Switch checked={s.computerHideWindow} onCheckedChange={(v) => update.mutate({ computerHideWindow: v })} />
+          </Field>
+          <Field label="Pause when I move the mouse" description="Taking the mouse pauses the model until you press Resume on the bar.">
+            <Switch checked={s.computerPauseOnMouse} onCheckedChange={(v) => update.mutate({ computerPauseOnMouse: v })} />
+          </Field>
+          <Field label="Computer-use steps" description="Actions per turn before Cellar pauses the model and asks you to say “continue”.">
+            <NumberInput value={s.computerMaxSteps} min={5} max={300} onChange={(v) => v && update.mutate({ computerMaxSteps: v })} />
+          </Field>
+          <Field stacked label="Apps Cellar never sees or touches" description="App or process names, or words from their window titles, separated by commas. Password managers are on the list to begin with.">
+            <Input
+              value={blocked}
+              onChange={(e) => setBlocked(e.target.value)}
+              onBlur={() => {
+                const list = blocked.split(',').map((a) => a.trim()).filter(Boolean);
+                if (list.join('\n') !== s.computerBlockedApps.join('\n')) update.mutate({ computerBlockedApps: list });
+              }}
+              placeholder="KeePass, 1Password, Bitwarden"
+            />
+          </Field>
+          <Field stacked label="What the model sees" description="Takes one screenshot now, with the numbered controls, exactly as a vision model would get it. Nothing is clicked.">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" disabled={testing} onClick={() => void tryIt()} data-testid="computer-test">
+                  {testing ? <Spinner className="size-3.5" /> : null} Take a look
+                </Button>
+                {test && (
+                  <span className="text-[12px] text-muted-foreground tabular-nums">
+                    {test.imageWidth}×{test.imageHeight} · {test.elements} controls · {test.windows} windows · {test.ms} ms
+                  </span>
+                )}
+              </div>
+              {test?.imageDataUrl && <img src={test.imageDataUrl} alt="What the model sees" className="w-full rounded-lg border border-divider" />}
+              {test && (
+                <button className="self-start text-[12.5px] text-brand hover:underline" onClick={() => setShowText((v) => !v)}>
+                  {showText ? 'Hide the description' : 'Show the description the model reads'}
+                </button>
+              )}
+              {test && showText && <pre className="selectable max-h-72 overflow-auto rounded-lg border border-divider bg-code px-3 py-2 font-mono text-[11.5px] whitespace-pre-wrap text-fg-2">{test.text}</pre>}
+            </div>
+          </Field>
+        </>
+      ) : (
+        <div className="py-3 text-[12.5px] leading-relaxed text-muted-foreground">Off. Turn it on here or with “Use the computer” in the composer's tools menu.</div>
+      )}
+    </Card>
   );
 }
 

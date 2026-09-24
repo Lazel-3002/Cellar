@@ -1,11 +1,13 @@
 import type { PermissionMode } from '@shared/types/agent';
 import type { CodeMode } from '@shared/types/code';
+import { normalizeComputerArgs } from '@shared/computer';
 import type { AppSettings } from '@shared/types/settings';
 import { connectors } from '../../connectors/manager';
 import { calculateTool } from '../../math/tools';
 import { BROWSER_TOOLS } from './browser';
 import { callTool, normalizeCallArgs } from './call';
 import { runCommand } from './command';
+import { COMPUTER_READ_ONLY, COMPUTER_TOOLS } from './computer';
 import { connectorTools, diagnosticsTool, forgetTool, readChatTool, readSkillFileTool, rememberTool, searchChatsTool, skillTool } from './extra';
 import { editFileTool, globTool, grepTool, listDir, readFileTool, writeFileTool } from './files';
 import { mcpGetPromptTool, mcpPromptsTool, mcpReadResourceTool, mcpResourcesTool } from './mcp';
@@ -33,7 +35,7 @@ export const ALL_TOOLS: AgentTool[] = [
   calculateTool,
 ] as AgentTool[];
 
-/** Tools that do not depend on the working folder: skills, memory, past chats, the built-in browser, `call` and reminders. */
+/** Tools that do not depend on the working folder: skills, memory, past chats, the built-in browser, computer use, `call` and reminders. */
 export const ASSISTANT_TOOLS: AgentTool[] = [
   skillTool,
   readSkillFileTool,
@@ -42,6 +44,7 @@ export const ASSISTANT_TOOLS: AgentTool[] = [
   searchChatsTool,
   readChatTool,
   ...BROWSER_TOOLS,
+  ...COMPUTER_TOOLS,
   callTool,
   createReminderTool,
 ] as AgentTool[];
@@ -52,7 +55,7 @@ function hasChatReference(settings: Pick<AppSettings, 'chatReferenceEnabled' | '
 }
 
 export interface ExtraToolOptions {
-  settings: Pick<AppSettings, 'memoryEnabled' | 'chatReferenceEnabled' | 'searchPastChats' | 'browserEnabled' | 'selfScheduling'>;
+  settings: Pick<AppSettings, 'memoryEnabled' | 'chatReferenceEnabled' | 'searchPastChats' | 'browserEnabled' | 'selfScheduling' | 'computerUse'>;
   /** At least one skill is enabled. */
   skills: boolean;
   incognito: boolean;
@@ -62,6 +65,8 @@ export interface ExtraToolOptions {
   browser?: boolean;
   /** Offer `create_reminder` here. Incognito chats never get it: they have nowhere to fire. */
   reminders?: boolean;
+  /** Offer computer use here (chats, Cowork tasks and Code sessions; not Math, Design or Study). */
+  computer?: boolean;
 }
 
 /** Skills, memory, past-chat search, the built-in browser, reminders and connector tools, as the settings allow. */
@@ -70,6 +75,9 @@ export async function extraTools(options: ExtraToolOptions): Promise<AgentTool[]
   if (options.skills) tools.push(skillTool as AgentTool, readSkillFileTool as AgentTool);
   if (options.browser && options.settings.browserEnabled) {
     tools.push(...(BROWSER_TOOLS.filter((t) => !options.readOnly || (t.name !== 'browse_click' && t.name !== 'browse_fill')) as AgentTool[]));
+  }
+  if (options.computer && options.settings.computerUse && process.platform === 'win32') {
+    tools.push(...COMPUTER_TOOLS.filter((t) => !options.readOnly || COMPUTER_READ_ONLY.has(t.name)));
   }
   if (options.reminders && options.settings.selfScheduling && !options.incognito) tools.push(createReminderTool as AgentTool);
   if (options.settings.memoryEnabled && !options.incognito) tools.push(rememberTool as AgentTool, forgetTool as AgentTool);
@@ -149,6 +157,41 @@ const ALIASES: Record<string, string> = {
   remove_memory: 'forget',
   conversation_search: 'search_chats',
   search_conversations: 'search_chats',
+  screenshot: 'computer_screenshot',
+  take_screenshot: 'computer_screenshot',
+  look_at_screen: 'computer_screenshot',
+  see_screen: 'computer_screenshot',
+  click: 'computer_click',
+  left_click: 'computer_click',
+  mouse_click: 'computer_click',
+  type: 'computer_type',
+  type_text: 'computer_type',
+  input_text: 'computer_type',
+  key: 'computer_key',
+  press_key: 'computer_key',
+  key_press: 'computer_key',
+  keypress: 'computer_key',
+  hotkey: 'computer_key',
+  press: 'computer_key',
+  scroll: 'computer_scroll',
+  drag: 'computer_drag',
+  left_click_drag: 'computer_drag',
+  hover: 'computer_move',
+  mouse_move: 'computer_move',
+  move_mouse: 'computer_move',
+  open_app: 'computer_open_app',
+  launch_app: 'computer_open_app',
+  open_application: 'computer_open_app',
+  launch: 'computer_open_app',
+  start_app: 'computer_open_app',
+  read_screen: 'computer_read',
+  get_screen_text: 'computer_read',
+  switch_window: 'computer_windows',
+  focus_window: 'computer_windows',
+  list_windows: 'computer_windows',
+  hand_over: 'computer_hand_over',
+  take_over: 'computer_hand_over',
+  ask_user_to_take_over: 'computer_hand_over',
 };
 
 const snake = (name: string) =>
@@ -170,6 +213,7 @@ export function normalizeArgs(tool: AgentTool, args: Record<string, unknown>): R
   if (tool.category === 'connector') return args;
   if (tool.name === 'todo_write') return normalizeTodoArgs(args);
   if (tool.name === 'call') return normalizeCallArgs(args);
+  if (tool.category === 'computer') return normalizeComputerArgs(tool.name, args);
   const out = { ...args };
   if (typeof out.path !== 'string') {
     const alias = out.file_path ?? out.filepath ?? out.filename ?? out.file ?? out.folder ?? out.directory ?? out.dir;

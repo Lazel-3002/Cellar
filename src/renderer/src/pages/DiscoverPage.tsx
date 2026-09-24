@@ -102,7 +102,12 @@ function RepoDetail({ repoId }: { repoId: string }) {
 
   const fullFits = (fits.data ?? []).filter((f) => f.fit === 'full');
   const bestFull = [...fullFits].sort((a, b) => (b.estimate?.weightsBytes ?? 0) - (a.estimate?.weightsBytes ?? 0))[0];
-  const recommended = bestFull?.label ?? (fits.data ?? []).filter((f) => f.fit === 'partial').sort((a, b) => (a.estimate?.cpuBytes ?? 0) - (b.estimate?.cpuBytes ?? 0))[0]?.label;
+  const partialFits = (fits.data ?? []).filter((f) => f.fit === 'partial');
+  const byCpuBytes = [...partialFits].sort((a, b) => (a.estimate?.cpuBytes ?? 0) - (b.estimate?.cpuBytes ?? 0));
+  // MoE speed follows the active parameters, not the file size, so the largest quant that leaves RAM headroom beats the smallest one.
+  const isMoe = partialFits.some((f) => (f.summary?.expertCount ?? 0) > 1);
+  const bestMoePartial = isMoe ? byCpuBytes.filter((f) => f.estimate && f.estimate.cpuBytes <= f.estimate.ramBudgetBytes * 0.75).pop() : undefined;
+  const recommended = bestFull?.label ?? (bestMoePartial ?? byCpuBytes[0])?.label;
   const tags = repo.tags.filter((t) => !t.startsWith('base_model:') && !t.startsWith('region:') && !['gguf', 'endpoints_compatible'].includes(t)).slice(0, 8);
 
   return (

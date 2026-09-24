@@ -53,6 +53,11 @@ A Claude Desktop-style app for **local models**. Chat with models running on you
   - Side panel: Changes (Monaco diff, discard, commit, merge into the base branch), Files (tree + Monaco editor), Preview (localhost dev servers and HTML files) and Terminal (PowerShell via node-pty).
   - Transcript views (normal, verbose, summary), live command output, a side chat that stays out of the session, and `CELLAR.md` project memory (`/init`, `/memory`).
   - Diagnostics: syntax problems in a file the agent just changed come back with the tool result (Python, JavaScript, TypeScript, JSON, PowerShell), and `get_diagnostics` runs tsc, pyright/ruff, `cargo check` or `go vet`.
+- **Computer use** (Windows, off by default): the model sees your screen and works the mouse and keyboard in your own apps, in Chat, Cowork and Code.
+  - Built for small local models: Cellar finds the buttons, fields and links with Windows UI Automation and numbers them on each screenshot, so the model says "click 12" instead of guessing pixels; models without vision work from the numbered list, the text on screen and the keyboard.
+  - Every step comes back with a fresh look at the screen. Tools: look (and zoom), click, type, keys, scroll, drag, hover, open an app by name (Turkish and other localized Start-menu names too), windows, read the text in a window, and hand the mouse to you.
+  - Safety: the first step asks once for the task; anything that sends, buys, deletes, publishes or closes a window asks every time. It never types into a password field (sign-ins are handed to you), never touches Cellar's own windows or apps you block (password managers by default), and a real mouse movement pauses it. A glow around the screen and a bar at the top show what it is doing, with Stop (or Ctrl+Alt+Esc).
+  - Settings → Computer use has a "Take a look" button that shows exactly what the model would see.
 - **Incognito chats** live only in memory and disappear when you leave them.
 - **Projects**: per-project instructions and knowledge files. Files are included whole when they fit, otherwise the best-matching excerpts: SQLite FTS5, fused with embedding search when an embedding model is set (llama.cpp, Ollama or OpenAI-compatible).
 - **Artifacts**: HTML, SVG and React output opens in a sandboxed side panel served from an offline `cellar-artifact://` protocol (bundled React, lucide-react, Tailwind). Artifacts keep versions and are collected on the Artifacts page.
@@ -120,6 +125,7 @@ On first launch:
 | `node scripts/design-smoke.mjs <provider> <model or name=…> ["<prompt>"]` | Real-model Design session: builds a design, edits the selected title in a follow-up, exports PDF, PowerPoint and PNG, and takes screenshots (`SMOKE_FORMAT`, `SMOKE_THEME`, `SMOKE_FOLLOWUP`) |
 | `node scripts/math-smoke.mjs <provider> <model or name=…> ["<prompt>"]` | Real-model Math session: builds a board, checks the derivations against Cellar's own solvers, answers a test question, exports a PDF and a study sheet, and takes screenshots (`SMOKE_FOLLOWUP`) |
 | `node scripts/study-smoke.mjs [provider] [model]` | Real-model Study session on a generated Turkish science chapter with the student's answers already on it: checks them in Tutor mode, answers from the whole book, fills in a blank in Solve mode, exports the PDF with the notes, and prints every annotation it placed |
+| `node scripts/computer-smoke.mjs [provider] [model] ["<prompt>"]` | Real-model computer use in a throwaway profile: by default opens Calculator, works out 1234 × 5678 and reads the result. It drives the real mouse and keyboard, so keep your hands off; `SMOKE_CLOSE` lists executables to close afterwards (default `CalculatorApp.exe`) |
 | `node scripts/verify-downloads.mjs [repo]` | Hub download, pause/resume, checksum, rescan and Ollama pull |
 | `node scripts/ipc-run.mjs '[["runtimes:list", true]]'` | Call backend IPC handlers directly |
 | `node scripts/verify-packaged.mjs` | Smoke-test the packaged build |

@@ -15,6 +15,8 @@ import { problemsAfterChange } from '../code/diagnostics';
 import { buildCodePrompt } from '../code/prompt';
 import { loadProjectMemory, loadUserMemory } from '../code/session';
 import { snapshotBeforeChange } from '../code/snapshots';
+import { computer } from '../computer/controller';
+import { computerPrompt } from '../computer/prompt';
 import { assistantContext } from '../customize/context';
 import { buildDesignPrompt } from '../design/prompt';
 import { getDesign } from '../design/store';
@@ -427,6 +429,11 @@ export class TaskRunner {
       maxResultChars: Math.round(Math.min(60_000, Math.max(3_000, contextLength * 0.3 * 3.2))),
       knownUrls,
       conversationId,
+      messageId: assistant.id,
+      chat: run.chat,
+      vision: !!entry.capabilities.vision,
+      modelId: entry.ref.modelId,
+      stopRun: () => run.controller.abort(new Error('Stopped by user')),
       incognito: store.incognito,
       shell: code ? powershell.exe : undefined,
       // Cowork tasks and Code sessions outside git keep the original so an edit can be undone;
@@ -459,6 +466,7 @@ export class TaskRunner {
     let round = 0;
     let nudged = false;
     let browserSteps = 0;
+    let computerSteps = 0;
     for (;;) {
       if (signal.aborted) throw signal.reason;
       if (task.steps >= task.maxSteps) {
@@ -470,6 +478,11 @@ export class TaskRunner {
       if (browserSteps >= app.browserMaxSteps) {
         parts.push({ type: 'text', round, text: `*Paused after ${app.browserMaxSteps} built-in-browser actions. Reply "continue" to keep going, or raise the limit in the tools menu.*` });
         stats.stopReason = 'browser-step-limit';
+        return;
+      }
+      if (computerSteps >= app.computerMaxSteps) {
+        parts.push({ type: 'text', round, text: `*Paused after ${app.computerMaxSteps} computer-use steps. Reply "continue" to keep going, or raise the limit in Settings → Capabilities.*` });
+        stats.stopReason = 'computer-step-limit';
         return;
       }
       // Mode changes during a run apply from the next step.
@@ -491,8 +504,12 @@ export class TaskRunner {
         readOnly: task.permissionMode === 'plan' && !run.chat,
         browser: !task.math && !task.design && !task.study,
         reminders: !task.math && !task.design && !task.study,
+        computer: !task.math && !task.design && !task.study,
       });
       const tools = [...baseTools, ...extras];
+      const sections = tools.some((t) => t.category === 'computer')
+        ? [...customize.sections, computerPrompt({ vision: !!entry.capabilities.vision, modelId: entry.ref.modelId, readOnly: !tools.some((t) => t.name === 'computer_click') })]
+        : customize.sections;
       const schemas = tools.map(toolSchema);
       const customSystemPrompt = conversation.settings.inference?.systemPrompt ?? preset.inference.systemPrompt;
       const textProtocol = protocol === 'text' ? textProtocolInstructions(schemas) : undefined;
@@ -509,7 +526,7 @@ export class TaskRunner {
             inlineVisualizations: app.inlineVisualizations && supportsArtifactInstructions(entry),
             inlineImages: app.inlineImages,
             toolNames: tools.map((t) => t.name),
-            extraSections: customize.sections,
+            extraSections: sections,
             textProtocol,
           })
         : task.study && studyPick
@@ -526,7 +543,7 @@ export class TaskRunner {
               toolNames: tools.map((t) => t.name),
               customSystemPrompt,
               textProtocol,
-              extraSections: customize.sections,
+              extraSections: sections,
             });
           })()
         : task.math
@@ -539,7 +556,7 @@ export class TaskRunner {
             toolNames: tools.map((t) => t.name),
             customSystemPrompt,
             textProtocol,
-            extraSections: customize.sections,
+            extraSections: sections,
             outlineChars: Math.round(Math.min(16_000, Math.max(2_000, contextLength * 0.2 * 3.2))),
           })
         : task.design
@@ -553,7 +570,7 @@ export class TaskRunner {
             toolNames: tools.map((t) => t.name),
             customSystemPrompt,
             textProtocol,
-            extraSections: customize.sections,
+            extraSections: sections,
             outlineChars: Math.round(Math.min(16_000, Math.max(2_000, contextLength * 0.2 * 3.2))),
           })
         : task.code
@@ -571,7 +588,7 @@ export class TaskRunner {
             userMemory,
             customSystemPrompt,
             textProtocol,
-            extraSections: customize.sections,
+            extraSections: sections,
           })
         : buildAgentPrompt({
             modelName: entry.displayName,
@@ -586,7 +603,7 @@ export class TaskRunner {
             projectKnowledge: knowledge,
             customSystemPrompt,
             textProtocol,
-            extraSections: customize.sections,
+            extraSections: sections,
           });
       const toolTokens = protocol === 'native' ? estimateTokens(JSON.stringify(schemas)) : 0;
       const history = await this.fitHistory(run, input, { system, protocol, budget: budget - toolTokens, contextLength, provider, load: preset.load, round });
@@ -631,6 +648,7 @@ export class TaskRunner {
           return;
         }
         if (call.category === 'browser') browserSteps++;
+        if (call.category === 'computer') computerSteps++;
         this.persist(run);
         run.emit();
       }
@@ -654,17 +672,19 @@ export class TaskRunner {
     const systemTokens = estimateTokens(o.system) + 6;
     const fits = (messages: ProviderMessage[]) => systemTokens + historyTokens(messages) <= o.budget;
 
-    let messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: false });
+    // Computer use: a 16K window holds two whole looks at the screen besides the instructions; 32K holds three.
+    const freshScreens = o.contextLength >= 24_000 ? 3 : 2;
+    let messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: false, freshScreens });
     if (fits(messages)) return messages;
-    messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: true });
+    messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: true, freshScreens });
     if (fits(messages)) return messages;
     if (messages.length > 2) {
       await this.compact(run, input, o);
-      messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: true });
+      messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: true, freshScreens });
       if (fits(messages)) return messages;
     }
     for (const limit of [4000, 1500, 600]) {
-      messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: true, hardResultLimit: limit });
+      messages = await buildTaskHistory(this.branchWithLive(run, input), { protocol: o.protocol, vision, trimOldResults: true, hardResultLimit: limit, freshScreens: 1 });
       if (fits(messages)) return messages;
     }
     const context = o.contextLength.toLocaleString('en-US');
@@ -872,6 +892,10 @@ export class TaskRunner {
         return fail(`${known.name} is not available in plan mode. Investigate with the read-only tools and finish with a plan.`);
       }
       if (known?.category === 'browser') return fail('The built-in browser is turned off. The user can switch it on from the tools menu in the composer, or Settings → Capabilities.');
+      if (known?.category === 'computer') {
+        if (settings.get().computerUse && task.permissionMode === 'plan' && !run.chat) return fail(`${known.name} is not available in plan mode: you may look at the screen and read it, not act on it.`);
+        return fail('Computer use is turned off. The user can switch it on from the tools menu in the composer ("Use the computer"), or Settings → Capabilities.');
+      }
       if (findTool(ALL_TOOLS, call.name)?.category === 'web') return fail(run.chat ? 'Web search is turned off for chats (use the tools menu in the composer).' : 'Web access is turned off in Settings → Cowork.');
       if (known?.category === 'memory') return fail(run.store.incognito ? 'Nothing is remembered in incognito chats.' : 'Memory is turned off in Customize → Memory.');
       return fail(`There is no tool named "${call.name}". Available tools: ${tools.map((t) => t.name).join(', ')}.`);
@@ -900,6 +924,7 @@ export class TaskRunner {
         !!request &&
         (tool.category === 'web' ||
           tool.category === 'browser' ||
+          tool.category === 'computer' ||
           tool.category === 'connector' ||
           (tool.category === 'edit' && task.permissionMode !== 'auto-edits') ||
           (tool.category === 'command' && !task.allowCommands));
@@ -933,6 +958,7 @@ export class TaskRunner {
             if (host && !task.allowedDomains.includes(host)) task.allowedDomains = [...task.allowedDomains, host];
           }
           if (tool.category === 'connector') await tool.onAllowAll?.();
+          if (tool.category === 'computer' && request.kind === 'computer') task.computerAllowed = true;
         }
       }
       call.status = 'running';
@@ -956,6 +982,8 @@ export class TaskRunner {
       call.finishedAt = Date.now();
       // After a change, reading or listing again is legitimate (for example to check the edit).
       if (tool.category === 'edit' || tool.category === 'command' || tool.category === 'design' || tool.category === 'math' || tool.category === 'study') counts.clear();
+      // Pressing Page Down or scrolling again is progress, not a loop; looking again and again is.
+      if (tool.category === 'computer' && tool.name !== 'computer_screenshot') counts.clear();
     } catch (err) {
       if (signal.aborted) {
         call.status = 'cancelled';
@@ -978,6 +1006,8 @@ export class TaskRunner {
     const conversation = store.getConversation(conversationId);
     const title = conversation?.title || agentNoun(conversation?.kind).fallback;
     bus.emit('tasks:notify', { conversationId, conversationKind: conversation?.kind ?? 'task', kind: 'approval', title: `${title} needs your approval`, body: call.approval?.title ?? call.name });
+    // While the model is using the computer, Cellar's window is out of the way: ask on the on-screen bar too.
+    if (call.approval) computer.approvalWaiting(run.messageId, call.id, call.approval);
     return new Promise((resolve, reject) => {
       const onAbort = () => {
         run.approvals.delete(call.id);
@@ -987,6 +1017,7 @@ export class TaskRunner {
       signal.addEventListener('abort', onAbort, { once: true });
       run.approvals.set(call.id, (decision) => {
         signal.removeEventListener('abort', onAbort);
+        computer.approvalDone(run.messageId);
         task.status = 'running';
         this.persist(run);
         bus.emit('chat:changed', { conversationId });
@@ -998,6 +1029,7 @@ export class TaskRunner {
   private finish(run: LiveRun, input: TaskRunInput, status: 'complete' | 'stopped' | 'error', stats: GenerationStats, startedAt: number, firstToken?: number): void {
     const { store, conversationId, assistant } = input;
     this.runs.delete(assistant.id);
+    computer.end(assistant.id);
     for (const part of run.parts) {
       if (part.type === 'tool' && (part.status === 'streaming' || part.status === 'running' || part.status === 'awaiting-approval')) {
         part.status = 'cancelled';
@@ -1010,7 +1042,7 @@ export class TaskRunner {
     if (final.ttftMs === undefined && firstToken) final.ttftMs = firstToken - startedAt;
     if (!final.tokensPerSecond && final.completionTokens && firstToken && end > firstToken) final.tokensPerSecond = final.completionTokens / ((end - firstToken) / 1000);
     if (status === 'stopped') final.stopReason = 'stopped';
-    const resumableStop = final.stopReason === 'step-limit' || final.stopReason === 'repeated-calls' || final.stopReason === 'browser-step-limit';
+    const resumableStop = final.stopReason === 'step-limit' || final.stopReason === 'repeated-calls' || final.stopReason === 'browser-step-limit' || final.stopReason === 'computer-step-limit';
     run.task.status = status === 'error' ? 'error' : status === 'stopped' || resumableStop ? 'stopped' : 'done';
 
     store.updateMessage(assistant.id, {

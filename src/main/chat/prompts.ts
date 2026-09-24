@@ -125,3 +125,25 @@ export function fallbackTitle(text: string): string {
   const title = words.length > 60 ? `${words.slice(0, 57)}…` : words;
   return title ? title.charAt(0).toUpperCase() + title.slice(1) : 'New chat';
 }
+
+/** Pull up to three questions out of a follow-up reply: a JSON array, or one question per line as a fallback. */
+export function parseFollowUps(raw: string): string[] {
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  let items: unknown[] = [];
+  const match = text.match(/\[[\s\S]*\]/);
+  if (match) {
+    try {
+      const parsed: unknown = JSON.parse(match[0]);
+      if (Array.isArray(parsed)) items = parsed;
+    } catch {
+      // fall through to lines
+    }
+  }
+  if (!items.length) items = text.split('\n').map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, ''));
+  const seen = new Set<string>();
+  return items
+    .filter((item): item is string => typeof item === 'string')
+    .map((q) => q.trim().replace(/^["'`]+|["'`,]+$/g, '').trim())
+    .filter((q) => q.length > 3 && q.length <= 160 && !seen.has(q.toLowerCase()) && seen.add(q.toLowerCase()))
+    .slice(0, 3);
+}

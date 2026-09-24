@@ -16,7 +16,22 @@ export interface AppSettings {
   chatFont: ChatFont;
   sendWithEnter: boolean;
   showGenerationStats: boolean;
+  /** Reveal streamed replies at a steady pace instead of in token bursts. */
+  smoothStreaming: boolean;
+  /** How long each word (or letter) takes to fade in, in ms. */
+  smoothFadeMs: number;
+  /** Delay between one word starting and the next, in ms. */
+  smoothStaggerMs: number;
+  /** Blur a word starts from, in px (0 = plain fade). */
+  smoothBlurPx: number;
+  /** How far a word rises into place, in px. */
+  smoothRisePx: number;
+  smoothUnit: 'word' | 'char';
+  /** Words shown per second while streaming; 0 = as fast as the model sends them. */
+  smoothPace: number;
   autoTitle: boolean;
+  /** After a chat reply, ask the model for up to three short follow-up questions shown as chips. */
+  followUps: boolean;
   /** Ask models to put substantial HTML/SVG/React/diagram output into artifacts. */
   artifacts: boolean;
   /** Let models render a self-contained HTML chart/diagram/widget inline in the chat. */
@@ -116,6 +131,24 @@ export interface AppSettings {
   selfScheduling: boolean;
   /** Pause a run when the model repeats one identical tool call 4 times in a row. Off lets it keep retrying unattended. */
   pauseOnRepeatedCalls: boolean;
+  /** Computer use: let models see the screen and use the mouse and keyboard (Windows). Off by default. */
+  computerUse: boolean;
+  /** Computer-use steps per turn before Cellar pauses the agent. */
+  computerMaxSteps: number;
+  /** Draw numbered boxes on the controls in each screenshot (the model can click by number). */
+  computerMarks: boolean;
+  /** How the model gives x/y: auto picks the 0–1000 grid for Qwen3-VL-family models, pixels otherwise. */
+  computerCoordinates: 'auto' | 'pixels' | 'normalized';
+  /** Longest side of the screenshot the model sees, in pixels (bigger reads better, costs more context). */
+  computerScreenshotWidth: number;
+  /** Minimize Cellar's window while the model uses the computer (restored when the turn ends). */
+  computerHideWindow: boolean;
+  /** Moving the mouse yourself pauses the model until you press Resume. */
+  computerPauseOnMouse: boolean;
+  /** Apps (process or window-title words) Cellar never looks at or touches. */
+  computerBlockedApps: string[];
+  /** Which display the model sees and uses (index in Windows' list; 0 is usually the main one). */
+  computerDisplay: number;
 }
 
 export type TerminalShell = 'auto' | 'pwsh' | 'powershell' | 'cmd';

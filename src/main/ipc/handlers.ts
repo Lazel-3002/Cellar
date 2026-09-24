@@ -6,6 +6,7 @@ import type { AppInfo } from '@shared/ipc-contract';
 import { Workspace } from '../agent/workspace';
 import { registerBrowserHandlers } from '../browser/ipc';
 import { registerChangesHandlers } from '../code/changes';
+import { registerComputerHandlers } from '../computer/ipc';
 import { registerCodeHandlers } from '../code/ipc';
 import { registerPreviewHandlers } from '../code/preview';
 import { registerSideChatHandlers } from '../code/side-chat';
@@ -365,6 +366,7 @@ export function registerIpcHandlers(): void {
   });
 
   registerBrowserHandlers();
+  registerComputerHandlers();
   registerCodeHandlers();
   registerChangesHandlers();
   registerTerminalHandlers();

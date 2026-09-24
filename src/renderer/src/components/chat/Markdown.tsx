@@ -1,4 +1,6 @@
-import { memo, useMemo, type AnchorHTMLAttributes, type ComponentType, type ReactNode } from 'react';
+import { memo, useMemo, type AnchorHTMLAttributes, type CSSProperties, type ComponentType, type ReactNode } from 'react';
+import { usePacedText } from '@/lib/usePacedText';
+import { useSettings } from '@/lib/queries';
 import { createCodePlugin } from '@streamdown/code';
 import { createMathPlugin } from '@streamdown/math';
 import { createMermaidPlugin } from '@streamdown/mermaid';
@@ -58,12 +60,37 @@ export function withInlineImages(markdown: string, streaming: boolean): string {
 interface MarkdownProps {
   content: string;
   streaming?: boolean;
+  /** Fade each streamed word in instead of popping it onto the page. */
+  smooth?: SmoothStreaming | null;
   conversationId?: string;
   className?: string;
   artifacts?: boolean;
 }
 
-export const Markdown = memo(function Markdown({ content, streaming, conversationId, className, artifacts = true }: MarkdownProps) {
+export interface SmoothStreaming {
+  fadeMs: number;
+  staggerMs: number;
+  blurPx: number;
+  risePx: number;
+  unit: 'word' | 'char';
+  /** Words let out per second; 0 shows them as fast as the model sends them. */
+  pace: number;
+}
+
+/** The Smooth streaming settings, or null when it's off. */
+export function useSmoothStreaming(): SmoothStreaming | null {
+  const { data: s } = useSettings();
+  return useMemo(() => {
+    if (!(s?.smoothStreaming ?? true)) return null;
+    return { fadeMs: s?.smoothFadeMs ?? 900, staggerMs: s?.smoothStaggerMs ?? 45, blurPx: s?.smoothBlurPx ?? 10, risePx: s?.smoothRisePx ?? 6, unit: s?.smoothUnit ?? 'word', pace: s?.smoothPace ?? 12 };
+  }, [s?.smoothStreaming, s?.smoothFadeMs, s?.smoothStaggerMs, s?.smoothBlurPx, s?.smoothRisePx, s?.smoothUnit, s?.smoothPace]);
+}
+
+
+export const Markdown = memo(function Markdown({ content: rawContent, streaming: rawStreaming, smooth, conversationId, className, artifacts = true }: MarkdownProps) {
+  const paced = usePacedText(rawContent, !!rawStreaming, smooth?.pace);
+  const content = paced.text;
+  const streaming = rawStreaming || paced.revealing;
   const pageLinks = usePageLinks();
   const source = useMemo(() => {
     const withPages = pageLinks ? withPageLinks(content, pageLinks.pageCount) : content;
@@ -109,11 +136,21 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
     return { 'artifact-card': Card, 'inline-viz': Viz, 'inline-image': Image, 'page-link': PageLink, a: Anchor } as Components;
   }, [conversationId, pageLinks]);
 
-  return (
+  const animated = useMemo(
+    () =>
+      smooth
+        ? { animation: 'cellarSmooth', duration: smooth.fadeMs, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', sep: smooth.unit, stagger: smooth.unit === 'char' ? Math.round(smooth.staggerMs / 4) : smooth.staggerMs, maxBacklogMs: Math.max(400, smooth.fadeMs) }
+        : false,
+    [smooth],
+  );
+  const smoothVars = smooth ? ({ '--cellar-smooth-blur': `${smooth.blurPx}px`, '--cellar-smooth-rise': `${smooth.risePx}px` } as CSSProperties) : undefined;
+
+  const body = (
     <Streamdown
       className={cn('prose-chat', className)}
       mode={streaming ? 'streaming' : 'static'}
       isAnimating={streaming}
+      animated={animated}
       caret={streaming ? 'block' : undefined}
       plugins={plugins}
       shikiTheme={['github-light', 'github-dark-default']}
@@ -126,4 +163,5 @@ export const Markdown = memo(function Markdown({ content, streaming, conversatio
       {source}
     </Streamdown>
   );
+  return smoothVars ? <div style={{ ...smoothVars, display: 'contents' }}>{body}</div> : body;
 });

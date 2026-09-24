@@ -1,9 +1,10 @@
 import { createContext, useContext, useState } from 'react';
-import { AppWindow, Ban, ChevronRight, CircleAlert, FileCode, Globe, Plug, ShieldAlert, SquareTerminal } from 'lucide-react';
+import { AppWindow, Ban, ChevronRight, CircleAlert, FileCode, Globe, MousePointerClick, Plug, ShieldAlert, SquareTerminal } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ApprovalAction, ToolPart } from '@shared/types/agent';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/form';
+import { attachmentImageUrl } from '@/components/chat/Attachments';
 import { Spinner } from '@/components/ui/misc';
 import { invoke } from '@/lib/ipc';
 import { describeTool, hostOf, lineDiff } from '@/lib/tasks';
@@ -108,6 +109,16 @@ function durationLabel(part: ToolPart): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** What the model saw after a computer-use step (the numbered boxes are Cellar's). */
+function ScreenShot({ id }: { id: string }) {
+  const [large, setLarge] = useState(false);
+  return (
+    <button type="button" onClick={() => setLarge((v) => !v)} className="block" title={large ? 'Show smaller' : 'Show larger'}>
+      <img src={attachmentImageUrl(id)} alt="The screen after this step" className={cn('rounded-lg border border-divider', large ? 'w-full' : 'max-h-56 w-auto')} />
+    </button>
+  );
+}
+
 /** Code sessions let file steps open in the editor pane. */
 export const OpenFileContext = createContext<((path: string) => void) | null>(null);
 
@@ -156,6 +167,7 @@ export function ToolStep({ part, messageId, defaultOpen = false }: { part: ToolP
               <Globe className="size-3.5" /> {str(part.args?.url)}
             </button>
           )}
+          {part.category === 'computer' && part.resultImages?.length ? <ScreenShot id={part.resultImages[part.resultImages.length - 1]} /> : null}
           <CallDetails part={part} />
           {part.feedback && <div className="text-[12.5px] text-muted-foreground">Your note: “{part.feedback}”</div>}
           <ResultBlock part={part} messageId={messageId} />
@@ -186,9 +198,11 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
         ? `Always allow ${approval.url ? hostOf(approval.url) : 'this site'}`
         : approval.kind === 'connector'
           ? `Always allow ${approval.tool ?? 'this tool'}`
-          : 'Allow all edits';
+          : approval.kind === 'computer'
+            ? 'Allow until done'
+            : 'Allow all edits';
   const heading =
-    approval.kind === 'browser' || approval.kind === 'action'
+    approval.kind === 'browser' || approval.kind === 'action' || approval.kind === 'computer'
       ? approval.title
       : approval.kind === 'command'
       ? 'Cellar wants to run a command'
@@ -210,6 +224,8 @@ export function ApprovalCard({ part, messageId }: { part: ToolPart; messageId: s
           <Plug className="size-4 text-brand" />
         ) : approval.kind === 'browser' ? (
           <AppWindow className="size-4 text-brand" />
+        ) : approval.kind === 'computer' ? (
+          <MousePointerClick className="size-4 text-brand" />
         ) : (
           <ShieldAlert className="size-4 text-brand" />
         )}

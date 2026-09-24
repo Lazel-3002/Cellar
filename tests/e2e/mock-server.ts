@@ -121,7 +121,7 @@ export async function startMockServer(): Promise<MockServer> {
     }
     if (req.url?.startsWith('/v1/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }, { id: 'mock-browser' }, { id: 'mock-reader' }] }));
+      res.end(JSON.stringify({ data: [{ id: 'mock-echo' }, { id: 'mock-thinker-r1' }, { id: 'mock-agent' }, { id: 'mock-coder' }, { id: 'mock-tools' }, { id: 'mock-designer' }, { id: 'mock-tutor' }, { id: 'mock-browser' }, { id: 'mock-reader' }, { id: 'mock-computer-vision' }] }));
       return;
     }
     if (req.url?.startsWith('/v1/chat/completions')) {
@@ -253,6 +253,32 @@ export async function startMockServer(): Promise<MockServer> {
             send({ content: system.includes('Light travels') ? 'Page 2 says light travels at about 300000 km per second (p. 2).' : 'This page has four questions.' }, 'stop');
           } else {
             send({ content: solve ? 'Wrote chloroplasts on the blank in question 2.' : 'Question 1 is right. For question 3, see p. 2.' }, 'stop');
+          }
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        if (parsed.model === 'mock-computer-vision' && parsed.tools?.length) {
+          // Scripted computer use that only looks: one screenshot, then say what the active window is.
+          // This turn only: from the user's request on (screenshots come back as user messages too).
+          const text = (m: MockRequest['messages'][number]) => (typeof m.content === 'string' ? m.content : ((m.content as Array<{ text?: string }>) ?? []).map((p) => p.text ?? '').join(''));
+          const start = parsed.messages.findLastIndex((m) => m.role === 'user' && !/^Images? returned by/.test(text(m)));
+          const results = parsed.messages.slice(start).filter((m) => m.role === 'tool').map((m) => String(m.content));
+          const risky = /delete/i.test(text(parsed.messages[start]));
+          if (results.length === 0) {
+            send({ content: 'Let me look at your screen.' });
+            send({ tool_calls: [{ index: 0, id: 'look1', type: 'function', function: { name: 'computer_screenshot', arguments: '{}' } }] });
+            send({}, 'tool_calls');
+          } else if (risky && results.length === 1) {
+            // A step that always asks, even after "Allow until done" (it is denied in the test, so nothing is pressed).
+            send({ tool_calls: [{ index: 0, id: 'key1', type: 'function', function: { name: 'computer_key', arguments: '{"keys":"shift+delete"}' } }] });
+            send({}, 'tool_calls');
+          } else if (risky) {
+            send({ content: `Understood. ${results.at(-1)?.split('.')[0]}.` }, 'stop');
+          } else {
+            // Think for a moment, as a real model would, while the bar is on screen.
+            await sleep(2500);
+            const seen = /Screenshot: \S+/.exec(results[0])?.[0] ?? 'no screenshot';
+            send({ content: `I looked at the screen. ${seen}.` }, 'stop');
           }
           res.end('data: [DONE]\n\n');
           return;

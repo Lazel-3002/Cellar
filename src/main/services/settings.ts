@@ -22,7 +22,15 @@ function defaults(): StoredSettings {
     chatFont: 'default',
     sendWithEnter: true,
     showGenerationStats: true,
+    smoothStreaming: true,
+    smoothFadeMs: 900,
+    smoothStaggerMs: 45,
+    smoothBlurPx: 10,
+    smoothRisePx: 6,
+    smoothUnit: 'word',
+    smoothPace: 12,
     autoTitle: true,
+    followUps: false,
     artifacts: true,
     inlineVisualizations: false,
     inlineImages: false,
@@ -83,6 +91,16 @@ function defaults(): StoredSettings {
     moduleCallsPerMinute: 5,
     selfScheduling: true,
     pauseOnRepeatedCalls: true,
+    // Off by default: the model driving the real mouse and keyboard is something to opt into.
+    computerUse: false,
+    computerMaxSteps: 60,
+    computerMarks: true,
+    computerCoordinates: 'auto',
+    computerScreenshotWidth: 1280,
+    computerHideWindow: true,
+    computerPauseOnMouse: true,
+    computerBlockedApps: ['KeePass', 'KeePassXC', '1Password', 'Bitwarden', 'LastPass', 'Dashlane', 'Keeper', 'Proton Pass', 'Enpass'],
+    computerDisplay: 0,
   };
 }
 
@@ -138,7 +156,15 @@ class SettingsService {
     if (patch.chatFont !== undefined && ['default', 'sans', 'system'].includes(patch.chatFont)) set('chatFont', patch.chatFont);
     if (patch.sendWithEnter !== undefined) set('sendWithEnter', !!patch.sendWithEnter);
     if (patch.showGenerationStats !== undefined) set('showGenerationStats', !!patch.showGenerationStats);
+    if (patch.smoothStreaming !== undefined) set('smoothStreaming', !!patch.smoothStreaming);
+    if (patch.smoothFadeMs !== undefined) set('smoothFadeMs', clamp(patch.smoothFadeMs, 100, 2500));
+    if (patch.smoothStaggerMs !== undefined) set('smoothStaggerMs', clamp(patch.smoothStaggerMs, 0, 200));
+    if (patch.smoothBlurPx !== undefined) set('smoothBlurPx', clamp(patch.smoothBlurPx, 0, 24));
+    if (patch.smoothRisePx !== undefined) set('smoothRisePx', clamp(patch.smoothRisePx, 0, 20));
+    if (patch.smoothPace !== undefined) set('smoothPace', clamp(patch.smoothPace, 0, 60));
+    if (patch.smoothUnit !== undefined && ['word', 'char'].includes(patch.smoothUnit)) set('smoothUnit', patch.smoothUnit);
     if (patch.autoTitle !== undefined) set('autoTitle', !!patch.autoTitle);
+    if (patch.followUps !== undefined) set('followUps', !!patch.followUps);
     if (patch.artifacts !== undefined) set('artifacts', !!patch.artifacts);
     if (patch.inlineVisualizations !== undefined) set('inlineVisualizations', !!patch.inlineVisualizations);
     if (patch.inlineImages !== undefined) set('inlineImages', !!patch.inlineImages);
@@ -197,6 +223,15 @@ class SettingsService {
     if (patch.moduleCallsPerMinute !== undefined) set('moduleCallsPerMinute', clamp(patch.moduleCallsPerMinute, 1, 60));
     if (patch.selfScheduling !== undefined) set('selfScheduling', !!patch.selfScheduling);
     if (patch.pauseOnRepeatedCalls !== undefined) set('pauseOnRepeatedCalls', !!patch.pauseOnRepeatedCalls);
+    if (patch.computerUse !== undefined) set('computerUse', !!patch.computerUse);
+    if (patch.computerMaxSteps !== undefined) set('computerMaxSteps', clamp(patch.computerMaxSteps, 5, 300));
+    if (patch.computerMarks !== undefined) set('computerMarks', !!patch.computerMarks);
+    if (patch.computerCoordinates !== undefined && ['auto', 'pixels', 'normalized'].includes(patch.computerCoordinates)) set('computerCoordinates', patch.computerCoordinates);
+    if (patch.computerScreenshotWidth !== undefined) set('computerScreenshotWidth', clamp(patch.computerScreenshotWidth, 640, 1920));
+    if (patch.computerHideWindow !== undefined) set('computerHideWindow', !!patch.computerHideWindow);
+    if (patch.computerPauseOnMouse !== undefined) set('computerPauseOnMouse', !!patch.computerPauseOnMouse);
+    if (patch.computerBlockedApps !== undefined) set('computerBlockedApps', uniqueStrings(patch.computerBlockedApps, 100).map((a) => a.slice(0, 80)));
+    if (patch.computerDisplay !== undefined) set('computerDisplay', clamp(patch.computerDisplay, 0, 15));
 
     if (changes.length) {
       transaction(() => {

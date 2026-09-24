@@ -7,6 +7,7 @@ import { loadAllSessions } from './browser/sessions';
 import { cleanupOrphanAttachments } from './chat/attachments';
 import { chat } from './chat/orchestrator';
 import { configure as configureLsp, lsp } from './code/lsp';
+import { computer } from './computer/controller';
 import { installPreview, registerPreviewScheme } from './code/preview';
 import { stopAllSideChats } from './code/side-chat';
 import { terminals } from './code/terminal';
@@ -100,6 +101,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!scheduledWake || !settings.get().runInBackground) openMainWindow();
     installBackground({ getMainWindow: () => mainWindow, createMainWindow: openMainWindow });
     installBrowser(() => mainWindow);
+    computer.install(() => mainWindow);
 
     // Warm caches in the background so the first screens render instantly.
     void detectHardware();
@@ -126,6 +128,7 @@ if (!app.requestSingleInstanceLock()) {
     stopAllSideChats();
     terminals.disposeAll();
     browser.dispose();
+    computer.dispose();
     scheduler.dispose();
     updater.dispose();
     void Promise.all([providers.dispose(), connectors.dispose(), lsp.disposeAll()])

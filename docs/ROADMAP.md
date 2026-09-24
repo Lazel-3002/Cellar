@@ -16,6 +16,7 @@ Source of truth for milestone goals. The original Milestone 1 plan is at
 | **M8.1 Undo, git and memory** | Undo for Cowork file changes; push, pull requests and merge-conflict resolution in Code; `/update-memory` | ✅ Done 2026-09-17 |
 | **M8.2 Playground** | Two models answering the same prompt side by side, one after the other, with per-model follow-ups | ✅ Done 2026-09-18 |
 | **M9 Study** | A PDF (textbook, worksheet) beside a tutor: pick what the model reads, write and draw on the pages, the tutor checks, marks and fills in answers | ✅ Done 2026-09-23 (v8.0.0) |
+| **M10 Computer use** | The model sees the Windows desktop and works the mouse and keyboard in the user's own apps, with numbered controls for small models, an on-screen bar, and approvals for anything that sends, buys or deletes | ✅ Built 2026-09-23 (not released yet) |
 
 Product goal throughout: behave almost 1:1 like Claude Desktop (Chat / Cowork / Code), but every model runs locally — built-in llama.cpp, Ollama, LM Studio, Unsloth Studio, or any OpenAI-compatible server — with LM Studio-grade control over how models load. Cellar keeps its own logo; no Anthropic branding.
 
@@ -845,3 +846,124 @@ Real software (throwaway profile, Ollama qwen3.5:9b on the RTX 5060, `scripts/st
 - **Character widths differ too much between fonts to find a blank by counting.** An underscore is 0.415 em in Segoe UI and 0.556 em in Arial; with Helvetica metrics the blank in "…verilen gaz __________ gazıdır." came out 9 pt early and the answer covered "gaz". No single table fixes every font (tried: the best compromise was still 1.1 em off in Georgia). The exact fix replays the page's text operators from `getOperatorList()` — font size, character and word spacing, horizontal scaling, TJ adjustments, the text and transformation matrices, form XObjects — using each glyph's real advance, which pdf.js already puts in the `showText` arguments. It is done only for the page being written on, when an answer is placed, so importing stays fast.
 - **A 9B model follows "do X" better than "don't ask before X", and follows facts better than rules.** Saying which questions are answered, as a line on each page, stopped the answer leaks that the rule alone did not.
 - **Test mocks drift with prompts.** The memory rewrite before this milestone changed the memory pass's system prompt (and moved the transcript into it), which quietly broke the skills/memory e2e test's mock; it now recognises both prompts and reads only the conversation part.
+
+## M10 Computer use — built (2026-09-23, not released yet)
+
+The user asked for "Cellar Computer Use, like ChatGPT's". The model sees the Windows desktop and
+works the real mouse and keyboard in the user's own apps, from Chat, Cowork and Code (not Math,
+Design or Study, which have their own canvas). Off by default: Settings → Computer use, or "Use the
+computer" in the composer's tools menu.
+
+The M6 rule carries over: **a local model never guesses pixels when Cellar can find the thing.**
+Windows UI Automation lists the buttons, fields, links and list items on screen; Cellar numbers them
+on the screenshot (Set-of-Mark) and in a text list, and the model says `element=12`. x/y is the
+fallback for canvases and games, in whichever space the model was trained on.
+
+- **Helper** (`src/main/computer/helper.cs`): C# compiled on first use with the `csc.exe` every
+  Windows ships (.NET Framework 4, C# 5 syntax), cached as `~/.cellar/computer/cellar-computer-<hash>.exe`,
+  and spoken to over stdio (one JSON line each way; `helper.ts`). No native Node module, nothing to
+  download, nothing in the installer. Per-monitor DPI aware, so every coordinate is a physical pixel.
+  - `observe`: the display (or a zoomed region, up to 2×) captured with GDI, scaled to the screenshot
+    size (1280 by default), numbered boxes drawn with System.Drawing, JPEG; plus the foreground window,
+    popups and menus above it, their controls (one cached `FindAll`, 3.5 s budget on its own thread),
+    the static text on screen (a calculator's display, a dialog's message: "Text on screen: …"), the
+    open windows (Alt+Tab rules) and the pointer. About 250 ms on the dev machine.
+  - Input with `SendInput`: eased pointer glides (hover effects fire, the user can follow it), clicks,
+    double clicks, drags, wheel notches, Unicode typing, shortcuts. `{ch}` keys go through
+    `VkKeyScanEx` with the foreground window's layout, so "ctrl+." works on a Turkish keyboard.
+  - Window focus (a harmless injected key-up lifts the foreground lock, `AttachThreadInput` as the
+    fallback), `shell:AppsFolder` for the Start menu's app list, `TextPattern` visible ranges for reading.
+  - A low-level mouse hook counts only events Windows did not flag as injected: that is how Cellar
+    knows the *user* moved the mouse.
+- **Tools** (`agent/tools/computer.ts`, category `computer`): `computer_screenshot` (`wait`, `zoom`),
+  `computer_click` (element or x/y, right/double, held modifiers), `computer_type` (focus an element
+  first, `clear`, `enter`), `computer_key`, `computer_scroll`, `computer_drag`, `computer_move`,
+  `computer_open_app` (Start-menu name with aliases — "calculator" finds "Hesap Makinesi" — a URL, or
+  a path; waits for the new window and focuses it), `computer_windows` (1 is always the active window),
+  `computer_read`, `computer_hand_over`. Every action returns what it did plus a fresh look, so the
+  model checks each step without an extra round. Anthropic-style arguments (`coordinate: [x, y]`,
+  `start_coordinate`), `"[12]"`, key arrays and xdotool names ("Return", "Page_Down") are accepted.
+  Plan and Ask modes keep only the screenshot and read tools. Text-only models get no image and work
+  from the list, the screen text and the keyboard.
+- **Controller** (`computer/controller.ts`): one run at a time has the screen. Its first step minimizes
+  Cellar (restored when the reply ends), shows the overlay and registers Ctrl+Alt+Esc. Before each step:
+  did the user take over (real mouse events since the last step, or Cellar's window brought back)? Then
+  wait for Resume on the bar and report that the step was not done. Guards: never Cellar's own windows
+  (clicks, typing, focus), never an app on the blocked list (password managers by default; the model
+  gets no pixels of it either), never typing into a UI Automation password field.
+- **Approvals**: the first step of a task (or chat reply) asks once — "Let Cellar use your computer",
+  with **Allow until done** — and anything that sends, pays, deletes, publishes, signs out, confirms,
+  closes a window, presses Shift+Delete / Ctrl+Enter / Alt+F4 or types what looks like a card number
+  or IBAN asks every time (English and Turkish words; `shared/computer.ts` `riskOf`). While Cellar's
+  window is out of the way the bar shows the same Allow / Deny. The global Manual / Auto / Bypass mode
+  applies as for every other tool.
+- **Overlay** (`computer/overlay.ts`, `pages/ComputerPill.tsx`): a click-through glow around the screen
+  with a ripple at each click, and a bar at the top (what it is doing, Stop; Resume after a takeover;
+  Done after a hand-over; Allow / Deny). Both windows are non-focusable and excluded from capture
+  (`setContentProtection`), so the model never sees them; a click aimed under the bar hides it for
+  that moment.
+- **Context** (`agent/history.ts`): only the latest looks keep their screenshot and element list (two
+  on a 16K window, three from 24K); older ones shrink to what the step did. They are cut in batches —
+  the window grows 1, 2, 3 and starts again at 1 — so two steps out of three the local server reuses
+  its prompt cache and only processes the new screenshot. Element lists are capped at 80 lines below
+  24K. `computer_read` returns at most half the usual tool budget.
+- **Transcript and Settings**: steps say "Clicked element 12", "Typed …", "Opened Calculator", with the
+  screenshot the model saw when expanded. Settings → Computer use: numbered boxes, screenshot size,
+  how the model points (Auto / pixels / 0–1000), display, move Cellar out of the way, pause on mouse,
+  step limit (60), blocked apps, and **Take a look**, which shows exactly what a vision model gets.
+
+Tests: 438 unit tests (`tests/unit/computer.test.ts`: coordinates in both spaces on an offset
+display, key parsing, risk words in English and Turkish, card numbers and IBANs, blocked apps, the
+screen description, Start-menu matching with Turkish names, argument shapes, batched history cuts,
+approvals, the tools in the agent loop with a scripted model — offered and described, asking first,
+plan mode looking but not touching, a clear error when off — and the real helper compiled with csc,
+taking a marked screenshot without touching anything, with the mouse hook on). 23 Playwright tests:
+the new one takes a look from Settings, has a scripted vision model ask, look with the bar on screen,
+receive the screenshot, and then try Shift+Delete, which is denied on the bar (nothing is pressed).
+
+Real software (`scripts/computer-smoke.mjs`, throwaway profile, Ollama qwen3.5:9b on the RTX 5060,
+16K context, Turkish Windows 11):
+- **"Open the Calculator app and work out 1234 × 5678"** — `computer_open_app("Calculator")` found
+  "Hesap Makinesi", `computer_type("1234*5678=")`, read "Ekran değeri 7.006.652" from the screen text
+  and answered 7,006,652. 61 s, 2 steps. Later runs of the same prompt split the numbers or "typed"
+  button labels; they still ended at the right answer, and typing a visible button's exact label now
+  presses it.
+- **"Open Windows Settings, go to System and then About…"** — Ayarlar opened, Sistem clicked by
+  number, scrolled, Sistem bilgisi clicked, "Windows 11 Pro, 25H2" read from the page. 81 s, 4 steps
+  (158 s and 6 steps before the batched cuts and the window-numbering fix).
+
+### Known gaps and follow-ups from M10
+- **Windows only.** The helper is Win32 and .NET Framework; macOS and Linux need their own.
+- **One display at a time** (Settings picks which). Windows on another display are listed but not seen.
+- **UI Automation coverage varies**: games, remote desktops, some Electron and Java apps expose little
+  or nothing; the model falls back to x/y from the screenshot, which a 9B model does far less reliably.
+- **Keyboard takeover is not detected**, only the mouse (a keyboard hook looks too much like a
+  keylogger for an unsigned, locally compiled helper).
+- **Risk detection reads labels**, so an icon-only "send" button or a form submitted with Enter does not
+  ask; the prompt tells the model to confirm such steps are what the user asked for.
+- **Chats ask again every reply** (their task state is not saved); Cowork and Code ask once per task.
+- **Small models wander**: the same prompt can take 2 steps or 12. The step cap (60) and the repeated-
+  call guard stop a model that is stuck.
+
+### Technical notes learned in M10
+- **Comparing pointer positions is the wrong takeover test.** A run with nobody at the machine paused
+  itself: something between two steps moved the pointer. A `WH_MOUSE_LL` hook that ignores
+  `LLMHF_INJECTED` events counts only a real mouse, is immune to programmatic pointer moves, and does
+  not see Cellar's own `SendInput`. `SetCursorPos` does not reach low-level hooks at all.
+- **Cut old screenshots in batches, not one per step.** Trimming the look from two steps ago changes
+  the prompt just before the two newest screenshots, so a local server re-encodes both every step.
+  Growing the window 1→2→3 and then resetting keeps the prefix stable two steps out of three; steps
+  went from 25–45 s to about 17 s on qwen3.5:9b.
+- **Number windows the way a model reads them.** With "Other windows: 1. …", qwen3.5 passed
+  `window: 1` meaning the active window, read a different app's whole text into a 16K context and
+  forced a compaction. The active window is window 1 now.
+- **Static text matters as much as controls.** A calculator's display and a dialog's message are UI
+  Automation `Text` elements, not controls; without the "Text on screen" line the model clicked keys
+  without knowing what it had entered.
+- **WDA_EXCLUDEFROMCAPTURE hides a window from every capture path**, including GDI `BitBlt` — which is
+  what keeps the bar out of the model's screenshots, and also why the bar cannot be verified from a
+  screenshot of the desktop; the e2e test checks it through its own window instead.
+- **csc.exe is C# 5**: no string interpolation, `?.`, expression-bodied members or `out var`. Git Bash
+  turns `/flag` arguments into paths (use `-flag`, or `MSYS_NO_PATHCONV=1`).
+- **The main process can import text with `?raw`** (electron-vite passes it through); the node
+  tsconfig needs a `declare module '*.cs?raw'` for it.

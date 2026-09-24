@@ -24,6 +24,16 @@ export interface ToolContext {
   onOutput?(text: string): void;
   /** The conversation the tool runs for. */
   conversationId?: string;
+  /** The assistant message being written (identifies the run). */
+  messageId?: string;
+  /** A chat turn (no saved task state), not a Cowork task or Code session. */
+  chat?: boolean;
+  /** The model can see images (tool results may carry screenshots). */
+  vision?: boolean;
+  /** The model's id, for model-specific conventions (computer use: how it gives coordinates). */
+  modelId?: string;
+  /** Stops the whole run, as the Stop button does (computer use: the on-screen Stop). */
+  stopRun?(): void;
   /** Incognito chats: nothing may be remembered. */
   incognito?: boolean;
   /** Run after a file tool changed a file; returns problems found in it (Code and Cowork). */
